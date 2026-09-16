@@ -1,0 +1,30 @@
+# Dependências do PHP (se usar Composer no futuro)
+vendor/
+
+# Arquivos de Sistema Operacional
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Editores de código e IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Logs de erros
+*.log
+error_log
+
+# Pastas de cache ou uploads (se o projeto tiver no futuro)
+/uploads/
+/cache/
+
+# Arquivos de configuração com senhas
+# Se quiser ignorar o config.php para não subir senhas do banco no Git, descomente a linha abaixo:
+# config.php
