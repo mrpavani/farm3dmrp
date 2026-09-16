@@ -3,9 +3,6 @@
 -- Schema do banco de dados (MySQL)
 -- ============================================================
 
-CREATE DATABASE IF NOT EXISTS pedidos3d CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE pedidos3d;
-
 -- Usuários do sistema (login). Só administradores cadastram usuários.
 CREATE TABLE usuarios (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -36,6 +33,7 @@ CREATE TABLE produtos (
     nome VARCHAR(150) NOT NULL,
     descricao TEXT DEFAULT NULL,
     preco DECIMAL(10,2) DEFAULT 0,
+    estoque INT NOT NULL DEFAULT 0,
     ativo TINYINT(1) DEFAULT 1,
     criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
@@ -64,6 +62,7 @@ CREATE TABLE pedido_itens (
     pedido_id INT NOT NULL,
     produto_id INT NOT NULL,
     quantidade INT NOT NULL,
+    quantidade_estoque INT NOT NULL DEFAULT 0,
     quantidade_produzida INT NOT NULL DEFAULT 0,
     FOREIGN KEY (pedido_id) REFERENCES pedidos(id) ON DELETE CASCADE,
     FOREIGN KEY (produto_id) REFERENCES produtos(id)

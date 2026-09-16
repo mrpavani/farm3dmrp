@@ -188,14 +188,32 @@ if ($method === 'POST') {
         $pedidoId = $pdo->lastInsertId();
 
         $itemStmt = $pdo->prepare("
-            INSERT INTO pedido_itens (pedido_id, produto_id, quantidade)
-            VALUES (:pedido_id, :produto_id, :quantidade)
+            INSERT INTO pedido_itens (pedido_id, produto_id, quantidade, quantidade_estoque, quantidade_produzida)
+            VALUES (:pedido_id, :produto_id, :quantidade, :quantidade_estoque, :quantidade_produzida)
         ");
+        $updEstoque = $pdo->prepare("UPDATE produtos SET estoque = estoque - :qtd WHERE id = :id");
+
         foreach ($b['itens'] as $item) {
+            $qtd = (int) $item['quantidade'];
+            $qtdEstoque = 0;
+            
+            if ($tipo === 'venda') {
+                $prodStmt = $pdo->prepare("SELECT estoque FROM produtos WHERE id = :id FOR UPDATE");
+                $prodStmt->execute(['id' => $item['produto_id']]);
+                $estoqueAtual = (int) $prodStmt->fetchColumn();
+                
+                if ($estoqueAtual > 0) {
+                    $qtdEstoque = min($qtd, $estoqueAtual);
+                    $updEstoque->execute(['qtd' => $qtdEstoque, 'id' => $item['produto_id']]);
+                }
+            }
+
             $itemStmt->execute([
                 'pedido_id' => $pedidoId,
                 'produto_id' => $item['produto_id'],
-                'quantidade' => (int) $item['quantidade'],
+                'quantidade' => $qtd,
+                'quantidade_estoque' => $qtdEstoque,
+                'quantidade_produzida' => $qtdEstoque,
             ]);
         }
 
@@ -257,7 +275,7 @@ if ($method === 'PUT') {
             $atuais[(int) $row['id']] = $row;
         }
 
-        $insStmt = $pdo->prepare("INSERT INTO pedido_itens (pedido_id, produto_id, quantidade) VALUES (:pedido_id, :produto_id, :quantidade)");
+        $insStmt = $pdo->prepare("INSERT INTO pedido_itens (pedido_id, produto_id, quantidade, quantidade_estoque, quantidade_produzida) VALUES (:pedido_id, :produto_id, :quantidade, :quantidade_estoque, :quantidade_produzida)");
         $updStmt = $pdo->prepare("UPDATE pedido_itens SET produto_id = :produto_id, quantidade = :quantidade WHERE id = :id");
         $delStmt = $pdo->prepare("DELETE FROM pedido_itens WHERE id = :id");
 
@@ -268,7 +286,24 @@ if ($method === 'PUT') {
             $itemId = (int) ($item['id'] ?? 0);
 
             if (!$itemId) {
-                $insStmt->execute(['pedido_id' => $id, 'produto_id' => $produtoId, 'quantidade' => $qtd]);
+                $qtdEstoque = 0;
+                if ($pedido['tipo'] === 'venda') {
+                    $prodStmt = $pdo->prepare("SELECT estoque FROM produtos WHERE id = :id FOR UPDATE");
+                    $prodStmt->execute(['id' => $produtoId]);
+                    $estoqueAtual = (int) $prodStmt->fetchColumn();
+                    if ($estoqueAtual > 0) {
+                        $qtdEstoque = min($qtd, $estoqueAtual);
+                        $pdo->prepare("UPDATE produtos SET estoque = estoque - :qtd WHERE id = :id")
+                            ->execute(['qtd' => $qtdEstoque, 'id' => $produtoId]);
+                    }
+                }
+                $insStmt->execute([
+                    'pedido_id' => $id, 
+                    'produto_id' => $produtoId, 
+                    'quantidade' => $qtd,
+                    'quantidade_estoque' => $qtdEstoque,
+                    'quantidade_produzida' => $qtdEstoque
+                ]);
                 continue;
             }
             if (!isset($atuais[$itemId])) {
@@ -280,7 +315,21 @@ if ($method === 'PUT') {
                 throw new Exception("O item \"{$atual['produto_nome']}\" já tem produção registrada; o produto não pode ser trocado.");
             }
             if ($qtd < $produzido) {
-                throw new Exception("A quantidade de \"{$atual['produto_nome']}\" não pode ser menor que o já produzido ($produzido).");
+                // The new quantity is less than what was produced.
+                // If it's just stock, we can return the stock. If factory produced it, we error.
+                $prodFabrica = $produzido - (int) $atual['quantidade_estoque'];
+                if ($qtd < $prodFabrica) {
+                    throw new Exception("A quantidade de \"{$atual['produto_nome']}\" não pode ser menor que o já produzido pela fábrica ($prodFabrica).");
+                }
+                
+                // Return difference to stock
+                $devolver = $produzido - $qtd;
+                if ($devolver > 0) {
+                    $pdo->prepare("UPDATE produtos SET estoque = estoque + :dev WHERE id = :id")
+                        ->execute(['dev' => $devolver, 'id' => $atual['produto_id']]);
+                    $pdo->prepare("UPDATE pedido_itens SET quantidade_estoque = quantidade_estoque - :dev, quantidade_produzida = quantidade_produzida - :dev WHERE id = :id")
+                        ->execute(['dev' => $devolver, 'id' => $itemId]);
+                }
             }
             $updStmt->execute(['produto_id' => $produtoId, 'quantidade' => $qtd, 'id' => $itemId]);
             $mantidos[$itemId] = true;
@@ -288,8 +337,15 @@ if ($method === 'PUT') {
 
         foreach ($atuais as $itemId => $atual) {
             if (isset($mantidos[$itemId])) continue;
-            if ((int) $atual['quantidade_produzida'] > 0) {
-                throw new Exception("O item \"{$atual['produto_nome']}\" já tem produção registrada e não pode ser removido.");
+            
+            $prodFabrica = (int) $atual['quantidade_produzida'] - (int) $atual['quantidade_estoque'];
+            if ($prodFabrica > 0) {
+                throw new Exception("O item \"{$atual['produto_nome']}\" já tem produção registrada pela fábrica e não pode ser removido.");
+            }
+            
+            if ((int) $atual['quantidade_estoque'] > 0) {
+                $pdo->prepare("UPDATE produtos SET estoque = estoque + :dev WHERE id = :id")
+                    ->execute(['dev' => $atual['quantidade_estoque'], 'id' => $atual['produto_id']]);
             }
             $delStmt->execute(['id' => $itemId]);
         }
@@ -332,6 +388,17 @@ if ($method === 'PATCH') {
             case 'cancelar':
                 if ($atual === 'entregue') throw new Exception('Pedido já entregue não pode ser cancelado. Reabra-o primeiro.');
                 if ($atual === 'cancelado') throw new Exception('O pedido já está cancelado.');
+                
+                // Return stock
+                $itensStmt = $pdo->prepare("SELECT id, produto_id, quantidade_estoque FROM pedido_itens WHERE pedido_id = :id AND quantidade_estoque > 0");
+                $itensStmt->execute(['id' => $id]);
+                $updEstoque = $pdo->prepare("UPDATE produtos SET estoque = estoque + :qtd WHERE id = :id");
+                $updItem = $pdo->prepare("UPDATE pedido_itens SET quantidade_estoque = 0, quantidade_produzida = quantidade_produzida - quantidade_estoque WHERE id = :id");
+                foreach ($itensStmt->fetchAll() as $it) {
+                    $updEstoque->execute(['qtd' => $it['quantidade_estoque'], 'id' => $it['produto_id']]);
+                    $updItem->execute(['id' => $it['id']]);
+                }
+                
                 $novo = 'cancelado';
                 $pdo->prepare("UPDATE pedidos SET status = 'cancelado' WHERE id = :id")->execute(['id' => $id]);
                 break;

@@ -19,6 +19,7 @@ function dadosProduto(array $b): array {
         'nome' => $nome,
         'descricao' => $descricao === '' ? null : $descricao,
         'preco' => round((float) $preco, 2),
+        'estoque' => (int) ($b['estoque'] ?? 0),
         'ativo' => array_key_exists('ativo', $b) ? (int) (bool) $b['ativo'] : 1,
     ];
 }
@@ -56,7 +57,7 @@ if ($method === 'GET') {
         jsonResponse($stmt->fetchAll());
     }
 
-    $stmt = $pdo->query("SELECT id, nome, descricao, preco FROM produtos WHERE ativo = 1 ORDER BY nome");
+    $stmt = $pdo->query("SELECT id, nome, descricao, preco, estoque FROM produtos WHERE ativo = 1 ORDER BY nome");
     jsonResponse($stmt->fetchAll());
 }
 
@@ -67,7 +68,7 @@ if ($method === 'POST') {
     $d = dadosProduto(readJsonBody());
     if (nomeDuplicado($pdo, $d['nome'])) jsonError('Já existe um produto com esse nome.');
 
-    $stmt = $pdo->prepare("INSERT INTO produtos (nome, descricao, preco, ativo) VALUES (:nome, :descricao, :preco, :ativo)");
+    $stmt = $pdo->prepare("INSERT INTO produtos (nome, descricao, preco, estoque, ativo) VALUES (:nome, :descricao, :preco, :estoque, :ativo)");
     $stmt->execute($d);
     jsonResponse(['id' => (int) $pdo->lastInsertId()], 201);
 }
@@ -85,7 +86,7 @@ if ($method === 'PUT') {
     if (!(int) $existe->fetchColumn()) jsonError('Produto não encontrado.', 404);
     if (nomeDuplicado($pdo, $d['nome'], $id)) jsonError('Já existe outro produto com esse nome.');
 
-    $stmt = $pdo->prepare("UPDATE produtos SET nome = :nome, descricao = :descricao, preco = :preco, ativo = :ativo WHERE id = :id");
+    $stmt = $pdo->prepare("UPDATE produtos SET nome = :nome, descricao = :descricao, preco = :preco, estoque = :estoque, ativo = :ativo WHERE id = :id");
     $stmt->execute($d + ['id' => $id]);
     jsonResponse(['id' => $id]);
 }

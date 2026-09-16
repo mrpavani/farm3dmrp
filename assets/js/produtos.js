@@ -40,6 +40,7 @@ function renderizar() {
                 ${p.descricao ? `<span class="sub-linha descricao-curta" title="${App.esc(p.descricao)}">${App.esc(p.descricao)}</span>` : ''}
             </td>
             <td class="num">${App.fmtMoeda.format(p.preco)}</td>
+            <td class="num" style="font-weight:600;">${App.fmtInt.format(p.estoque)}</td>
             <td><span class="badge ${ativo ? 'pronto' : 'aberto'}">${ativo ? 'Ativo' : 'Inativo'}</span></td>
             <td class="num">${App.fmtInt.format(p.qtd_pedidos)}</td>
             <td class="num">${App.fmtInt.format(p.qtd_produzida)}</td>
@@ -61,6 +62,7 @@ function abrirModal(p = null) {
     $('formProduto').reset();
     $('prodNome').value = p ? p.nome : '';
     $('prodPreco').value = p ? Number(p.preco).toFixed(2) : '';
+    $('prodEstoque').value = p ? Number(p.estoque) : '0';
     $('prodAtivo').value = p ? String(p.ativo) : '1';
     $('prodDescricao').value = p ? (p.descricao || '') : '';
     $('prodTituloModal').textContent = p ? 'Editar produto' : 'Novo produto';
@@ -76,6 +78,7 @@ async function salvar(ev) {
     const payload = {
         nome: $('prodNome').value.trim(),
         preco: $('prodPreco').value || 0,
+        estoque: parseInt($('prodEstoque').value) || 0,
         ativo: $('prodAtivo').value === '1',
         descricao: $('prodDescricao').value.trim(),
     };

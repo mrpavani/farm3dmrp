@@ -51,7 +51,7 @@ if ($method === 'POST') {
     $pdo->beginTransaction();
     try {
         $itemStmt = $pdo->prepare("
-            SELECT pi.*, p.status AS pedido_status
+            SELECT pi.*, p.status AS pedido_status, p.tipo AS pedido_tipo
             FROM pedido_itens pi
             JOIN pedidos p ON p.id = pi.pedido_id
             WHERE pi.id = :id
@@ -83,6 +83,11 @@ if ($method === 'POST') {
 
         $updStmt = $pdo->prepare("UPDATE pedido_itens SET quantidade_produzida = quantidade_produzida + :q WHERE id = :id");
         $updStmt->execute(['q' => $b['quantidade'], 'id' => $b['pedido_item_id']]);
+
+        if ($item['pedido_tipo'] === 'estoque') {
+            $pdo->prepare("UPDATE produtos SET estoque = estoque + :qtd WHERE id = :id")
+                ->execute(['qtd' => $b['quantidade'], 'id' => $item['produto_id']]);
+        }
 
         // Atualiza o status do pedido (em_producao / pronto) conforme os itens
         $novoStatus = recalcularStatusPedido($pdo, (int) $item['pedido_id']);

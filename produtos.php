@@ -33,6 +33,7 @@ require __DIR__ . '/includes/header.php';
                     <tr>
                         <th>Produto</th>
                         <th class="num">Preço</th>
+                        <th class="num">Estoque</th>
                         <th>Situação</th>
                         <th class="num">Pedidos</th>
                         <th class="num">Produzido</th>
@@ -66,6 +67,10 @@ require __DIR__ . '/includes/header.php';
                 <div>
                     <label for="prodPreco">Preço (R$)</label>
                     <input type="number" id="prodPreco" min="0" step="0.01" placeholder="0,00" inputmode="decimal">
+                </div>
+                <div>
+                    <label for="prodEstoque">Estoque</label>
+                    <input type="number" id="prodEstoque" min="0" step="1" placeholder="0" inputmode="numeric">
                 </div>
                 <div>
                     <label for="prodAtivo">Situação</label>

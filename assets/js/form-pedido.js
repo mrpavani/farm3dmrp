@@ -44,17 +44,26 @@ window.FormPedido = (() => {
     // ---------- Itens ----------
     function adicionarItem(item = null) {
         const produzido = item ? Number(item.quantidade_produzida) || 0 : 0;
+        const qtdEstoque = item ? Number(item.quantidade_estoque) || 0 : 0;
+        const prodFabrica = produzido - qtdEstoque;
+        
         const div = document.createElement('div');
         div.className = 'item-linha';
         if (item && item.id) div.dataset.itemId = item.id;
 
         const lista = [...produtos];
         if (item && item.produto_id && !lista.some(p => Number(p.id) === Number(item.produto_id))) {
-            lista.push({ id: item.produto_id, nome: item.produto_nome + ' (inativo)', preco: 0 });
+            lista.push({ id: item.produto_id, nome: item.produto_nome + ' (inativo)', preco: 0, estoque: 0 });
         }
-        const opcoes = '<option value="">— selecione o produto —</option>' + lista.map(p =>
-            `<option value="${p.id}" ${item && Number(p.id) === Number(item.produto_id) ? 'selected' : ''}>${App.esc(p.nome)}</option>`
-        ).join('');
+        const opcoes = '<option value="">— selecione o produto —</option>' + lista.map(p => {
+            const extra = (tipo === 'venda' && Number(p.estoque) > 0) ? ` (${p.estoque} em estoque)` : '';
+            const selecionado = item && Number(p.id) === Number(item.produto_id) ? 'selected' : '';
+            return `<option value="${p.id}" ${selecionado}>${App.esc(p.nome)}${extra}</option>`;
+        }).join('');
+        
+        let badges = [];
+        if (qtdEstoque > 0) badges.push(`📦 ${qtdEstoque} do estoque`);
+        if (prodFabrica > 0) badges.push(`🔨 ${prodFabrica} feito${prodFabrica === 1 ? '' : 's'}`);
 
         div.innerHTML = `
             <select data-role="produto" aria-label="Produto" ${produzido > 0 ? 'disabled' : ''}>${opcoes}</select>
@@ -62,7 +71,7 @@ window.FormPedido = (() => {
             <input type="number" data-role="quantidade" aria-label="Quantidade" inputmode="numeric"
                    min="${Math.max(1, produzido)}" value="${item ? item.quantidade : 1}">
             ${produzido > 0
-                ? `<span class="info-produzido" title="Já produzido">✓ ${produzido} feito${produzido === 1 ? '' : 's'}</span>`
+                ? `<span class="info-produzido" title="Já atendido">${badges.join(' e ')}</span>`
                 : App.botaoIcone('excluir', 'Remover produto', '', 'perigo')}`;
 
         const sel = div.querySelector('[data-role="produto"]');

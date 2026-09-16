@@ -65,3 +65,12 @@ ALTER TABLE pedidos
     ADD CONSTRAINT chk_pedidos_cliente_venda CHECK (tipo = 'estoque' OR cliente_id IS NOT NULL);
 
 CREATE INDEX idx_pedidos_tipo_status ON pedidos(tipo, status);
+
+-- ------------------------------------------------------------
+-- Migração 005
+-- ------------------------------------------------------------
+ALTER TABLE produtos
+    ADD COLUMN estoque INT NOT NULL DEFAULT 0 AFTER preco;
+
+ALTER TABLE pedido_itens
+    ADD COLUMN quantidade_estoque INT NOT NULL DEFAULT 0 AFTER quantidade;
