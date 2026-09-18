@@ -383,51 +383,27 @@ async function carregarPecasFabrica() {
     }
 }
 
-function popularFiltrosPecas(d) {
-    const selProd = $('pecaFiltroProduto');
-    const valorAtualProd = selProd.value;
-    selProd.innerHTML = '<option value="">Todos os produtos</option>';
-    Object.entries(d.produtos_filtro || {}).forEach(([id, nome]) => {
-        const opt = document.createElement('option');
-        opt.value = id;
-        opt.textContent = nome;
-        if (id === valorAtualProd) opt.selected = true;
-        selProd.appendChild(opt);
-    });
-
-    const selCor = $('pecaFiltroCor');
-    const valorAtualCor = selCor.value;
-    selCor.innerHTML = '<option value="">Todas as cores</option>';
-    (d.cores_filtro || []).forEach(cor => {
-        const opt = document.createElement('option');
-        opt.value = cor;
-        opt.textContent = cor;
-        if (cor === valorAtualCor) opt.selected = true;
-        selCor.appendChild(opt);
-    });
-}
+// Filtros simplificados (sem select de produto/cor)
 
 function renderizarPecasFabrica() {
     if (!dadosPecasCarregados) return;
 
     const termo = App.normalizar($('pecaBusca').value.trim());
-    const prodFiltro = $('pecaFiltroProduto').value;
-    const corFiltro = $('pecaFiltroCor').value;
     const statusFiltro = $('pecaFiltroStatus').value;
 
-    const filtradas = (dadosPecasCarregados.pecas || []).filter(p => {
-        if (termo && !App.normalizar(`${p.peca_nome} ${p.produto_nome} ${p.cor}`).includes(termo)) return false;
-        if (prodFiltro && String(p.produto_id) !== String(prodFiltro)) return false;
-        if (corFiltro && p.cor !== corFiltro) return false;
-        if (statusFiltro === 'imprimir' && p.a_imprimir <= 0) return false;
-        if (statusFiltro === 'ok' && p.a_imprimir > 0) return false;
+    const filtradas = (dadosPecasCarregados.produtos || []).filter(p => {
+        if (termo && !App.normalizar(`${p.nome}`).includes(termo)) return false;
+        
+        const pecasFila = p.pecas.reduce((s, peca) => s + peca.a_imprimir, 0);
+        if (statusFiltro === 'imprimir' && pecasFila <= 0) return false;
+        if (statusFiltro === 'ok' && pecasFila > 0) return false;
         return true;
     });
 
     // Renderizar KPIs
-    const totalAImprimir = filtradas.reduce((s, p) => s + p.a_imprimir, 0);
-    const totalEstoque = filtradas.reduce((s, p) => s + p.estoque_pecas, 0);
-    const comFila = filtradas.filter(p => p.a_imprimir > 0).length;
+    const totalAImprimir = dadosPecasCarregados.resumo.total_a_imprimir || 0;
+    const totalEstoque = dadosPecasCarregados.resumo.total_estoque || 0;
+    const comFila = dadosPecasCarregados.resumo.pecas_com_fila || 0;
 
     $('pecasResumo').innerHTML = `
         <div class="kpi ${totalAImprimir > 0 ? 'atrasado' : 'sucesso'}">
@@ -446,76 +422,133 @@ function renderizarPecasFabrica() {
             <span class="sub">peças soltas prontas no estoque</span>
         </div>
         <div class="kpi">
-            <span class="rotulo">Modelos Cadastrados</span>
+            <span class="rotulo">Produtos Catalogados</span>
             <span class="valor">${fmtInt.format(filtradas.length)}</span>
-            <span class="sub">peças catalogadas no sistema</span>
+            <span class="sub">produtos no sistema</span>
         </div>
     `;
 
     const container = $('gridPecasFabrica');
     if (!filtradas.length) {
-        container.innerHTML = `<div style="grid-column: 1 / -1;">${App.estadoVazio('🧩', 'Nenhuma peça encontrada', 'Ajuste os filtros ou cadastre peças na Ficha Técnica dos produtos.')}</div>`;
+        container.innerHTML = `<div style="grid-column: 1 / -1;">${App.estadoVazio('📦', 'Nenhum produto encontrado', 'Ajuste os filtros ou cadastre novos produtos.')}</div>`;
         return;
     }
 
     container.innerHTML = filtradas.map(p => {
-        const precisaImprimir = p.a_imprimir > 0;
-        const fotoHtml = p.foto
-            ? `<img src="${esc(p.foto)}" alt="${esc(p.peca_nome)}" loading="lazy">`
-            : `<div class="peca-foto-placeholder">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
-                <span>Sem foto</span>
-               </div>`;
+        const pecasHtml = p.pecas.map(peca => {
+            const precisaImprimir = peca.a_imprimir > 0;
+            const fotoPeca = peca.foto
+                ? `<img src="${esc(peca.foto)}" alt="${esc(peca.nome)}" loading="lazy">`
+                : `<div class="peca-foto-placeholder min">Sem foto</div>`;
 
-        return `
-        <article class="card-peca-fabrica ${p.status === 'urgente' ? 'status-urgente' : ''}">
-            <div class="peca-foto-box">
-                ${fotoHtml}
-                <button type="button" class="btn-upload-foto" onclick="abrirUploadFotoPeca(${p.peca_id})" title="Enviar ou alterar foto">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-                    ${p.foto ? 'Trocar foto' : 'Adicionar foto'}
-                </button>
-            </div>
-
-            <div class="peca-corpo">
-                <div class="peca-cabecalho">
-                    <div class="peca-titulo">${esc(p.peca_nome)}</div>
-                    <span class="badge-cor">
-                        <span class="ponto-cor" style="background:${corHex(p.cor)};"></span>
-                        ${esc(p.cor)}
-                    </span>
-                </div>
-                <div class="peca-produto-pai">
-                    Produto: <strong>${esc(p.produto_nome)}</strong> (${p.por_unidade} un/produto)
-                </div>
-
-                <div class="peca-metricas">
-                    <div class="metrica-col">
-                        <span class="metrica-rotulo">Em Estoque</span>
-                        <span class="metrica-valor">${fmtInt.format(p.estoque_pecas)}</span>
+            return `
+                <div class="linha-peca-produto">
+                    <div class="foto-miniatura">
+                        ${fotoPeca}
                     </div>
-                    <div class="metrica-col">
-                        <span class="metrica-rotulo">A Imprimir</span>
-                        <span class="metrica-valor ${precisaImprimir ? 'alerta' : 'ok'}">
-                            ${precisaImprimir ? fmtInt.format(p.a_imprimir) + ' un' : '0 (OK)'}
+                    <div class="info-peca">
+                        <strong>${esc(peca.nome)}</strong> 
+                        <span class="badge-cor-min" style="background:${corHex(peca.cor)};"></span> ${esc(peca.cor)}
+                        <br><span class="qtd-un">Qtd: ${peca.por_unidade} un/produto</span>
+                    </div>
+                    <div class="estoque-peca">
+                        Estoque: <strong>${fmtInt.format(peca.estoque)}</strong>
+                    </div>
+                    <div class="produzir-peca">
+                        <span class="${precisaImprimir ? 'alerta' : 'ok'}">
+                            ${precisaImprimir ? `Faltam ${fmtInt.format(peca.a_imprimir)}` : 'Suficiente'}
                         </span>
                     </div>
+                    <div class="acoes-peca">
+                        <button type="button" class="pequeno" onclick="abrirModalProduzirPeca(${peca.peca_id}, ${p.id})">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><path d="M12 5v14M5 12h14"/></svg> Produzir
+                        </button>
+                    </div>
                 </div>
+            `;
+        }).join('');
 
-                ${p.necessario_pedidos > 0 
-                    ? `<div style="font-size:12px; color:var(--text-3); margin-bottom:12px;">Demanda de pedidos: <b>${p.necessario_pedidos} un</b> necessárias</div>` 
-                    : '<div style="font-size:12px; color:var(--text-3); margin-bottom:12px;">Sem pedidos ativos demandando esta peça</div>'}
+        const fotoProd = p.foto
+            ? `<img src="${esc(p.foto)}" alt="${esc(p.nome)}" loading="lazy">`
+            : `<div class="peca-foto-placeholder">Sem foto</div>`;
 
-                <div class="peca-rodape-acoes">
-                    <button type="button" class="primario" onclick="abrirModalProduzirPeca(${p.peca_id})">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><path d="M12 5v14M5 12h14"/></svg>
-                        Registrar Impressão
-                    </button>
+        return `
+        <article class="card-produto-fabrica">
+            <div class="produto-header">
+                <div class="produto-foto">
+                    ${fotoProd}
+                </div>
+                <div class="produto-info">
+                    <h3>${esc(p.nome)}</h3>
+                    <div class="produto-metricas">
+                        <span>Estoque Pronto: <strong>${p.estoque}</strong></span>
+                        <span>Em Produção: <strong>${p.em_producao}</strong></span>
+                    </div>
+                    <div class="simulador-meta">
+                        <label>Meta Desejada:</label>
+                        <input type="number" min="0" value="${p.em_producao}" class="meta-input" data-produto="${p.id}" onchange="recalcularMetaProduto(${p.id}, this.value)">
+                        <span class="dica-meta">(Baseado em pedidos)</span>
+                    </div>
+                </div>
+            </div>
+            <div class="produto-pecas">
+                <h4>Peças (${p.pecas.length})</h4>
+                <div class="lista-pecas" id="lista-pecas-${p.id}">
+                    ${pecasHtml}
                 </div>
             </div>
         </article>`;
     }).join('');
 }
+
+window.recalcularMetaProduto = function(prodId, meta) {
+    const metaNum = parseInt(meta) || 0;
+    const p = (dadosPecasCarregados.produtos || []).find(x => x.id === prodId);
+    if (!p) return;
+
+    // A meta desejada afeta a quantidade a_imprimir das peças localmente na interface
+    // Demanda Líquida Base = Meta
+    const demandaLiquidaProd = Math.max(0, metaNum - p.estoque);
+
+    const pecasHtml = p.pecas.map(peca => {
+        const necessario = demandaLiquidaProd * peca.por_unidade;
+        const aImprimir = Math.max(0, necessario - peca.estoque);
+        const precisaImprimir = aImprimir > 0;
+        
+        const fotoPeca = peca.foto
+            ? `<img src="${esc(peca.foto)}" alt="${esc(peca.nome)}" loading="lazy">`
+            : `<div class="peca-foto-placeholder min">Sem foto</div>`;
+
+        return `
+            <div class="linha-peca-produto">
+                <div class="foto-miniatura">
+                    ${fotoPeca}
+                </div>
+                <div class="info-peca">
+                    <strong>${esc(peca.nome)}</strong> 
+                    <span class="badge-cor-min" style="background:${corHex(peca.cor)};"></span> ${esc(peca.cor)}
+                    <br><span class="qtd-un">Qtd: ${peca.por_unidade} un/produto</span>
+                </div>
+                <div class="estoque-peca">
+                    Estoque: <strong>${fmtInt.format(peca.estoque)}</strong>
+                </div>
+                <div class="produzir-peca">
+                    <span class="${precisaImprimir ? 'alerta' : 'ok'}">
+                        ${precisaImprimir ? `Faltam ${fmtInt.format(aImprimir)}` : 'Suficiente'}
+                    </span>
+                </div>
+                <div class="acoes-peca">
+                    <button type="button" class="pequeno" onclick="abrirModalProduzirPeca(${peca.peca_id}, ${p.id})">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><path d="M12 5v14M5 12h14"/></svg> Produzir
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    const lista = $('lista-pecas-' + prodId);
+    if (lista) lista.innerHTML = pecasHtml;
+};
 
 // Upload de Foto de Peça
 function abrirUploadFotoPeca(pecaId) {
@@ -549,19 +582,21 @@ $('inputUploadFotoPeca').addEventListener('change', async function(e) {
 });
 
 // Modal de Produção Rápida de Peças
-function abrirModalProduzirPeca(pecaId) {
+function abrirModalProduzirPeca(pecaId, prodId) {
     pecaProduzirAtualId = pecaId;
-    const p = (dadosPecasCarregados.pecas || []).find(x => x.peca_id === pecaId);
+    const p = (dadosPecasCarregados.produtos || []).find(x => x.id === prodId);
     if (!p) return;
+    const peca = p.pecas.find(x => x.peca_id === pecaId);
+    if (!peca) return;
 
-    $('modalPecaTitulo').textContent = `Registrar Impressão: ${p.peca_nome}`;
-    $('modalPecaSub').textContent = `Cor: ${p.cor} · Produto: ${p.produto_nome} · Faltam imprimir: ${p.a_imprimir} un`;
-    $('modalPecaQtd').value = p.a_imprimir > 0 ? p.a_imprimir : 1;
+    $('modalPecaTitulo').textContent = `Registrar Impressão: ${peca.nome}`;
+    $('modalPecaSub').textContent = `Cor: ${peca.cor} · Produto: ${p.nome} · Faltam imprimir: ${peca.a_imprimir} un`;
+    $('modalPecaQtd').value = peca.a_imprimir > 0 ? peca.a_imprimir : 1;
 
     // Atalhos rápidos (+1, +2, +4, +8, e o total que falta)
     const atalhos = [1, 2, 4, 8];
-    if (p.a_imprimir > 0 && !atalhos.includes(p.a_imprimir)) {
-        atalhos.push(p.a_imprimir);
+    if (peca.a_imprimir > 0 && !atalhos.includes(peca.a_imprimir)) {
+        atalhos.push(peca.a_imprimir);
     }
     atalhos.sort((a,b) => a - b);
 
@@ -627,14 +662,10 @@ $('btnNovaOrdemEstoque').addEventListener('click', () => FormPedido.abrir({
 
 // Eventos da aba de Peças
 $('pecaBusca').addEventListener('input', renderizarPecasFabrica);
-$('pecaFiltroProduto').addEventListener('change', renderizarPecasFabrica);
-$('pecaFiltroCor').addEventListener('change', renderizarPecasFabrica);
 $('pecaFiltroStatus').addEventListener('change', renderizarPecasFabrica);
 $('btnPecasAtualizar').addEventListener('click', carregarPecasFabrica);
 $('btnPecasLimpar').addEventListener('click', () => {
     $('pecaBusca').value = '';
-    $('pecaFiltroProduto').value = '';
-    $('pecaFiltroCor').value = '';
     $('pecaFiltroStatus').value = '';
     renderizarPecasFabrica();
 });

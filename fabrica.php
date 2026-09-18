@@ -95,32 +95,20 @@ require __DIR__ . '/includes/header.php';
         <div id="listaFabricar"></div>
     </section>
 
-    <!-- ===================== ABA PEÇAS PARA IMPRIMIR (FOTOS & ESTOQUE) ===================== -->
+    <!-- ===================== ABA PRODUTOS & PRODUÇÃO ===================== -->
     <section id="abaPecas" role="tabpanel" hidden>
         <div class="card">
             <div class="filtros">
                 <div style="flex: 1.5; min-width: 180px;">
-                    <label for="pecaBusca">Buscar peça</label>
-                    <input type="search" id="pecaBusca" placeholder="Nome da peça ou produto...">
-                </div>
-                <div>
-                    <label for="pecaFiltroProduto">Produto</label>
-                    <select id="pecaFiltroProduto">
-                        <option value="">Todos os produtos</option>
-                    </select>
-                </div>
-                <div>
-                    <label for="pecaFiltroCor">Cor</label>
-                    <select id="pecaFiltroCor">
-                        <option value="">Todas as cores</option>
-                    </select>
+                    <label for="pecaBusca">Buscar produto</label>
+                    <input type="search" id="pecaBusca" placeholder="Nome do produto...">
                 </div>
                 <div>
                     <label for="pecaFiltroStatus">Status da Fila</label>
                     <select id="pecaFiltroStatus">
-                        <option value="">Todas as peças</option>
-                        <option value="imprimir">Apenas precisando imprimir</option>
-                        <option value="ok">Estoque suficiente</option>
+                        <option value="">Todos os produtos</option>
+                        <option value="imprimir">Com peças a imprimir</option>
+                        <option value="ok">Estoque de peças suficiente</option>
                     </select>
                 </div>
                 <div class="acoes">
@@ -129,12 +117,12 @@ require __DIR__ . '/includes/header.php';
                 </div>
             </div>
             <p class="vazio" style="margin:12px 0 0;">
-                Visualização de peças com fotos, estoque atual disponível e a quantidade necessária para imprimir segundo os pedidos em aberto.
+                Visão focada no <strong>Produto</strong>. A quantidade a produzir de cada peça é baseada na demanda de pedidos. Você pode simular a meta desejada.
             </p>
         </div>
 
         <div class="resumo-grid" id="pecasResumo"></div>
-        <div class="grade-pecas-fabrica" id="gridPecasFabrica"></div>
+        <div class="lista-produtos-fabrica" id="gridPecasFabrica"></div>
     </section>
 </main>
 

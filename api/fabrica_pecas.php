@@ -53,7 +53,7 @@ if ($method === 'POST') {
 
 // ------------------------------------------------------------
 // GET /api/fabrica_pecas.php
-// Visão completa do painel de peças: foto, estoque e fila de impressão
+// Visão completa do painel de peças: foto, estoque e fila de impressão, agrupado por produto
 // ------------------------------------------------------------
 if ($method === 'GET') {
     // 1. Calcular demanda líquida de cada produto final a partir de pedidos abertos ou em produção
@@ -85,38 +85,61 @@ if ($method === 'GET') {
             pp.quantidade AS por_unidade,
             pp.cor,
             pp.estoque AS estoque_pecas,
-            pp.foto,
+            pp.foto AS peca_foto,
             prod.nome AS produto_nome,
             prod.estoque AS estoque_produto_pronto,
-            prod.ativo AS produto_ativo
+            prod.ativo AS produto_ativo,
+            prod.foto AS produto_foto
         FROM produto_pecas pp
         INNER JOIN produtos prod ON prod.id = pp.produto_id
         ORDER BY prod.nome ASC, pp.nome ASC
     ";
     $linhas = $pdo->query($sqlPecas)->fetchAll();
 
-    $pecasResultado = [];
+    $produtosIndexados = [];
     $totalAImprimirGeral = 0;
     $totalEstoqueGeral = 0;
     $pecasComFila = 0;
-    $produtosFiltro = [];
-    $coresFiltro = [];
 
     foreach ($linhas as $linha) {
         $prodId = (int) $linha['produto_id'];
+        
+        if (!isset($produtosIndexados[$prodId])) {
+            $demandaBruta = $demandasPorProduto[$prodId] ?? 0;
+            $estoquePronto = (int) $linha['estoque_produto_pronto'];
+            $demandaLiquidaProd = max(0, $demandaBruta - $estoquePronto);
+
+            $produtosIndexados[$prodId] = [
+                'id' => $prodId,
+                'nome' => $linha['produto_nome'],
+                'foto' => $linha['produto_foto'],
+                'estoque' => $estoquePronto,
+                'ativo' => $linha['produto_ativo'],
+                'em_producao' => $demandaBruta,
+                'demanda_liquida' => $demandaLiquidaProd,
+                'proxima_entrega' => $proximaEntregaPorProduto[$prodId] ?? null,
+                'capacidade_montagem' => null, // será calculado depois
+                'maior_peca_qtd' => 0,
+                'pecas' => []
+            ];
+        }
+
         $porUnidade = max(1, (int) $linha['por_unidade']);
         $estoquePeca = (int) $linha['estoque_pecas'];
-        $estoquePronto = (int) $linha['estoque_produto_pronto'];
-        $demandaBruta = $demandasPorProduto[$prodId] ?? 0;
-        $proximaEntrega = $proximaEntregaPorProduto[$prodId] ?? null;
+        
+        // Atualiza a maior quantidade de peças por unidade para o produto
+        if ($porUnidade > $produtosIndexados[$prodId]['maior_peca_qtd']) {
+            $produtosIndexados[$prodId]['maior_peca_qtd'] = $porUnidade;
+        }
 
-        // Demanda líquida do produto final (abatendo o que já está montado no estoque)
-        $demandaLiquidaProd = max(0, $demandaBruta - $estoquePronto);
+        // Atualiza a capacidade de montagem (o mínimo possível de produtos que podem ser montados com o estoque atual dessa peça)
+        $capacidadeDestaPeca = floor($estoquePeca / $porUnidade);
+        if ($produtosIndexados[$prodId]['capacidade_montagem'] === null || $capacidadeDestaPeca < $produtosIndexados[$prodId]['capacidade_montagem']) {
+            $produtosIndexados[$prodId]['capacidade_montagem'] = $capacidadeDestaPeca;
+        }
 
-        // Quantidade total desta peça necessária para cobrir a demanda
+        $demandaLiquidaProd = $produtosIndexados[$prodId]['demanda_liquida'];
         $necessarioParaPedidos = $demandaLiquidaProd * $porUnidade;
-
-        // Quantidade que efetivamente precisa ser impressa
         $aImprimir = max(0, $necessarioParaPedidos - $estoquePeca);
         $sobraEstoque = max(0, $estoquePeca - $necessarioParaPedidos);
 
@@ -126,11 +149,11 @@ if ($method === 'GET') {
             $pecasComFila++;
         }
 
-        // Determina nível de urgência
+        $proximaEntrega = $produtosIndexados[$prodId]['proxima_entrega'];
         $statusUrgencia = 'ok';
         if ($aImprimir > 0) {
             if ($proximaEntrega && $proximaEntrega <= date('Y-m-d')) {
-                $statusUrgencia = 'urgente'; // atrasado ou entrega hoje
+                $statusUrgencia = 'urgente';
             } else {
                 $statusUrgencia = 'imprimir';
             }
@@ -139,45 +162,38 @@ if ($method === 'GET') {
         $corNormalizada = trim($linha['cor'] ?? '');
         if ($corNormalizada === '') $corNormalizada = 'Padrão';
 
-        $produtosFiltro[$prodId] = $linha['produto_nome'];
-        $coresFiltro[$corNormalizada] = true;
-
-        $pecasResultado[] = [
+        $produtosIndexados[$prodId]['pecas'][] = [
             'peca_id' => (int) $linha['peca_id'],
-            'produto_id' => $prodId,
-            'peca_nome' => $linha['peca_nome'],
-            'produto_nome' => $linha['produto_nome'],
-            'por_unidade' => $porUnidade,
+            'nome' => $linha['peca_nome'],
             'cor' => $corNormalizada,
-            'foto' => $linha['foto'],
-            'estoque_pecas' => $estoquePeca,
-            'pedidos_pendentes_produto' => $demandaBruta,
-            'estoque_produto_pronto' => $estoquePronto,
+            'foto' => $linha['peca_foto'],
+            'por_unidade' => $porUnidade,
+            'estoque' => $estoquePeca,
             'necessario_pedidos' => $necessarioParaPedidos,
             'a_imprimir' => $aImprimir,
             'sobra_estoque' => $sobraEstoque,
-            'proxima_entrega' => $proximaEntrega,
             'status' => $statusUrgencia,
         ];
     }
 
-    // Ordena: primeiro as peças que mais precisam ser impressas (a_imprimir desc, proxima_entrega asc)
-    usort($pecasResultado, function($a, $b) {
-        if ($a['a_imprimir'] > 0 && $b['a_imprimir'] === 0) return -1;
-        if ($a['a_imprimir'] === 0 && $b['a_imprimir'] > 0) return 1;
-        if ($a['a_imprimir'] !== $b['a_imprimir']) return $b['a_imprimir'] <=> $a['a_imprimir'];
-        return strcmp($a['peca_nome'], $b['peca_nome']);
+    $produtosArray = array_values($produtosIndexados);
+
+    // Ordena: produtos com fila de impressão primeiro, depois alfabético
+    usort($produtosArray, function($a, $b) {
+        $aTemFila = array_sum(array_column($a['pecas'], 'a_imprimir')) > 0;
+        $bTemFila = array_sum(array_column($b['pecas'], 'a_imprimir')) > 0;
+        if ($aTemFila && !$bTemFila) return -1;
+        if (!$aTemFila && $bTemFila) return 1;
+        return strcmp($a['nome'], $b['nome']);
     });
 
     jsonResponse([
         'resumo' => [
-            'total_tipos_pecas' => count($pecasResultado),
+            'total_produtos' => count($produtosArray),
             'pecas_com_fila' => $pecasComFila,
             'total_a_imprimir' => $totalAImprimirGeral,
             'total_estoque' => $totalEstoqueGeral
         ],
-        'pecas' => $pecasResultado,
-        'produtos_filtro' => $produtosFiltro,
-        'cores_filtro' => array_keys($coresFiltro)
+        'produtos' => $produtosArray
     ]);
 }

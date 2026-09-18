@@ -865,4 +865,83 @@ td.contato a:hover { color: var(--primary); }
     flex: 1; font-size: 13px; min-height: 36px; padding: 0 10px; justify-content: center;
 }
 
+/* ---------- Painel da Fábrica (Visão Produto) ---------- */
+.lista-produtos-fabrica {
+    display: flex; flex-direction: column; gap: 20px; margin-top: 16px;
+}
+.card-produto-fabrica {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm); overflow: hidden; display: flex; flex-direction: column;
+}
+.produto-header {
+    display: flex; align-items: stretch; border-bottom: 1px solid var(--border);
+    background: var(--surface-2);
+}
+.produto-foto {
+    width: 120px; flex: none; border-right: 1px solid var(--border);
+    background: var(--surface-3); display: flex; align-items: center; justify-content: center;
+}
+.produto-foto img { width: 100%; height: 100%; object-fit: cover; }
+.produto-info {
+    padding: 16px 20px; flex: 1; display: flex; flex-direction: column; justify-content: center;
+}
+.produto-info h3 {
+    font-size: 18px; font-weight: 700; color: var(--text); margin-bottom: 8px;
+}
+.produto-metricas {
+    display: flex; gap: 16px; font-size: 13.5px; color: var(--text-2); margin-bottom: 12px;
+}
+.produto-metricas span { background: var(--surface); padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border-strong); }
+.produto-metricas strong { color: var(--text); font-variant-numeric: tabular-nums; }
+.simulador-meta {
+    display: flex; align-items: center; gap: 10px; font-size: 13.5px; font-weight: 500; color: var(--text);
+}
+.meta-input {
+    width: 70px; height: 32px; font-size: 15px; font-weight: 700; text-align: center; color: var(--primary);
+    border-color: var(--primary-ring); background: var(--primary-soft);
+}
+.dica-meta { font-size: 12px; color: var(--text-3); font-weight: 400; }
 
+.produto-pecas {
+    padding: 16px 20px 20px;
+}
+.produto-pecas h4 {
+    font-size: 14px; font-weight: 600; color: var(--text-3); margin-bottom: 12px;
+}
+.lista-pecas {
+    display: flex; flex-direction: column; gap: 8px;
+}
+.linha-peca-produto {
+    display: grid; grid-template-columns: 50px 1.5fr 1fr 1fr 100px; gap: 14px; align-items: center;
+    padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+    background: var(--surface); transition: background .1s;
+}
+.linha-peca-produto:hover { background: var(--surface-2); }
+.foto-miniatura {
+    width: 44px; height: 44px; border-radius: 6px; overflow: hidden;
+    background: var(--surface-3); display: flex; align-items: center; justify-content: center; flex: none;
+}
+.foto-miniatura img { width: 100%; height: 100%; object-fit: cover; }
+.peca-foto-placeholder.min { font-size: 10px; text-align: center; line-height: 1.1; color: var(--muted); }
+.info-peca { font-size: 13.5px; color: var(--text); line-height: 1.4; }
+.badge-cor-min { width: 8px; height: 8px; border-radius: 50%; display: inline-block; vertical-align: middle; margin-right: 2px; border: 1px solid rgba(0,0,0,.1); }
+.qtd-un { font-size: 12px; color: var(--text-3); }
+.estoque-peca { font-size: 13.5px; color: var(--text-2); text-align: center; }
+.estoque-peca strong { font-size: 15px; color: var(--text); }
+.produzir-peca { text-align: center; font-weight: 600; font-size: 14px; }
+.produzir-peca .alerta { color: var(--danger-solid); background: var(--danger-bg); padding: 2px 8px; border-radius: 6px; }
+.produzir-peca .ok { color: var(--success-solid); background: var(--success-bg); padding: 2px 8px; border-radius: 6px; }
+.acoes-peca { text-align: right; }
+
+@media (max-width: 768px) {
+    .linha-peca-produto {
+        grid-template-columns: 50px 1fr; grid-template-rows: auto auto auto; gap: 10px;
+    }
+    .info-peca { grid-column: 2 / -1; }
+    .estoque-peca { grid-column: 1 / 3; text-align: left; }
+    .produzir-peca { grid-column: 1 / 2; text-align: left; }
+    .acoes-peca { grid-column: 2 / 3; text-align: right; }
+    .produto-foto { width: 80px; }
+    .produto-info { padding: 12px 16px; }
+    .produto-metricas { flex-direction: column; gap: 8px; }
+}
