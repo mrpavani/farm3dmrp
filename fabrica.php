@@ -199,5 +199,5 @@ require __DIR__ . '/includes/header.php';
 
 
 <?php require_once __DIR__ . '/includes/modal_pedido.php'; ?>
-<script src="assets/js/fabrica.js"></script>
+<script src="assets/js/fabrica.js?v=<?= @filemtime(__DIR__ . '/assets/js/fabrica.js') ?>"></script>
 <?php require __DIR__ . '/includes/footer.php'; ?>

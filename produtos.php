@@ -209,5 +209,5 @@ require __DIR__ . '/includes/header.php';
 
 
 
-<script src="assets/js/produtos.js"></script>
+<script src="assets/js/produtos.js?v=<?= filemtime(__DIR__ . '/assets/js/produtos.js') ?>"></script>
 <?php require __DIR__ . '/includes/footer.php'; ?>

@@ -60,7 +60,7 @@ $iniciais = mb_strtoupper(mb_substr($partes[0], 0, 1) . (count($partes) > 1 ? mb
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/css/style.css">
+<link rel="stylesheet" href="assets/css/style.css?v=<?= @filemtime(__DIR__ . '/../assets/css/style.css') ?>">
 </head>
 <body>
 
@@ -104,4 +104,4 @@ $iniciais = mb_strtoupper(mb_substr($partes[0], 0, 1) . (count($partes) > 1 ? mb
     </div>
 
 <script>window.USUARIO = <?= json_encode(['id' => (int) $usuario['id'], 'nome' => $usuario['nome'], 'admin' => $usuario['admin']], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;</script>
-<script src="assets/js/comum.js"></script>
+<script src="assets/js/comum.js?v=<?= @filemtime(__DIR__ . '/../assets/js/comum.js') ?>"></script>

@@ -343,7 +343,7 @@ function uploadFotoPecaProdutos(idx) {
     input.click();
 }
 
-$('inputFotoPecaProdutos').addEventListener('change', async function(e) {
+$('inputFotoPecaProdutos')?.addEventListener('change', async function(e) {
     const file = e.target.files && e.target.files[0];
     if (!file || linhaUploadFotoIndex === null) return;
 
@@ -424,15 +424,15 @@ async function salvarBOM() {
 
 
 // Event Listeners
-$('btnNovo').addEventListener('click', () => abrirModal());
-$('formProduto').addEventListener('submit', salvar);
-$('busca').addEventListener('input', renderizar);
+$('btnNovo')?.addEventListener('click', () => abrirModal());
+$('formProduto')?.addEventListener('submit', salvar);
+$('busca')?.addEventListener('input', renderizar);
 
-$('btnRecalcularMeta').addEventListener('click', recalcularMeta);
-$('metaSimulacao').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); recalcularMeta(); } });
-$('btnExecutarMontagem').addEventListener('click', executarMontagem);
-$('btnAdicionarLinhaBOM').addEventListener('click', adicionarLinhaBOM);
-$('btnSalvarBOM').addEventListener('click', salvarBOM);
+$('btnRecalcularMeta')?.addEventListener('click', recalcularMeta);
+$('metaSimulacao')?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); recalcularMeta(); } });
+$('btnExecutarMontagem')?.addEventListener('click', executarMontagem);
+$('btnAdicionarLinhaBOM')?.addEventListener('click', adicionarLinhaBOM);
+$('btnSalvarBOM')?.addEventListener('click', salvarBOM);
 
 // Torna abrirFicha e manipuladores globais para onclick inline
 window.abrirFicha = abrirFicha;

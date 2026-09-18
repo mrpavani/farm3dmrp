@@ -42,5 +42,5 @@ require __DIR__ . '/includes/header.php';
 </main>
 
 <?php require_once __DIR__ . '/includes/modal_pedido.php'; ?>
-<script src="assets/js/clientes.js"></script>
+<script src="assets/js/clientes.js?v=<?= @filemtime(__DIR__ . '/assets/js/clientes.js') ?>"></script>
 <?php require __DIR__ . '/includes/footer.php'; ?>

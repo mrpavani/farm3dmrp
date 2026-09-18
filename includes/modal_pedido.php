@@ -80,4 +80,4 @@ require_once __DIR__ . '/modal_cliente.php';
         </form>
     </div>
 </div>
-<script src="assets/js/form-pedido.js"></script>
+<script src="assets/js/form-pedido.js?v=<?= @filemtime(__DIR__ . '/../assets/js/form-pedido.js') ?>"></script>

@@ -48,4 +48,4 @@
         </form>
     </div>
 </div>
-<script src="assets/js/form-cliente.js"></script>
+<script src="assets/js/form-cliente.js?v=<?= @filemtime(__DIR__ . '/../assets/js/form-cliente.js') ?>"></script>

@@ -82,5 +82,5 @@ require __DIR__ . '/includes/header.php';
     </div>
 </main>
 
-<script src="assets/js/relatorios.js"></script>
+<script src="assets/js/relatorios.js?v=<?= @filemtime(__DIR__ . '/assets/js/relatorios.js') ?>"></script>
 <?php require __DIR__ . '/includes/footer.php'; ?>
