@@ -15,10 +15,8 @@ async function carregar() {
 
 function renderizar() {
     const termo = App.normalizar($('busca').value.trim());
-    const situacao = $('filtroSituacao').value;
     const lista = produtos.filter(p =>
-        (situacao === '' || String(p.ativo) === situacao) &&
-        (!termo || App.normalizar(`${p.nome} ${p.descricao || ''}`).includes(termo)));
+        !termo || App.normalizar(`${p.nome} ${p.descricao || ''}`).includes(termo));
 
     const ativos = produtos.filter(p => Number(p.ativo) === 1).length;
     $('rodape').textContent = `${lista.length} de ${produtos.length} produtos · ${ativos} ativos · produtos já usados em pedidos não podem ser excluídos (desative-os)`;
@@ -34,16 +32,13 @@ function renderizar() {
         const ativo = Number(p.ativo) === 1;
         const usado = Number(p.qtd_pedidos) > 0;
         return `
-        <tr class="${ativo ? '' : 'linha-inativa'}">
+        <tr class="${usado ? '' : 'linha-inativa'}">
             <td>
                 <strong>${App.esc(p.nome)}</strong>
                 ${p.descricao ? `<span class="sub-linha descricao-curta" title="${App.esc(p.descricao)}">${App.esc(p.descricao)}</span>` : ''}
             </td>
-            <td class="num">${App.fmtMoeda.format(p.preco)}</td>
-            <td class="num" style="font-weight:600;">${App.fmtInt.format(p.estoque)}</td>
-            <td><span class="badge ${ativo ? 'pronto' : 'aberto'}">${ativo ? 'Ativo' : 'Inativo'}</span></td>
+            <td class="num" style="font-weight:600;">${App.fmtInt.format(Number(p.estoque) || 0)}</td>
             <td class="num">${App.fmtInt.format(p.qtd_pedidos)}</td>
-            <td class="num">${App.fmtInt.format(p.qtd_produzida)}</td>
             <td class="col-acoes">
                 <div class="acoes-icones">
                     ${App.botaoIcone('editar', 'Editar', `editar(${p.id})`, 'primario')}
@@ -139,5 +134,4 @@ async function excluir(id) {
 $('btnNovo').addEventListener('click', () => abrirModal());
 $('formProduto').addEventListener('submit', salvar);
 $('busca').addEventListener('input', renderizar);
-$('filtroSituacao').addEventListener('change', renderizar);
 carregar();

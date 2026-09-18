@@ -15,11 +15,7 @@ require __DIR__ . '/includes/header.php';
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
             <input type="search" id="busca" placeholder="Buscar por nome ou descrição…" aria-label="Buscar produtos">
         </label>
-        <select id="filtroSituacao" aria-label="Situação">
-            <option value="">Todas as situações</option>
-            <option value="1">Ativos</option>
-            <option value="0">Inativos</option>
-        </select>
+
         <button type="button" id="btnNovo">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
             Novo produto
@@ -32,11 +28,8 @@ require __DIR__ . '/includes/header.php';
                 <thead>
                     <tr>
                         <th>Produto</th>
-                        <th class="num">Preço</th>
                         <th class="num">Estoque</th>
-                        <th>Situação</th>
                         <th class="num">Pedidos</th>
-                        <th class="num">Produzido</th>
                         <th class="num">Ações</th>
                     </tr>
                 </thead>
