@@ -1,6 +1,31 @@
 # Dependências do PHP (se usar Composer no futuro)
 vendor/
 
+# Banco de Dados e Scripts SQL (não enviados para produção via repositório)
+*.sql
+
+# Scripts de desenvolvimento local e temporários (não utilizados em produção)
+config_producao.php
+migrate_local.php
+test_*.php
+teste_*.php
+*.bak
+*.backup
+*.tmp
+
+# Arquivos de Ambiente e Credenciais
+.env
+.env.*
+
+# Editores de código, IDEs e agentes
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.agents/
+.gemini/
+
 # Arquivos de Sistema Operacional
 .DS_Store
 .DS_Store?
@@ -9,13 +34,7 @@ vendor/
 .Trashes
 ehthumbs.db
 Thumbs.db
-
-# Editores de código e IDEs
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
+Desktop.ini
 
 # Logs de erros
 *.log
@@ -29,6 +48,5 @@ error_log
 !/uploads/produtos/.gitkeep
 /cache/
 
-# Arquivos de configuração com senhas
-# Se quiser ignorar o config.php para não subir senhas do banco no Git, descomente a linha abaixo:
+# Arquivo de configuração (descomente se desejar manter apenas no servidor)
 # config.php
