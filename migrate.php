@@ -32,5 +32,83 @@ try {
     }
 }
 
+// 3. Adicionar coluna 'tipo' na tabela 'produtos' (simples, composto, componente)
+try {
+    $pdo->exec("ALTER TABLE produtos ADD COLUMN tipo ENUM('simples', 'composto', 'componente') NOT NULL DEFAULT 'simples' AFTER nome");
+    echo "<p>✅ Coluna <b>tipo</b> adicionada na tabela <i>produtos</i> com sucesso!</p>";
+} catch (PDOException $e) {
+    if (strpos($e->getMessage(), 'Duplicate column name') !== false) {
+        echo "<p>⚠️ Coluna <b>tipo</b> já existe na tabela <i>produtos</i>.</p>";
+    } else {
+        echo "<p>❌ Erro ao adicionar coluna <b>tipo</b>: " . htmlspecialchars($e->getMessage()) . "</p>";
+    }
+}
+
+// 4. Criar tabela 'produto_composicao' (BOM - Ficha Técnica)
+try {
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS produto_composicao (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            produto_pai_id INT NOT NULL,
+            componente_id INT NOT NULL,
+            quantidade INT NOT NULL DEFAULT 1,
+            criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (produto_pai_id) REFERENCES produtos(id) ON DELETE CASCADE,
+            FOREIGN KEY (componente_id) REFERENCES produtos(id) ON DELETE RESTRICT,
+            UNIQUE KEY uq_pai_componente (produto_pai_id, componente_id),
+            CONSTRAINT chk_nao_auto_relacionado CHECK (produto_pai_id <> componente_id)
+        ) ENGINE=InnoDB
+    ");
+    echo "<p>✅ Tabela <b>produto_composicao</b> criada/verificada com sucesso!</p>";
+} catch (PDOException $e) {
+    echo "<p>❌ Erro ao criar tabela <b>produto_composicao</b>: " . htmlspecialchars($e->getMessage()) . "</p>";
+}
+
+// 5. Criar tabela 'produto_pecas' (Peças cadastradas diretamente no produto com quantidade, cor e estoque)
+try {
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS produto_pecas (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            produto_id INT NOT NULL,
+            nome VARCHAR(150) NOT NULL,
+            quantidade INT NOT NULL DEFAULT 1,
+            cor VARCHAR(50) DEFAULT NULL,
+            estoque INT NOT NULL DEFAULT 0,
+            criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (produto_id) REFERENCES produtos(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB
+    ");
+    echo "<p>✅ Tabela <b>produto_pecas</b> criada/verificada com sucesso!</p>";
+} catch (PDOException $e) {
+    echo "<p>❌ Erro ao criar tabela <b>produto_pecas</b>: " . htmlspecialchars($e->getMessage()) . "</p>";
+}
+
+// 6. Adicionar coluna 'foto' na tabela 'produto_pecas'
+try {
+    $pdo->exec("ALTER TABLE produto_pecas ADD COLUMN foto VARCHAR(255) DEFAULT NULL AFTER cor");
+    echo "<p>✅ Coluna <b>foto</b> adicionada na tabela <i>produto_pecas</i> com sucesso!</p>";
+} catch (PDOException $e) {
+    if (strpos($e->getMessage(), 'Duplicate column name') !== false) {
+        echo "<p>⚠️ Coluna <b>foto</b> já existe na tabela <i>produto_pecas</i>.</p>";
+    } else {
+        echo "<p>❌ Erro ao adicionar coluna <b>foto</b> em produto_pecas: " . htmlspecialchars($e->getMessage()) . "</p>";
+    }
+}
+
+// 7. Adicionar coluna 'foto' na tabela 'produtos'
+try {
+    $pdo->exec("ALTER TABLE produtos ADD COLUMN foto VARCHAR(255) DEFAULT NULL AFTER descricao");
+    echo "<p>✅ Coluna <b>foto</b> adicionada na tabela <i>produtos</i> com sucesso!</p>";
+} catch (PDOException $e) {
+    if (strpos($e->getMessage(), 'Duplicate column name') !== false) {
+        echo "<p>⚠️ Coluna <b>foto</b> já existe na tabela <i>produtos</i>.</p>";
+    } else {
+        echo "<p>❌ Erro ao adicionar coluna <b>foto</b> em produtos: " . htmlspecialchars($e->getMessage()) . "</p>";
+    }
+}
+
 echo "<h2>Migração finalizada.</h2>";
-echo "<p><a href='index.php'>Voltar para o sistema</a></p>";
+echo "<p><a href='fabrica.php'>Ir para o Painel da Fábrica</a> · <a href='produtos.php'>Ir para Produtos</a></p>";
+
+
+

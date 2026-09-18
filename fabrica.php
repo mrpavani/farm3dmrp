@@ -16,6 +16,9 @@ require __DIR__ . '/includes/header.php';
             <button type="button" role="tab" class="aba" data-aba="fabricar" aria-selected="false" aria-controls="abaFabricar">
                 Fabricar <span class="contador" id="contadorFabricar" hidden></span>
             </button>
+            <button type="button" role="tab" class="aba" data-aba="pecas" aria-selected="false" aria-controls="abaPecas">
+                Peças para Imprimir <span class="contador" id="contadorPecas" hidden></span>
+            </button>
         </div>
         <button type="button" id="btnNovaOrdemEstoque">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
@@ -91,9 +94,51 @@ require __DIR__ . '/includes/header.php';
         <div class="resumo-grid" id="fabResumo"></div>
         <div id="listaFabricar"></div>
     </section>
+
+    <!-- ===================== ABA PEÇAS PARA IMPRIMIR (FOTOS & ESTOQUE) ===================== -->
+    <section id="abaPecas" role="tabpanel" hidden>
+        <div class="card">
+            <div class="filtros">
+                <div style="flex: 1.5; min-width: 180px;">
+                    <label for="pecaBusca">Buscar peça</label>
+                    <input type="search" id="pecaBusca" placeholder="Nome da peça ou produto...">
+                </div>
+                <div>
+                    <label for="pecaFiltroProduto">Produto</label>
+                    <select id="pecaFiltroProduto">
+                        <option value="">Todos os produtos</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="pecaFiltroCor">Cor</label>
+                    <select id="pecaFiltroCor">
+                        <option value="">Todas as cores</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="pecaFiltroStatus">Status da Fila</label>
+                    <select id="pecaFiltroStatus">
+                        <option value="">Todas as peças</option>
+                        <option value="imprimir">Apenas precisando imprimir</option>
+                        <option value="ok">Estoque suficiente</option>
+                    </select>
+                </div>
+                <div class="acoes">
+                    <button type="button" class="secundario" id="btnPecasLimpar">Limpar</button>
+                    <button type="button" class="secundario" id="btnPecasAtualizar">Atualizar</button>
+                </div>
+            </div>
+            <p class="vazio" style="margin:12px 0 0;">
+                Visualização de peças com fotos, estoque atual disponível e a quantidade necessária para imprimir segundo os pedidos em aberto.
+            </p>
+        </div>
+
+        <div class="resumo-grid" id="pecasResumo"></div>
+        <div class="grade-pecas-fabrica" id="gridPecasFabrica"></div>
+    </section>
 </main>
 
-<!-- Modal: registrar produção -->
+<!-- Modal: registrar produção de pedido tradicional -->
 <div id="modalProducao" class="modal" hidden>
     <div class="card modal-caixa" role="dialog" aria-modal="true" aria-labelledby="modalTitulo">
         <div class="modal-cabecalho">
@@ -124,6 +169,34 @@ require __DIR__ . '/includes/header.php';
         </div>
     </div>
 </div>
+
+<!-- Modal: registrar produção rápida de peça solta impressa -->
+<div id="modalProduzirPeca" class="modal" hidden>
+    <div class="card modal-caixa" role="dialog" aria-modal="true" aria-labelledby="modalPecaTitulo">
+        <div class="modal-cabecalho">
+            <div>
+                <h2 id="modalPecaTitulo">Registrar Impressão de Peça</h2>
+                <p id="modalPecaSub" class="modal-sub"></p>
+            </div>
+            <button type="button" class="btn-icone" data-fechar-modal aria-label="Fechar">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <div style="margin-top: 10px;">
+            <label for="modalPecaQtd">Quantidade de peças impressas</label>
+            <input type="number" id="modalPecaQtd" min="1" value="1" style="font-size: 18px; font-weight: 700; text-align: center;">
+            <div class="atalhos" id="atalhosQtdPeca" style="margin-top: 8px; justify-content: center;"></div>
+        </div>
+        <div class="modal-rodape">
+            <button type="button" class="secundario" data-fechar-modal>Cancelar</button>
+            <button type="button" id="btnConfirmarProducaoPeca">Adicionar ao Estoque</button>
+        </div>
+    </div>
+</div>
+
+<!-- Input oculto para envio de foto de peça com 1 clique -->
+<input type="file" id="inputUploadFotoPeca" accept="image/png,image/jpeg,image/webp" style="display:none;">
+
 
 <?php require_once __DIR__ . '/includes/modal_pedido.php'; ?>
 <script src="assets/js/fabrica.js"></script>

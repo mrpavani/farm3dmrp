@@ -18,18 +18,24 @@ const destino = p => ehEstoque(p) ? '<span class="destino-estoque">Estoque</span
 // Abas
 // ============================================================
 function mostrarAba(aba) {
-    abaAtual = aba === 'fabricar' ? 'fabricar' : 'pedidos';
+    if (aba === 'pecas') abaAtual = 'pecas';
+    else if (aba === 'fabricar') abaAtual = 'fabricar';
+    else abaAtual = 'pedidos';
+
     document.querySelectorAll('.aba').forEach(b => b.setAttribute('aria-selected', String(b.dataset.aba === abaAtual)));
     $('abaPedidos').hidden = abaAtual !== 'pedidos';
     $('abaFabricar').hidden = abaAtual !== 'fabricar';
-    history.replaceState(null, '', abaAtual === 'fabricar' ? '#fabricar' : location.pathname + location.search);
+    $('abaPecas').hidden = abaAtual !== 'pecas';
+    history.replaceState(null, '', '#' + abaAtual);
     recarregar();
 }
 
 function recarregar() {
     atualizarContador();
+    if (abaAtual === 'pecas') return carregarPecasFabrica();
     return abaAtual === 'fabricar' ? carregarFabricar() : carregarPedidos();
 }
+
 
 // ============================================================
 // Aba PEDIDOS
@@ -169,14 +175,21 @@ async function carregarFabricar() {
     }
 }
 
-// Contador da aba Fabricar (total pendente, sem filtros)
+// Contadores das abas Fabricar e Peças
 async function atualizarContador() {
     try {
-        const d = await App.api('api/fabricar.php');
-        $('contadorFabricar').textContent = fmtInt.format(d.resumo.unidades);
-        $('contadorFabricar').hidden = !d.resumo.unidades;
+        const [dFab, dPecas] = await Promise.all([
+            App.api('api/fabricar.php'),
+            App.api('api/fabrica_pecas.php')
+        ]);
+        $('contadorFabricar').textContent = fmtInt.format(dFab.resumo.unidades);
+        $('contadorFabricar').hidden = !dFab.resumo.unidades;
+
+        $('contadorPecas').textContent = fmtInt.format(dPecas.resumo.total_a_imprimir);
+        $('contadorPecas').hidden = !dPecas.resumo.total_a_imprimir;
     } catch (e) { /* ignorado */ }
 }
+
 
 function renderizarFabricar(d) {
     const todos = d.produtos.flatMap(g => g.itens);
@@ -333,6 +346,262 @@ async function excluirPedido(id) {
 }
 
 // ============================================================
+// Aba PEÇAS PARA IMPRIMIR (visão com fotos, estoque e fila)
+// ============================================================
+let dadosPecasCarregados = null;
+let pecaProduzirAtualId = null;
+let pecaUploadFotoAtualId = null;
+
+function corHex(cor) {
+    const c = String(cor || '').toLowerCase().trim();
+    const map = {
+        'preto': '#1e293b', 'black': '#1e293b',
+        'branco': '#f8fafc', 'white': '#f8fafc',
+        'cinza': '#94a3b8', 'gray': '#94a3b8', 'grey': '#94a3b8',
+        'vermelho': '#ef4444', 'red': '#ef4444',
+        'azul': '#3b82f6', 'blue': '#3b82f6',
+        'amarelo': '#eab308', 'yellow': '#eab308',
+        'verde': '#22c55e', 'green': '#22c55e',
+        'laranja': '#f97316', 'orange': '#f97316',
+        'roxo': '#a855f7', 'purple': '#a855f7',
+        'rosa': '#ec4899', 'pink': '#ec4899',
+        'marrom': '#78350f', 'brown': '#78350f',
+        'ouro': '#d97706', 'gold': '#d97706',
+        'prata': '#cbd5e1', 'silver': '#cbd5e1',
+        'cobre': '#b45309', 'copper': '#b45309'
+    };
+    return map[c] || '#64748b';
+}
+
+async function carregarPecasFabrica() {
+    try {
+        dadosPecasCarregados = await App.api('api/fabrica_pecas.php');
+        popularFiltrosPecas(dadosPecasCarregados);
+        renderizarPecasFabrica();
+    } catch (e) {
+        App.toast(e.message, 'erro');
+    }
+}
+
+function popularFiltrosPecas(d) {
+    const selProd = $('pecaFiltroProduto');
+    const valorAtualProd = selProd.value;
+    selProd.innerHTML = '<option value="">Todos os produtos</option>';
+    Object.entries(d.produtos_filtro || {}).forEach(([id, nome]) => {
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = nome;
+        if (id === valorAtualProd) opt.selected = true;
+        selProd.appendChild(opt);
+    });
+
+    const selCor = $('pecaFiltroCor');
+    const valorAtualCor = selCor.value;
+    selCor.innerHTML = '<option value="">Todas as cores</option>';
+    (d.cores_filtro || []).forEach(cor => {
+        const opt = document.createElement('option');
+        opt.value = cor;
+        opt.textContent = cor;
+        if (cor === valorAtualCor) opt.selected = true;
+        selCor.appendChild(opt);
+    });
+}
+
+function renderizarPecasFabrica() {
+    if (!dadosPecasCarregados) return;
+
+    const termo = App.normalizar($('pecaBusca').value.trim());
+    const prodFiltro = $('pecaFiltroProduto').value;
+    const corFiltro = $('pecaFiltroCor').value;
+    const statusFiltro = $('pecaFiltroStatus').value;
+
+    const filtradas = (dadosPecasCarregados.pecas || []).filter(p => {
+        if (termo && !App.normalizar(`${p.peca_nome} ${p.produto_nome} ${p.cor}`).includes(termo)) return false;
+        if (prodFiltro && String(p.produto_id) !== String(prodFiltro)) return false;
+        if (corFiltro && p.cor !== corFiltro) return false;
+        if (statusFiltro === 'imprimir' && p.a_imprimir <= 0) return false;
+        if (statusFiltro === 'ok' && p.a_imprimir > 0) return false;
+        return true;
+    });
+
+    // Renderizar KPIs
+    const totalAImprimir = filtradas.reduce((s, p) => s + p.a_imprimir, 0);
+    const totalEstoque = filtradas.reduce((s, p) => s + p.estoque_pecas, 0);
+    const comFila = filtradas.filter(p => p.a_imprimir > 0).length;
+
+    $('pecasResumo').innerHTML = `
+        <div class="kpi ${totalAImprimir > 0 ? 'atrasado' : 'sucesso'}">
+            <span class="rotulo">Total a Imprimir</span>
+            <span class="valor">${fmtInt.format(totalAImprimir)}</span>
+            <span class="sub">unidades de peças pendentes</span>
+        </div>
+        <div class="kpi ${comFila > 0 ? 'proximo' : ''}">
+            <span class="rotulo">Peças com Fila</span>
+            <span class="valor">${fmtInt.format(comFila)}</span>
+            <span class="sub">modelos precisando de produção</span>
+        </div>
+        <div class="kpi">
+            <span class="rotulo">Estoque de Peças</span>
+            <span class="valor">${fmtInt.format(totalEstoque)}</span>
+            <span class="sub">peças soltas prontas no estoque</span>
+        </div>
+        <div class="kpi">
+            <span class="rotulo">Modelos Cadastrados</span>
+            <span class="valor">${fmtInt.format(filtradas.length)}</span>
+            <span class="sub">peças catalogadas no sistema</span>
+        </div>
+    `;
+
+    const container = $('gridPecasFabrica');
+    if (!filtradas.length) {
+        container.innerHTML = `<div style="grid-column: 1 / -1;">${App.estadoVazio('🧩', 'Nenhuma peça encontrada', 'Ajuste os filtros ou cadastre peças na Ficha Técnica dos produtos.')}</div>`;
+        return;
+    }
+
+    container.innerHTML = filtradas.map(p => {
+        const precisaImprimir = p.a_imprimir > 0;
+        const fotoHtml = p.foto
+            ? `<img src="${esc(p.foto)}" alt="${esc(p.peca_nome)}" loading="lazy">`
+            : `<div class="peca-foto-placeholder">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+                <span>Sem foto</span>
+               </div>`;
+
+        return `
+        <article class="card-peca-fabrica ${p.status === 'urgente' ? 'status-urgente' : ''}">
+            <div class="peca-foto-box">
+                ${fotoHtml}
+                <button type="button" class="btn-upload-foto" onclick="abrirUploadFotoPeca(${p.peca_id})" title="Enviar ou alterar foto">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                    ${p.foto ? 'Trocar foto' : 'Adicionar foto'}
+                </button>
+            </div>
+
+            <div class="peca-corpo">
+                <div class="peca-cabecalho">
+                    <div class="peca-titulo">${esc(p.peca_nome)}</div>
+                    <span class="badge-cor">
+                        <span class="ponto-cor" style="background:${corHex(p.cor)};"></span>
+                        ${esc(p.cor)}
+                    </span>
+                </div>
+                <div class="peca-produto-pai">
+                    Produto: <strong>${esc(p.produto_nome)}</strong> (${p.por_unidade} un/produto)
+                </div>
+
+                <div class="peca-metricas">
+                    <div class="metrica-col">
+                        <span class="metrica-rotulo">Em Estoque</span>
+                        <span class="metrica-valor">${fmtInt.format(p.estoque_pecas)}</span>
+                    </div>
+                    <div class="metrica-col">
+                        <span class="metrica-rotulo">A Imprimir</span>
+                        <span class="metrica-valor ${precisaImprimir ? 'alerta' : 'ok'}">
+                            ${precisaImprimir ? fmtInt.format(p.a_imprimir) + ' un' : '0 (OK)'}
+                        </span>
+                    </div>
+                </div>
+
+                ${p.necessario_pedidos > 0 
+                    ? `<div style="font-size:12px; color:var(--text-3); margin-bottom:12px;">Demanda de pedidos: <b>${p.necessario_pedidos} un</b> necessárias</div>` 
+                    : '<div style="font-size:12px; color:var(--text-3); margin-bottom:12px;">Sem pedidos ativos demandando esta peça</div>'}
+
+                <div class="peca-rodape-acoes">
+                    <button type="button" class="primario" onclick="abrirModalProduzirPeca(${p.peca_id})">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><path d="M12 5v14M5 12h14"/></svg>
+                        Registrar Impressão
+                    </button>
+                </div>
+            </div>
+        </article>`;
+    }).join('');
+}
+
+// Upload de Foto de Peça
+function abrirUploadFotoPeca(pecaId) {
+    pecaUploadFotoAtualId = pecaId;
+    const input = $('inputUploadFotoPeca');
+    input.value = '';
+    input.click();
+}
+
+$('inputUploadFotoPeca').addEventListener('change', async function(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file || !pecaUploadFotoAtualId) return;
+
+    const formData = new FormData();
+    formData.append('foto', file);
+    formData.append('peca_id', pecaUploadFotoAtualId);
+
+    try {
+        App.toast('Enviando foto da peça...');
+        const res = await fetch('api/upload_foto.php', {
+            method: 'POST',
+            body: formData
+        });
+        const json = await res.json();
+        if (!res.ok || !json.ok) throw new Error(json.erro || 'Falha ao salvar foto.');
+        App.toast('Foto da peça atualizada com sucesso!');
+        carregarPecasFabrica();
+    } catch (err) {
+        App.toast(err.message, 'erro');
+    }
+});
+
+// Modal de Produção Rápida de Peças
+function abrirModalProduzirPeca(pecaId) {
+    pecaProduzirAtualId = pecaId;
+    const p = (dadosPecasCarregados.pecas || []).find(x => x.peca_id === pecaId);
+    if (!p) return;
+
+    $('modalPecaTitulo').textContent = `Registrar Impressão: ${p.peca_nome}`;
+    $('modalPecaSub').textContent = `Cor: ${p.cor} · Produto: ${p.produto_nome} · Faltam imprimir: ${p.a_imprimir} un`;
+    $('modalPecaQtd').value = p.a_imprimir > 0 ? p.a_imprimir : 1;
+
+    // Atalhos rápidos (+1, +2, +4, +8, e o total que falta)
+    const atalhos = [1, 2, 4, 8];
+    if (p.a_imprimir > 0 && !atalhos.includes(p.a_imprimir)) {
+        atalhos.push(p.a_imprimir);
+    }
+    atalhos.sort((a,b) => a - b);
+
+    $('atalhosQtdPeca').innerHTML = atalhos.map(qtd => `
+        <button type="button" class="secundario" style="padding: 2px 10px; font-size: 12px; min-height: 28px;" onclick="$('modalPecaQtd').value = ${qtd}">
+            +${qtd}
+        </button>
+    `).join('');
+
+    App.modal.abrir('modalProduzirPeca', '#modalPecaQtd');
+}
+
+async function confirmarProducaoPeca() {
+    if (!pecaProduzirAtualId) return;
+    const qtd = parseInt($('modalPecaQtd').value) || 0;
+    if (qtd <= 0) {
+        App.toast('Informe uma quantidade válida maior que zero.', 'erro');
+        $('modalPecaQtd').focus();
+        return;
+    }
+
+    const btn = $('btnConfirmarProducaoPeca');
+    btn.disabled = true;
+    try {
+        const res = await App.api('api/fabrica_pecas.php?acao=registrar_producao_peca', 'POST', {
+            peca_id: pecaProduzirAtualId,
+            quantidade: qtd
+        });
+        App.toast(res.mensagem || `+${qtd} peças adicionadas ao estoque!`);
+        App.modal.fechar('modalProduzirPeca');
+        carregarPecasFabrica();
+        atualizarContador();
+    } catch (e) {
+        App.toast(e.message, 'erro');
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+// ============================================================
 // Eventos
 // ============================================================
 document.querySelectorAll('.aba').forEach(b => b.addEventListener('click', () => mostrarAba(b.dataset.aba)));
@@ -356,5 +625,27 @@ $('btnNovaOrdemEstoque').addEventListener('click', () => FormPedido.abrir({
     aoSalvar: () => mostrarAba('fabricar'),
 }));
 
+// Eventos da aba de Peças
+$('pecaBusca').addEventListener('input', renderizarPecasFabrica);
+$('pecaFiltroProduto').addEventListener('change', renderizarPecasFabrica);
+$('pecaFiltroCor').addEventListener('change', renderizarPecasFabrica);
+$('pecaFiltroStatus').addEventListener('change', renderizarPecasFabrica);
+$('btnPecasAtualizar').addEventListener('click', carregarPecasFabrica);
+$('btnPecasLimpar').addEventListener('click', () => {
+    $('pecaBusca').value = '';
+    $('pecaFiltroProduto').value = '';
+    $('pecaFiltroCor').value = '';
+    $('pecaFiltroStatus').value = '';
+    renderizarPecasFabrica();
+});
+$('btnConfirmarProducaoPeca').addEventListener('click', confirmarProducaoPeca);
+$('modalPecaQtd').addEventListener('keydown', e => { if (e.key === 'Enter') confirmarProducaoPeca(); });
+
+// Tornar funções globais para onclick nos cards
+window.abrirUploadFotoPeca = abrirUploadFotoPeca;
+window.abrirModalProduzirPeca = abrirModalProduzirPeca;
+
 carregarProdutosFiltro();
-mostrarAba(location.hash === '#fabricar' ? 'fabricar' : 'pedidos');
+const abaInicial = location.hash === '#pecas' ? 'pecas' : (location.hash === '#fabricar' ? 'fabricar' : 'pedidos');
+mostrarAba(abaInicial);
+

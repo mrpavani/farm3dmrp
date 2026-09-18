@@ -34,12 +34,31 @@ CREATE TABLE clientes (
 CREATE TABLE produtos (
     id INT AUTO_INCREMENT PRIMARY KEY,
     nome VARCHAR(150) NOT NULL,
+    tipo ENUM('simples', 'composto', 'componente') NOT NULL DEFAULT 'simples',
     descricao TEXT DEFAULT NULL,
+    foto VARCHAR(255) DEFAULT NULL,
     preco DECIMAL(10,2) DEFAULT 0,
     estoque INT NOT NULL DEFAULT 0,
     ativo TINYINT(1) DEFAULT 1,
     criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
+
+-- Peças / Componentes cadastrados diretamente no Produto (com Quantidade, Cor e Estoque)
+CREATE TABLE produto_pecas (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    produto_id INT NOT NULL,
+    nome VARCHAR(150) NOT NULL,
+    quantidade INT NOT NULL DEFAULT 1,
+    cor VARCHAR(50) DEFAULT NULL,
+    foto VARCHAR(255) DEFAULT NULL,
+    estoque INT NOT NULL DEFAULT 0,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (produto_id) REFERENCES produtos(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE INDEX idx_pecas_produto ON produto_pecas(produto_id);
+
+
 
 -- Pedido: cabeçalho. Pode ter vários itens (mesmo produto ou produtos diferentes).
 --   tipo = venda   -> pedido de um cliente (cliente obrigatório)

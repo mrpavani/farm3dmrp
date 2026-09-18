@@ -703,3 +703,166 @@ td.contato a:hover { color: var(--primary); }
     td.sem-borda { display: block !important; }
     [data-tip]::after { display: none; }
 }
+
+/* ---------- Badges de Tipo de Produto ---------- */
+.badge-tipo {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 7px; border-radius: 999px;
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em;
+    vertical-align: middle; margin-left: 6px;
+}
+.badge-tipo.composto {
+    background: var(--violet-bg); color: var(--violet); border: 1px solid var(--violet-bd);
+}
+.badge-tipo.componente {
+    background: var(--surface-3); color: var(--text-2); border: 1px solid var(--border-strong);
+}
+.badge-tipo.simples {
+    background: #f1f5f9; color: var(--muted); border: 1px solid #e2e8f0;
+}
+
+/* ---------- Ficha Técnica (BOM) & Montagem ---------- */
+.bloco-kpi-bom {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 16px;
+}
+.card-kpi-bom {
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 14px 16px; display: flex; flex-direction: column; justify-content: center;
+}
+.card-kpi-bom .kpi-rotulo {
+    font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--text-3); margin-bottom: 4px;
+}
+.card-kpi-bom .kpi-valor {
+    font-size: 24px; font-weight: 700; color: var(--text); line-height: 1.1;
+}
+.card-kpi-bom .kpi-sub {
+    font-size: 12px; color: var(--text-3); margin-top: 4px;
+}
+.card-kpi-bom.destaque-verde {
+    background: var(--success-bg); border-color: var(--success-bd);
+}
+.card-kpi-bom.destaque-verde .kpi-valor { color: var(--success); }
+.card-kpi-bom.destaque-alerta {
+    background: var(--warning-bg); border-color: var(--warning-bd);
+}
+.card-kpi-bom.destaque-alerta .kpi-valor { color: var(--warning); }
+
+.tag-gargalo {
+    display: inline-block; padding: 1px 6px; border-radius: 4px;
+    font-size: 11px; font-weight: 700; background: var(--danger-bg); color: var(--danger); border: 1px solid var(--danger-bd);
+}
+.tag-situacao-ok {
+    color: var(--success); font-weight: 600; font-size: 12px; display: inline-flex; align-items: center; gap: 4px;
+}
+.tag-situacao-falta {
+    color: var(--danger); font-weight: 600; font-size: 12px; display: inline-flex; align-items: center; gap: 4px;
+}
+.linha-gargalo {
+    background: rgba(254, 242, 242, .45);
+}
+
+.tabela-bom-editor {
+    width: 100%; border-collapse: collapse; margin-top: 8px; margin-bottom: 12px;
+}
+.tabela-bom-editor th {
+    font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--text-3);
+    padding: 6px 8px; border-bottom: 1px solid var(--border); text-align: left;
+}
+.tabela-bom-editor td {
+    padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: middle;
+}
+.tabela-bom-editor select, .tabela-bom-editor input {
+    margin: 0;
+}
+
+/* ---------- Painel de Peças da Fábrica (Grid, Fotos & Fila) ---------- */
+.grade-pecas-fabrica {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 18px; margin-top: 16px;
+}
+.card-peca-fabrica {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm); overflow: hidden; display: flex; flex-direction: column;
+    transition: transform .15s ease, box-shadow .15s ease;
+}
+.card-peca-fabrica:hover {
+    transform: translateY(-2px); box-shadow: var(--shadow);
+}
+.card-peca-fabrica.status-urgente {
+    border-color: var(--danger-bd); box-shadow: 0 0 0 1px var(--danger-bd);
+}
+
+.peca-foto-box {
+    width: 100%; height: 160px; background: var(--surface-3); position: relative;
+    display: flex; align-items: center; justify-content: center; overflow: hidden;
+}
+.peca-foto-box img {
+    width: 100%; height: 100%; object-fit: cover;
+}
+.peca-foto-placeholder {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    color: var(--muted); gap: 6px; font-size: 12px; font-weight: 500;
+}
+.peca-foto-placeholder svg {
+    width: 38px; height: 38px; stroke-width: 1.5;
+}
+.btn-upload-foto {
+    position: absolute; bottom: 8px; right: 8px;
+    background: rgba(15, 23, 42, .75); color: #fff; border: 0; border-radius: 999px;
+    padding: 5px 10px; font-size: 11.5px; font-weight: 500; cursor: pointer;
+    display: flex; align-items: center; gap: 5px; backdrop-filter: blur(4px);
+    transition: background .12s;
+}
+.btn-upload-foto:hover { background: #0f172a; color: #fff; }
+
+.peca-corpo {
+    padding: 14px 16px; flex: 1; display: flex; flex-direction: column;
+}
+.peca-cabecalho {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 6px;
+}
+.peca-titulo {
+    font-size: 16px; font-weight: 700; color: var(--text); line-height: 1.2;
+}
+.peca-produto-pai {
+    font-size: 12.5px; color: var(--text-3); margin-bottom: 12px;
+}
+
+.badge-cor {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600;
+    background: var(--surface-3); border: 1px solid var(--border); color: var(--text-2);
+}
+.ponto-cor {
+    width: 8px; height: 8px; border-radius: 50%; display: inline-block;
+    background: var(--text-3); border: 1px solid rgba(0,0,0,.15);
+}
+
+.peca-metricas {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 10px 12px; margin-top: auto; margin-bottom: 12px;
+}
+.metrica-col {
+    display: flex; flex-direction: column;
+}
+.metrica-rotulo {
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--text-3);
+}
+.metrica-valor {
+    font-size: 19px; font-weight: 700; color: var(--text); line-height: 1.1; margin-top: 2px;
+}
+.metrica-valor.alerta {
+    color: var(--danger-solid);
+}
+.metrica-valor.ok {
+    color: var(--success-solid);
+}
+
+.peca-rodape-acoes {
+    display: flex; gap: 8px;
+}
+.peca-rodape-acoes button {
+    flex: 1; font-size: 13px; min-height: 36px; padding: 0 10px; justify-content: center;
+}
+
+

@@ -21,8 +21,12 @@ Thumbs.db
 *.log
 error_log
 
-# Pastas de cache ou uploads (se o projeto tiver no futuro)
-/uploads/
+# Pastas de cache ou uploads
+/uploads/*
+!/uploads/pecas/
+!/uploads/pecas/.gitkeep
+!/uploads/produtos/
+!/uploads/produtos/.gitkeep
 /cache/
 
 # Arquivos de configuração com senhas
