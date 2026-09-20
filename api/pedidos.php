@@ -223,6 +223,13 @@ if ($method === 'POST') {
                 if ($estoqueAtual > 0) {
                     $qtdEstoque = min($qtd, $estoqueAtual);
                     $updEstoque->execute(['qtd' => $qtdEstoque, 'id' => $item['produto_id']]);
+                    registrarMovimento($pdo, 'pedido_atendido', [
+                        'produto_id'   => (int) $item['produto_id'],
+                        'quantidade'   => -$qtdEstoque,
+                        'saldo_depois' => $estoqueAtual - $qtdEstoque,
+                        'usuario_id'   => $usuario['id'],
+                        'observacoes'  => "Alocado do estoque na criação do pedido #$pedidoId",
+                    ]);
                 }
             }
 
@@ -316,6 +323,13 @@ if ($method === 'PUT') {
                         $qtdEstoque = min($qtd, $estoqueAtual);
                         $pdo->prepare("UPDATE produtos SET estoque = estoque - :qtd WHERE id = :id")
                             ->execute(['qtd' => $qtdEstoque, 'id' => $produtoId]);
+                        registrarMovimento($pdo, 'pedido_atendido', [
+                            'produto_id'   => $produtoId,
+                            'quantidade'   => -$qtdEstoque,
+                            'saldo_depois' => $estoqueAtual - $qtdEstoque,
+                            'usuario_id'   => $usuario['id'],
+                            'observacoes'  => "Alocado do estoque ao adicionar item no pedido #$id",
+                        ]);
                     }
                 }
                 $insStmt->execute([
@@ -351,6 +365,13 @@ if ($method === 'PUT') {
                         ->execute(['dev' => $devolver, 'id' => $atual['produto_id']]);
                     $pdo->prepare("UPDATE pedido_itens SET quantidade_estoque = quantidade_estoque - :dev, quantidade_produzida = quantidade_produzida - :dev WHERE id = :id")
                         ->execute(['dev' => $devolver, 'id' => $itemId]);
+                    registrarMovimento($pdo, 'pedido_estorno', [
+                        'produto_id'     => (int) $atual['produto_id'],
+                        'pedido_item_id' => $itemId,
+                        'quantidade'     => $devolver,
+                        'usuario_id'     => $usuario['id'],
+                        'observacoes'    => "Quantidade reduzida no pedido #$id",
+                    ]);
                 }
             }
             // Trocou de produto: pega o preço do produto novo. Mesmo produto:
@@ -379,6 +400,13 @@ if ($method === 'PUT') {
             if ((int) $atual['quantidade_estoque'] > 0) {
                 $pdo->prepare("UPDATE produtos SET estoque = estoque + :dev WHERE id = :id")
                     ->execute(['dev' => $atual['quantidade_estoque'], 'id' => $atual['produto_id']]);
+                registrarMovimento($pdo, 'pedido_estorno', [
+                    'produto_id'     => (int) $atual['produto_id'],
+                    'pedido_item_id' => $itemId,
+                    'quantidade'     => (int) $atual['quantidade_estoque'],
+                    'usuario_id'     => $usuario['id'],
+                    'observacoes'    => "Item removido do pedido #$id",
+                ]);
             }
             $delStmt->execute(['id' => $itemId]);
         }
@@ -430,6 +458,13 @@ if ($method === 'PATCH') {
                 foreach ($itensStmt->fetchAll() as $it) {
                     $updEstoque->execute(['qtd' => $it['quantidade_estoque'], 'id' => $it['produto_id']]);
                     $updItem->execute(['id' => $it['id']]);
+                    registrarMovimento($pdo, 'pedido_estorno', [
+                        'produto_id'     => (int) $it['produto_id'],
+                        'pedido_item_id' => (int) $it['id'],
+                        'quantidade'     => (int) $it['quantidade_estoque'],
+                        'usuario_id'     => $usuario['id'],
+                        'observacoes'    => "Cancelamento do pedido #$id",
+                    ]);
                 }
                 
                 $novo = 'cancelado';
