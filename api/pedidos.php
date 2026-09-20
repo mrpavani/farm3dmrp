@@ -58,6 +58,17 @@ function validarCabecalho(array $b): void {
     }
 }
 
+// Preço de tabela do produto no momento em que o item entra no pedido.
+// Fica congelado em pedido_itens.preco_unitario: reajustar o produto depois
+// não altera o valor de pedidos já feitos.
+function precoAtualProduto(PDO $pdo, int $produtoId): float {
+    $stmt = $pdo->prepare("SELECT preco FROM produtos WHERE id = :id");
+    $stmt->execute(['id' => $produtoId]);
+    $preco = $stmt->fetchColumn();
+    if ($preco === false) throw new Exception("Produto #$produtoId não encontrado.");
+    return (float) $preco;
+}
+
 function buscarPedidoParaAlterar(PDO $pdo, int $id): array {
     $stmt = $pdo->prepare("SELECT * FROM pedidos WHERE id = :id FOR UPDATE");
     $stmt->execute(['id' => $id]);
@@ -196,20 +207,21 @@ if ($method === 'POST') {
         $pedidoId = $pdo->lastInsertId();
 
         $itemStmt = $pdo->prepare("
-            INSERT INTO pedido_itens (pedido_id, produto_id, quantidade, quantidade_estoque, quantidade_produzida)
-            VALUES (:pedido_id, :produto_id, :quantidade, :quantidade_estoque, :quantidade_produzida)
+            INSERT INTO pedido_itens (pedido_id, produto_id, preco_unitario, quantidade, quantidade_estoque, quantidade_produzida)
+            VALUES (:pedido_id, :produto_id, :preco_unitario, :quantidade, :quantidade_estoque, :quantidade_produzida)
         ");
         $updEstoque = $pdo->prepare("UPDATE produtos SET estoque = estoque - :qtd WHERE id = :id");
 
         foreach ($b['itens'] as $item) {
             $qtd = (int) $item['quantidade'];
             $qtdEstoque = 0;
-            
+            $preco = precoAtualProduto($pdo, (int) $item['produto_id']);
+
             if ($tipo === 'venda') {
                 $prodStmt = $pdo->prepare("SELECT estoque FROM produtos WHERE id = :id FOR UPDATE");
                 $prodStmt->execute(['id' => $item['produto_id']]);
                 $estoqueAtual = (int) $prodStmt->fetchColumn();
-                
+
                 if ($estoqueAtual > 0) {
                     $qtdEstoque = min($qtd, $estoqueAtual);
                     $updEstoque->execute(['qtd' => $qtdEstoque, 'id' => $item['produto_id']]);
@@ -219,6 +231,7 @@ if ($method === 'POST') {
             $itemStmt->execute([
                 'pedido_id' => $pedidoId,
                 'produto_id' => $item['produto_id'],
+                'preco_unitario' => $preco,
                 'quantidade' => $qtd,
                 'quantidade_estoque' => $qtdEstoque,
                 'quantidade_produzida' => $qtdEstoque,
@@ -283,8 +296,10 @@ if ($method === 'PUT') {
             $atuais[(int) $row['id']] = $row;
         }
 
-        $insStmt = $pdo->prepare("INSERT INTO pedido_itens (pedido_id, produto_id, quantidade, quantidade_estoque, quantidade_produzida) VALUES (:pedido_id, :produto_id, :quantidade, :quantidade_estoque, :quantidade_produzida)");
+        $insStmt = $pdo->prepare("INSERT INTO pedido_itens (pedido_id, produto_id, preco_unitario, quantidade, quantidade_estoque, quantidade_produzida) VALUES (:pedido_id, :produto_id, :preco_unitario, :quantidade, :quantidade_estoque, :quantidade_produzida)");
+        // Item que continua com o mesmo produto mantém o preço praticado.
         $updStmt = $pdo->prepare("UPDATE pedido_itens SET produto_id = :produto_id, quantidade = :quantidade WHERE id = :id");
+        $updComPreco = $pdo->prepare("UPDATE pedido_itens SET produto_id = :produto_id, preco_unitario = :preco_unitario, quantidade = :quantidade WHERE id = :id");
         $delStmt = $pdo->prepare("DELETE FROM pedido_itens WHERE id = :id");
 
         $mantidos = [];
@@ -306,8 +321,9 @@ if ($method === 'PUT') {
                     }
                 }
                 $insStmt->execute([
-                    'pedido_id' => $id, 
-                    'produto_id' => $produtoId, 
+                    'pedido_id' => $id,
+                    'produto_id' => $produtoId,
+                    'preco_unitario' => precoAtualProduto($pdo, $produtoId),
                     'quantidade' => $qtd,
                     'quantidade_estoque' => $qtdEstoque,
                     'quantidade_produzida' => $qtdEstoque
@@ -339,7 +355,18 @@ if ($method === 'PUT') {
                         ->execute(['dev' => $devolver, 'id' => $itemId]);
                 }
             }
-            $updStmt->execute(['produto_id' => $produtoId, 'quantidade' => $qtd, 'id' => $itemId]);
+            // Trocou de produto: pega o preço do produto novo. Mesmo produto:
+            // preserva o preço praticado quando o pedido foi feito.
+            if ($produtoId !== (int) $atual['produto_id']) {
+                $updComPreco->execute([
+                    'produto_id' => $produtoId,
+                    'preco_unitario' => precoAtualProduto($pdo, $produtoId),
+                    'quantidade' => $qtd,
+                    'id' => $itemId,
+                ]);
+            } else {
+                $updStmt->execute(['produto_id' => $produtoId, 'quantidade' => $qtd, 'id' => $itemId]);
+            }
             $mantidos[$itemId] = true;
         }
 

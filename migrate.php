@@ -136,6 +136,26 @@ try {
     echo "<p>❌ Erro ao criar tabela <b>movimentos_estoque</b>: " . htmlspecialchars($e->getMessage()) . "</p>";
 }
 
+// 9. Congelar o preço praticado no item do pedido (antes o valor vinha sempre
+//    do preço de tabela atual, mudando o histórico a cada reajuste).
+try {
+    $pdo->exec("ALTER TABLE pedido_itens ADD COLUMN preco_unitario DECIMAL(10,2) NOT NULL DEFAULT 0 AFTER produto_id");
+    echo "<p>✅ Coluna <b>preco_unitario</b> adicionada na tabela <i>pedido_itens</i>!</p>";
+
+    // Só na criação da coluna: carrega os itens antigos com o preço de tabela atual.
+    $n = $pdo->exec("
+        UPDATE pedido_itens pi JOIN produtos p ON p.id = pi.produto_id
+        SET pi.preco_unitario = p.preco
+    ");
+    echo "<p>↳ {$n} item(ns) de pedido preenchido(s) com o preço de tabela atual.</p>";
+} catch (PDOException $e) {
+    if (strpos($e->getMessage(), 'Duplicate column name') !== false) {
+        echo "<p>⚠️ Coluna <b>preco_unitario</b> já existe em <i>pedido_itens</i>.</p>";
+    } else {
+        echo "<p>❌ Erro ao adicionar <b>preco_unitario</b>: " . htmlspecialchars($e->getMessage()) . "</p>";
+    }
+}
+
 echo "<h2>Migração finalizada.</h2>";
 echo "<p><a href='fabrica.php'>Ir para o Painel da Fábrica</a> · <a href='produtos.php'>Ir para Produtos</a></p>";
 
