@@ -107,6 +107,35 @@ try {
     }
 }
 
+// 8. Criar tabela 'movimentos_estoque' (livro de entradas e saídas de peça e produto)
+try {
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS movimentos_estoque (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            tipo ENUM(
+                'peca_produzida', 'peca_ajuste', 'peca_consumida',
+                'produto_montado', 'produto_ajuste',
+                'pedido_atendido', 'pedido_estorno'
+            ) NOT NULL,
+            produto_id INT DEFAULT NULL,
+            peca_id INT DEFAULT NULL,
+            pedido_item_id INT DEFAULT NULL,
+            quantidade INT NOT NULL,
+            saldo_depois INT DEFAULT NULL,
+            usuario_id INT DEFAULT NULL,
+            observacoes VARCHAR(255) DEFAULT NULL,
+            criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_mov_data (criado_em),
+            INDEX idx_mov_peca (peca_id),
+            INDEX idx_mov_produto (produto_id),
+            INDEX idx_mov_tipo (tipo)
+        ) ENGINE=InnoDB
+    ");
+    echo "<p>✅ Tabela <b>movimentos_estoque</b> criada/verificada com sucesso!</p>";
+} catch (PDOException $e) {
+    echo "<p>❌ Erro ao criar tabela <b>movimentos_estoque</b>: " . htmlspecialchars($e->getMessage()) . "</p>";
+}
+
 echo "<h2>Migração finalizada.</h2>";
 echo "<p><a href='fabrica.php'>Ir para o Painel da Fábrica</a> · <a href='produtos.php'>Ir para Produtos</a></p>";
 

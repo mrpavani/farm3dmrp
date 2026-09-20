@@ -11,6 +11,13 @@ $sqlProduzidoPor = "(SELECT GROUP_CONCAT(DISTINCT u2.nome ORDER BY u2.nome SEPAR
         FROM producoes x JOIN usuarios u2 ON u2.id = x.usuario_id
         WHERE x.pedido_item_id = pi.id) AS produzido_por";
 
+// Estoque de produto pronto e quantas unidades dá para montar agora com as peças
+// em saldo (NULL = produto sem ficha técnica, impresso direto). Alimenta o aviso
+// "dá para montar" / "usar estoque" na lista de pedidos.
+$sqlDisponibilidade = "pr.estoque AS produto_estoque,
+        (SELECT MIN(FLOOR(pp.estoque / GREATEST(pp.quantidade, 1)))
+           FROM produto_pecas pp WHERE pp.produto_id = pi.produto_id) AS produto_montavel";
+
 // Tipo do pedido: "venda" (cliente obrigatório) ou "estoque" (sem cliente).
 function tipoPedido(array $b): string {
     return ($b['tipo'] ?? 'venda') === 'estoque' ? 'estoque' : 'venda';
@@ -81,7 +88,7 @@ if ($method === 'GET') {
         if (!$pedido) jsonError('Pedido não encontrado.', 404);
 
         $itensStmt = $pdo->prepare("
-            SELECT pi.*, pr.nome AS produto_nome, {$sqlProduzidoPor}
+            SELECT pi.*, pr.nome AS produto_nome, {$sqlDisponibilidade}, {$sqlProduzidoPor}
             FROM pedido_itens pi
             JOIN produtos pr ON pr.id = pi.produto_id
             WHERE pi.pedido_id = :id
@@ -130,7 +137,7 @@ if ($method === 'GET') {
         $ids = array_column($pedidos, 'id');
         $in = implode(',', array_fill(0, count($ids), '?'));
         $itensStmt = $pdo->prepare("
-            SELECT pi.*, pr.nome AS produto_nome, {$sqlProduzidoPor}
+            SELECT pi.*, pr.nome AS produto_nome, {$sqlDisponibilidade}, {$sqlProduzidoPor}
             FROM pedido_itens pi
             JOIN produtos pr ON pr.id = pi.produto_id
             WHERE pi.pedido_id IN ($in)
