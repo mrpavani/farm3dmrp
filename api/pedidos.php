@@ -15,9 +15,7 @@ $sqlProduzidoPor = "(SELECT GROUP_CONCAT(DISTINCT u2.nome ORDER BY u2.nome SEPAR
 // Estoque de produto pronto e quantas unidades dá para montar agora com as peças
 // em saldo (NULL = produto sem ficha técnica, impresso direto). Alimenta o aviso
 // "dá para montar" / "usar estoque" na lista de pedidos.
-$sqlDisponibilidade = "pr.estoque AS produto_estoque,
-        (SELECT MIN(FLOOR(pp.estoque / GREATEST(pp.quantidade, 1)))
-           FROM produto_pecas pp WHERE pp.produto_id = pi.produto_id) AS produto_montavel";
+$sqlDisponibilidade = "pr.estoque AS produto_estoque, " . sqlProdutoMontavel('pi.produto_id') . " AS produto_montavel";
 
 // Tipo do pedido: "venda" (cliente obrigatório) ou "estoque" (sem cliente).
 function tipoPedido(array $b): string {

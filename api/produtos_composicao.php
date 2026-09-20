@@ -1,12 +1,67 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/estoque.php';
 $usuario = exigirLoginApi();
 $pdo = getDB();
 $method = $_SERVER['REQUEST_METHOD'];
 
+// Busca as peças de um produto com suas cores aninhadas, já com os totais
+// (soma das cores) e o diagnóstico de capacidade para a $meta informada.
+// Uma peça pode ter várias cores em estoque (ex.: Chave de fenda em Cinza
+// e em Laranja) — qualquer cor serve para montar, então o que conta para
+// a capacidade é a SOMA do estoque das cores da peça.
+function diagnosticoPecas(PDO $pdo, int $paiId, int $meta): array {
+    $stmtPecas = $pdo->prepare("
+        SELECT id AS peca_id, nome, quantidade AS por_unidade, foto
+        FROM produto_pecas WHERE produto_id = :pai_id ORDER BY id ASC
+    ");
+    $stmtPecas->execute(['pai_id' => $paiId]);
+    $pecas = $stmtPecas->fetchAll();
+    if (!$pecas) return ['capacidade_maxima' => 0, 'gargalos' => [], 'pecas' => []];
+
+    $pecaIds = array_column($pecas, 'peca_id');
+    $in = implode(',', array_fill(0, count($pecaIds), '?'));
+    $stmtCores = $pdo->prepare("
+        SELECT id AS cor_id, peca_id, cor, estoque, foto
+        FROM produto_pecas_cores WHERE peca_id IN ($in) ORDER BY id ASC
+    ");
+    $stmtCores->execute($pecaIds);
+    $coresPorPeca = [];
+    foreach ($stmtCores->fetchAll() as $c) {
+        $coresPorPeca[(int) $c['peca_id']][] = $c;
+    }
+
+    $capacidadeMaxima = PHP_INT_MAX;
+    foreach ($pecas as &$p) {
+        $cores = $coresPorPeca[(int) $p['peca_id']] ?? [];
+        $p['cores'] = $cores;
+        $p['estoque_atual'] = array_sum(array_map(fn($c) => (int) $c['estoque'], $cores));
+        $porUnidade = max(1, (int) $p['por_unidade']);
+        $p['capacidade_individual'] = intdiv(max(0, $p['estoque_atual']), $porUnidade);
+        $capacidadeMaxima = min($capacidadeMaxima, $p['capacidade_individual']);
+    }
+    unset($p);
+    if ($capacidadeMaxima === PHP_INT_MAX) $capacidadeMaxima = 0;
+
+    $gargalos = [];
+    foreach ($pecas as &$p) {
+        $porUnidade = max(1, (int) $p['por_unidade']);
+        $p['total_necessario_meta'] = $meta * $porUnidade;
+        $p['faltam_para_meta'] = max(0, $p['total_necessario_meta'] - $p['estoque_atual']);
+        $p['sobra_apos_meta'] = max(0, $p['estoque_atual'] - $p['total_necessario_meta']);
+        $p['situacao'] = $p['faltam_para_meta'] > 0 ? 'insuficiente' : 'ok';
+        $p['eh_gargalo'] = ($p['capacidade_individual'] === $capacidadeMaxima);
+        if ($p['eh_gargalo']) $gargalos[] = $p['nome'];
+    }
+    unset($p);
+
+    return ['capacidade_maxima' => $capacidadeMaxima, 'gargalos' => $gargalos, 'pecas' => $pecas];
+}
+
 // ------------------------------------------------------------
 // GET /api/produtos_composicao.php?produto_pai_id=N&meta=M
-// Retorna as peças cadastradas do produto, capacidade de montagem e diagnóstico de gargalos
+// Retorna as peças cadastradas do produto (com suas cores), capacidade
+// de montagem e diagnóstico de gargalos para a meta informada.
 // ------------------------------------------------------------
 if ($method === 'GET') {
     $paiId = (int) ($_GET['produto_pai_id'] ?? 0);
@@ -23,88 +78,24 @@ if ($method === 'GET') {
         jsonError('Produto não encontrado.', 404);
     }
 
-    $sql = "
-        SELECT 
-            id AS peca_id,
-            produto_id,
-            nome,
-            quantidade AS por_unidade,
-            cor,
-            estoque AS estoque_atual,
-            foto
-        FROM produto_pecas
-        WHERE produto_id = :pai_id
-        ORDER BY id ASC
-    ";
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute(['pai_id' => $paiId]);
-    $pecas = $stmt->fetchAll();
-
-    if (empty($pecas)) {
-        jsonResponse([
-            'produto' => $produto,
-            'capacidade_maxima' => 0,
-            'meta' => $meta,
-            'pode_atender_meta' => false,
-            'gargalos' => [],
-            'pecas' => []
-        ]);
-    }
-
-    $capacidadeMaxima = PHP_INT_MAX;
-    $detalhes = [];
-
-    foreach ($pecas as $p) {
-        $porUnidade = max(1, (int) $p['por_unidade']);
-        $estoque = (int) $p['estoque_atual'];
-        $capacidadeItem = intdiv(max(0, $estoque), $porUnidade);
-
-        if ($capacidadeItem < $capacidadeMaxima) {
-            $capacidadeMaxima = $capacidadeItem;
-        }
-
-        $totalNecessarioMeta = $meta * $porUnidade;
-        $faltamParaMeta = max(0, $totalNecessarioMeta - $estoque);
-        $sobraAposMeta = max(0, $estoque - $totalNecessarioMeta);
-
-        $detalhes[] = [
-            'peca_id' => (int) $p['peca_id'],
-            'nome' => $p['nome'],
-            'cor' => $p['cor'] ?: 'Padrão',
-            'foto' => $p['foto'],
-            'por_unidade' => $porUnidade,
-            'estoque_atual' => $estoque,
-            'capacidade_individual' => $capacidadeItem,
-            'total_necessario_meta' => $totalNecessarioMeta,
-            'faltam_para_meta' => $faltamParaMeta,
-            'sobra_apos_meta' => $sobraAposMeta,
-            'situacao' => $faltamParaMeta > 0 ? 'insuficiente' : 'ok',
-        ];
-    }
-
-
-    $gargalos = [];
-    foreach ($detalhes as &$det) {
-        $det['eh_gargalo'] = ($det['capacidade_individual'] === $capacidadeMaxima);
-        if ($det['eh_gargalo']) {
-            $gargalos[] = $det['nome'] . ($det['cor'] && $det['cor'] !== 'Padrão' ? " ({$det['cor']})" : '');
-        }
-    }
+    $diag = diagnosticoPecas($pdo, $paiId, $meta);
 
     jsonResponse([
         'produto' => $produto,
-        'capacidade_maxima' => $capacidadeMaxima,
+        'capacidade_maxima' => $diag['capacidade_maxima'],
         'meta' => $meta,
-        'pode_atender_meta' => ($capacidadeMaxima >= $meta),
-        'gargalos' => $gargalos,
-        'pecas' => $detalhes
+        'pode_atender_meta' => ($diag['capacidade_maxima'] >= $meta),
+        'gargalos' => $diag['gargalos'],
+        'pecas' => $diag['pecas'],
     ]);
 }
 
 // ------------------------------------------------------------
 // POST /api/produtos_composicao.php?acao=montar
 // Body: { produto_pai_id: N, quantidade: Q }
-// Baixa as peças do estoque e incrementa o produto final montado
+// Baixa as peças do estoque (de qualquer cor disponível) e incrementa o
+// produto final montado. Usa a mesma regra de includes/estoque.php que a
+// Bancada da Fábrica, para não haver dois caminhos de montagem divergentes.
 // ------------------------------------------------------------
 if ($method === 'POST' && ($_GET['acao'] ?? '') === 'montar') {
     $b = readJsonBody();
@@ -114,60 +105,15 @@ if ($method === 'POST' && ($_GET['acao'] ?? '') === 'montar') {
     if (!$paiId) jsonError('Informe o id do produto.');
     if ($qtdMontar <= 0) jsonError('A quantidade a ser montada deve ser no mínimo 1.');
 
-    $stmtProd = $pdo->prepare("SELECT id, nome, tipo, estoque FROM produtos WHERE id = :id");
+    $stmtProd = $pdo->prepare("SELECT id, nome FROM produtos WHERE id = :id");
     $stmtProd->execute(['id' => $paiId]);
     $produto = $stmtProd->fetch();
     if (!$produto) jsonError('Produto não encontrado.', 404);
 
-    // Buscar peças cadastradas do produto
-    $stmtPecas = $pdo->prepare("SELECT id, nome, cor, quantidade, estoque FROM produto_pecas WHERE produto_id = :pai_id");
-    $stmtPecas->execute(['pai_id' => $paiId]);
-    $pecas = $stmtPecas->fetchAll();
-
-    if (empty($pecas)) {
-        jsonError('Este produto não possui peças cadastradas na ficha técnica.');
-    }
-
-    // Validar se todas as peças têm estoque suficiente
-    foreach ($pecas as $p) {
-        $necessario = $p['quantidade'] * $qtdMontar;
-        if ($p['estoque'] < $necessario) {
-            $falta = $necessario - $p['estoque'];
-            $rotulo = $p['nome'] . ($p['cor'] ? " ({$p['cor']})" : '');
-            jsonError(sprintf(
-                'Estoque insuficiente da peça "%s": disponível %d, necessário %d (faltam %d peças).',
-                $rotulo,
-                $p['estoque'],
-                $necessario,
-                $falta
-            ));
-        }
-    }
-
-    // Executar transação atômica de montagem
     $pdo->beginTransaction();
     try {
-        $stmtBaixa = $pdo->prepare("UPDATE produto_pecas SET estoque = estoque - :consumo WHERE id = :id");
-        foreach ($pecas as $p) {
-            $consumo = $p['quantidade'] * $qtdMontar;
-            $stmtBaixa->execute([
-                'consumo' => $consumo,
-                'id' => $p['id']
-            ]);
-        }
-
-        $stmtAumenta = $pdo->prepare("UPDATE produtos SET estoque = estoque + :qtd WHERE id = :id");
-        $stmtAumenta->execute([
-            'qtd' => $qtdMontar,
-            'id' => $paiId
-        ]);
-
+        $novoEstoque = montarProduto($pdo, $paiId, $qtdMontar, $usuario['id']);
         $pdo->commit();
-
-        // Buscar novo estoque do produto final
-        $stmtNovo = $pdo->prepare("SELECT estoque FROM produtos WHERE id = :id");
-        $stmtNovo->execute(['id' => $paiId]);
-        $novoEstoque = (int) $stmtNovo->fetchColumn();
 
         jsonResponse([
             'ok' => true,
@@ -177,41 +123,22 @@ if ($method === 'POST' && ($_GET['acao'] ?? '') === 'montar') {
         ]);
     } catch (Exception $e) {
         $pdo->rollBack();
-        jsonError('Erro ao registrar montagem: ' . $e->getMessage(), 500);
+        jsonError('Erro ao registrar montagem: ' . $e->getMessage());
     }
-}
-
-// ------------------------------------------------------------
-// POST /api/produtos_composicao.php?acao=ajustar_estoque_peca
-// Body: { peca_id: N, estoque: E } ou { peca_id: N, delta: D }
-// Ajusta ou adiciona entrada de peças impressas
-// ------------------------------------------------------------
-if ($method === 'POST' && ($_GET['acao'] ?? '') === 'ajustar_estoque_peca') {
-    $b = readJsonBody();
-    $pecaId = (int) ($b['peca_id'] ?? 0);
-    if (!$pecaId) jsonError('Informe o id da peça.');
-
-    if (isset($b['delta'])) {
-        $delta = (int) $b['delta'];
-        $stmt = $pdo->prepare("UPDATE produto_pecas SET estoque = GREATEST(0, estoque + :delta) WHERE id = :id");
-        $stmt->execute(['delta' => $delta, 'id' => $pecaId]);
-    } elseif (isset($b['estoque'])) {
-        $novoEstoque = max(0, (int) $b['estoque']);
-        $stmt = $pdo->prepare("UPDATE produto_pecas SET estoque = :estoque WHERE id = :id");
-        $stmt->execute(['estoque' => $novoEstoque, 'id' => $pecaId]);
-    } else {
-        jsonError('Informe o saldo ou a quantidade de entrada.');
-    }
-
-    $stmtP = $pdo->prepare("SELECT estoque FROM produto_pecas WHERE id = :id");
-    $stmtP->execute(['id' => $pecaId]);
-    jsonResponse(['ok' => true, 'novo_estoque' => (int) $stmtP->fetchColumn()]);
 }
 
 // ------------------------------------------------------------
 // POST /api/produtos_composicao.php?produto_pai_id=N
-// Body: { itens: [ { nome, quantidade, cor, estoque }, ... ] }
-// Salva/atualiza as peças cadastradas do produto
+// Body: { itens: [ { peca_id, nome, quantidade, foto,
+//                     cores: [ { cor_id, cor, estoque, foto }, ... ] }, ... ] }
+//
+// Salva/atualiza a ficha técnica (peças) e o cadastro de cores de cada
+// peça. Uma peça pode ter várias cores (ex.: Chave de fenda em Cinza e em
+// Laranja) ou uma só linha de cor vazia/"qualquer cor" (ex.: Suporte).
+//
+// O saldo (estoque) de uma cor JÁ CADASTRADA nunca é sobrescrito por aqui
+// — esse saldo pertence à Bancada da Fábrica. "estoque" só é usado como
+// saldo inicial quando a cor é nova (sem cor_id ainda existente).
 // ------------------------------------------------------------
 if ($method === 'POST') {
     $paiId = (int) ($_GET['produto_pai_id'] ?? 0);
@@ -226,68 +153,156 @@ if ($method === 'POST') {
     $itens = $b['itens'] ?? [];
     if (!is_array($itens)) jsonError('Lista de peças inválida.');
 
-    $pecasLimpos = [];
+    // Normaliza o payload: cada peça, com sua lista de cores. Peça sem
+    // nenhuma cor informada recebe uma variante padrão "qualquer cor".
+    $pecasLimpas = [];
     foreach ($itens as $item) {
         $nome = trim($item['nome'] ?? '');
         if ($nome === '') continue;
 
-        $cor = trim($item['cor'] ?? '');
         $foto = trim($item['foto'] ?? '');
+        $coresEntrada = is_array($item['cores'] ?? null) ? $item['cores'] : [];
 
-        $pecasLimpos[] = [
+        $cores = [];
+        foreach ($coresEntrada as $c) {
+            $corNome = trim($c['cor'] ?? '');
+            $cores[] = [
+                'cor_id' => (int) ($c['cor_id'] ?? 0),
+                'cor' => $corNome === '' ? null : $corNome,
+                'estoque_inicial' => max(0, (int) ($c['estoque'] ?? 0)),
+                'foto' => trim($c['foto'] ?? '') ?: null,
+            ];
+        }
+        if (!$cores) {
+            $cores[] = ['cor_id' => 0, 'cor' => null, 'estoque_inicial' => 0, 'foto' => null];
+        }
+
+        $pecasLimpas[] = [
             'peca_id' => (int) ($item['peca_id'] ?? 0),
             'nome' => $nome,
             'quantidade' => max(1, (int) ($item['quantidade'] ?? 1)),
-            'cor' => $cor === '' ? null : $cor,
-            // Só vale para peça nova: o saldo de peça já cadastrada pertence à
-            // Bancada e nunca é sobrescrito por este formulário de cadastro.
-            'estoque_inicial' => max(0, (int) ($item['estoque'] ?? 0)),
-            'foto' => $foto === '' ? null : $foto
+            'foto' => $foto === '' ? null : $foto,
+            'cores' => $cores,
         ];
     }
 
     $pdo->beginTransaction();
     try {
-        // Upsert por id: quem continua na lista mantém o id (e o saldo), quem
-        // sumiu é removido, quem chegou é inserido. Nunca DELETE + INSERT geral,
-        // senão o estoque impresso e o histórico de movimentos viram órfãos.
+        // ---- Peças: upsert por id (mesma regra de sempre) ----
         $stmtAtuais = $pdo->prepare("SELECT id FROM produto_pecas WHERE produto_id = :pai_id FOR UPDATE");
         $stmtAtuais->execute(['pai_id' => $paiId]);
         $idsAtuais = array_map('intval', $stmtAtuais->fetchAll(PDO::FETCH_COLUMN));
 
-        $stmtUpd = $pdo->prepare("
-            UPDATE produto_pecas SET nome = :nome, quantidade = :qtd, cor = :cor, foto = :foto
+        $stmtUpdPeca = $pdo->prepare("
+            UPDATE produto_pecas SET nome = :nome, quantidade = :qtd, foto = :foto
             WHERE id = :id AND produto_id = :produto_id
         ");
-        $stmtIns = $pdo->prepare("
-            INSERT INTO produto_pecas (produto_id, nome, quantidade, cor, estoque, foto)
-            VALUES (:produto_id, :nome, :qtd, :cor, :estoque, :foto)
+        $stmtInsPeca = $pdo->prepare("
+            INSERT INTO produto_pecas (produto_id, nome, quantidade, foto)
+            VALUES (:produto_id, :nome, :qtd, :foto)
         ");
 
-        $mantidos = [];
-        foreach ($pecasLimpos as $p) {
+        // ---- Cores: upsert por id, sempre amarrado à peça (peca_id) ----
+        $stmtCoresAtuais = $pdo->prepare("SELECT id, cor, estoque FROM produto_pecas_cores WHERE peca_id = :peca_id FOR UPDATE");
+        $stmtUpdCor = $pdo->prepare("
+            UPDATE produto_pecas_cores SET cor = :cor, foto = :foto
+            WHERE id = :id AND peca_id = :peca_id
+        ");
+        $stmtInsCor = $pdo->prepare("
+            INSERT INTO produto_pecas_cores (peca_id, cor, estoque, foto)
+            VALUES (:peca_id, :cor, :estoque, :foto)
+        ");
+
+        $pecasMantidas = [];
+        $totalCores = 0;
+        foreach ($pecasLimpas as $p) {
             if ($p['peca_id'] && in_array($p['peca_id'], $idsAtuais, true)) {
-                $stmtUpd->execute([
-                    'nome' => $p['nome'], 'qtd' => $p['quantidade'], 'cor' => $p['cor'],
-                    'foto' => $p['foto'], 'id' => $p['peca_id'], 'produto_id' => $paiId,
+                $stmtUpdPeca->execute([
+                    'nome' => $p['nome'], 'qtd' => $p['quantidade'], 'foto' => $p['foto'],
+                    'id' => $p['peca_id'], 'produto_id' => $paiId,
                 ]);
-                $mantidos[] = $p['peca_id'];
+                $pecaId = $p['peca_id'];
             } else {
-                $stmtIns->execute([
-                    'produto_id' => $paiId, 'nome' => $p['nome'], 'qtd' => $p['quantidade'],
-                    'cor' => $p['cor'], 'estoque' => $p['estoque_inicial'], 'foto' => $p['foto'],
+                $stmtInsPeca->execute([
+                    'produto_id' => $paiId, 'nome' => $p['nome'],
+                    'qtd' => $p['quantidade'], 'foto' => $p['foto'],
                 ]);
+                $pecaId = (int) $pdo->lastInsertId();
+            }
+            $pecasMantidas[] = $pecaId;
+
+            $stmtCoresAtuais->execute(['peca_id' => $pecaId]);
+            $coresAtuais = $stmtCoresAtuais->fetchAll(); // id, cor, estoque
+            $idsCoresAtuais = array_map(fn($c) => (int) $c['id'], $coresAtuais);
+
+            $coresMantidas = [];
+            foreach ($p['cores'] as $c) {
+                if ($c['cor_id'] && in_array($c['cor_id'], $idsCoresAtuais, true)) {
+                    $stmtUpdCor->execute([
+                        'cor' => $c['cor'], 'foto' => $c['foto'],
+                        'id' => $c['cor_id'], 'peca_id' => $pecaId,
+                    ]);
+                    $coresMantidas[] = $c['cor_id'];
+                } else {
+                    $stmtInsCor->execute([
+                        'peca_id' => $pecaId, 'cor' => $c['cor'],
+                        'estoque' => $c['estoque_inicial'], 'foto' => $c['foto'],
+                    ]);
+                }
+                $totalCores++;
+            }
+
+            $idsCoresRemovidas = array_diff($idsCoresAtuais, $coresMantidas);
+            if ($idsCoresRemovidas) {
+                // Removida do cadastro, mas se tinha saldo, esse saldo precisa
+                // ficar registrado como baixa — senão a peça só "some" do livro.
+                foreach ($coresAtuais as $c) {
+                    if (!in_array((int) $c['id'], $idsCoresRemovidas, true)) continue;
+                    if ((int) $c['estoque'] > 0) {
+                        registrarMovimento($pdo, 'peca_ajuste', [
+                            'produto_id'   => $paiId,
+                            'peca_id'      => $pecaId,
+                            'quantidade'   => -(int) $c['estoque'],
+                            'saldo_depois' => 0,
+                            'usuario_id'   => $usuario['id'],
+                            'observacoes'  => 'Cor removida da ficha técnica (cor: ' . rotuloCor($c['cor']) . ', tinha ' . $c['estoque'] . ' em estoque).',
+                        ]);
+                    }
+                }
+                $in = implode(',', array_fill(0, count($idsCoresRemovidas), '?'));
+                $pdo->prepare("DELETE FROM produto_pecas_cores WHERE peca_id = ? AND id IN ($in)")
+                    ->execute(array_merge([$pecaId], array_values($idsCoresRemovidas)));
             }
         }
 
-        $removidos = array_diff($idsAtuais, $mantidos);
-        if ($removidos) {
-            $in = implode(',', array_fill(0, count($removidos), '?'));
+        $pecasRemovidas = array_diff($idsAtuais, $pecasMantidas);
+        if ($pecasRemovidas) {
+            // Mesma lógica: se a peça removida ainda tinha saldo em alguma cor,
+            // registra a baixa antes do DELETE (a cascade tira as cores junto).
+            $in = implode(',', array_fill(0, count($pecasRemovidas), '?'));
+            $stmtSaldoRemovido = $pdo->prepare("
+                SELECT pp.id, pp.nome, COALESCE(SUM(pc.estoque), 0) AS total
+                FROM produto_pecas pp LEFT JOIN produto_pecas_cores pc ON pc.peca_id = pp.id
+                WHERE pp.id IN ($in) GROUP BY pp.id, pp.nome
+            ");
+            $stmtSaldoRemovido->execute(array_values($pecasRemovidas));
+            foreach ($stmtSaldoRemovido->fetchAll() as $r) {
+                if ((int) $r['total'] > 0) {
+                    registrarMovimento($pdo, 'peca_ajuste', [
+                        'produto_id'   => $paiId,
+                        'peca_id'      => (int) $r['id'],
+                        'quantidade'   => -(int) $r['total'],
+                        'saldo_depois' => 0,
+                        'usuario_id'   => $usuario['id'],
+                        'observacoes'  => 'Peça "' . $r['nome'] . '" removida da ficha técnica (tinha ' . $r['total'] . ' em estoque).',
+                    ]);
+                }
+            }
             $pdo->prepare("DELETE FROM produto_pecas WHERE produto_id = ? AND id IN ($in)")
-                ->execute(array_merge([$paiId], array_values($removidos)));
+                ->execute(array_merge([$paiId], array_values($pecasRemovidas)));
         }
 
-        if (!empty($pecasLimpos)) {
+        if (!empty($pecasLimpas)) {
             $pdo->prepare("UPDATE produtos SET tipo = 'composto' WHERE id = :id AND tipo <> 'composto'")
                 ->execute(['id' => $paiId]);
         }
@@ -296,8 +311,9 @@ if ($method === 'POST') {
 
         jsonResponse([
             'ok' => true,
-            'total_pecas' => count($pecasLimpos),
-            'removidas' => count($removidos),
+            'total_pecas' => count($pecasLimpas),
+            'total_cores' => $totalCores,
+            'removidas' => count($pecasRemovidas),
         ]);
     } catch (Exception $e) {
         $pdo->rollBack();

@@ -190,6 +190,29 @@ require __DIR__ . '/includes/header.php';
     </div>
 </div>
 
+<!-- Modal: cadastrar uma nova cor de uma peça já existente, direto da bancada -->
+<div id="modalNovaCor" class="modal" hidden>
+    <div class="card modal-caixa" role="dialog" aria-modal="true" aria-labelledby="modalNovaCorTitulo">
+        <div class="modal-cabecalho">
+            <div>
+                <h2 id="modalNovaCorTitulo">Nova cor da peça</h2>
+                <p id="modalNovaCorSub" class="modal-sub"></p>
+            </div>
+            <button type="button" class="btn-icone" data-fechar-modal aria-label="Fechar">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <label for="modalNovaCorNome">Nome da cor</label>
+        <input type="text" id="modalNovaCorNome" placeholder="Ex.: Laranja" maxlength="50">
+        <label for="modalNovaCorQtd">Quantidade já impressa (opcional)</label>
+        <input type="number" id="modalNovaCorQtd" min="0" value="0" inputmode="numeric">
+        <div class="modal-rodape">
+            <button type="button" class="secundario" data-fechar-modal>Cancelar</button>
+            <button type="button" id="btnConfirmarNovaCor">Adicionar cor</button>
+        </div>
+    </div>
+</div>
+
 <!-- Input oculto para envio de foto de peça com 1 clique -->
 <input type="file" id="inputUploadFotoPeca" accept="image/png,image/jpeg,image/webp" style="display:none;">
 

@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/estoque.php';
 $usuario = exigirLoginApi();
 $pdo = getDB();
 
@@ -27,13 +28,13 @@ if (!empty($_GET['produto_id'])) {
     $params['produto_id'] = (int) $_GET['produto_id'];
 }
 
+$sqlMontavel = sqlProdutoMontavel('pi.produto_id');
 $stmt = $pdo->prepare("
     SELECT pi.id AS item_id, pi.pedido_id, pi.produto_id, prod.nome AS produto_nome,
            pi.quantidade, pi.quantidade_produzida,
            pi.quantidade - pi.quantidade_produzida AS restante,
            prod.estoque AS produto_estoque,
-           (SELECT MIN(FLOOR(pp.estoque / GREATEST(pp.quantidade, 1)))
-              FROM produto_pecas pp WHERE pp.produto_id = pi.produto_id) AS produto_montavel,
+           {$sqlMontavel} AS produto_montavel,
            p.tipo, p.data_pedido, p.data_entrega_prometida, p.status, p.observacoes,
            c.nome AS cliente_nome, u.nome AS usuario_nome
     FROM pedido_itens pi

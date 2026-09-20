@@ -6,6 +6,7 @@ let bomPecasDisponiveis = [];
 let bomLinhasEditor = [];
 
 const $ = id => document.getElementById(id);
+const esc = App.esc;
 
 async function carregar() {
     try {
@@ -41,13 +42,12 @@ function renderizar() {
     $('tabelaProdutos').innerHTML = lista.map(p => {
         const ativo = Number(p.ativo) === 1;
         const usado = Number(p.qtd_pedidos) > 0;
-        const ehComposto = p.tipo === 'composto' || Number(p.qtd_pecas) > 0;
         return `
         <tr class="${usado ? '' : 'linha-inativa'}">
             <td>
-                <strong>${App.esc(p.nome)}</strong>
+                <strong>${esc(p.nome)}</strong>
                 ${badgeTipo(p.tipo)}
-                ${p.descricao ? `<span class="sub-linha descricao-curta" title="${App.esc(p.descricao)}">${App.esc(p.descricao)}</span>` : ''}
+                ${p.descricao ? `<span class="sub-linha descricao-curta" title="${esc(p.descricao)}">${esc(p.descricao)}</span>` : ''}
             </td>
             <td class="num" style="font-weight:600;">${App.fmtInt.format(Number(p.estoque) || 0)}</td>
             <td class="num">${App.fmtInt.format(p.qtd_pedidos)}</td>
@@ -151,6 +151,11 @@ async function excluir(id) {
 
 // ============================================================
 // Módulo Ficha Técnica (BOM), Diagnóstico de Gargalos & Montagem
+//
+// Uma peça (ex.: "Chave de Fenda") pode existir em mais de uma cor, cada
+// cor com seu próprio saldo em estoque — ex.: Cinza e Laranja, ambas
+// servem para montar o produto. Uma peça cuja cor não importa (ex.:
+// "Suporte") fica com uma única linha de cor em branco.
 // ============================================================
 
 async function abrirFicha(id) {
@@ -160,22 +165,22 @@ async function abrirFicha(id) {
         const bomData = await App.api(`api/produtos_composicao.php?produto_pai_id=${id}&meta=${meta}`);
 
         $('bomTituloModal').textContent = `Ficha Técnica: ${bomData.produto.nome}`;
-        $('bomSubModal').textContent = `Cadastre as peças que compõem este produto (quantidade e cor) e simule a capacidade de montagem.`;
-        
+        $('bomSubModal').textContent = `Cadastre as peças que compõem este produto (uma ou mais cores por peça) e simule a capacidade de montagem.`;
+
         renderizarDiagnosticoBOM(bomData);
-        
-        // Inicializa o editor de peças
+
+        // Inicializa o editor de peças, cada uma com sua lista de cores.
         bomLinhasEditor = (bomData.pecas || []).map(p => ({
             peca_id: p.peca_id,
             nome: p.nome,
-            cor: p.cor || '',
             quantidade: p.por_unidade,
-            estoque: p.estoque_atual,
-            foto: p.foto || ''
+            foto: p.foto || '',
+            cores: (p.cores && p.cores.length ? p.cores : [{ cor_id: 0, cor: null, estoque: 0, foto: null }])
+                .map(c => ({ cor_id: c.cor_id || 0, cor: c.cor || '', estoque: c.estoque || 0 })),
         }));
-        
+
         if (!bomLinhasEditor.length) {
-            bomLinhasEditor.push({ peca_id: 0, nome: '', cor: '', quantidade: 1, estoque: 0, foto: '' });
+            bomLinhasEditor.push(novaLinhaPeca());
         }
         renderizarEditorBOM();
 
@@ -184,6 +189,9 @@ async function abrirFicha(id) {
         App.toast(e.message, 'erro');
     }
 }
+
+const novaLinhaPeca = () => ({ peca_id: 0, nome: '', quantidade: 1, foto: '', cores: [novaLinhaCor()] });
+const novaLinhaCor = () => ({ cor_id: 0, cor: '', estoque: 0 });
 
 function renderizarDiagnosticoBOM(data) {
     const kpiBox = $('kpiCapacidadeBox');
@@ -200,8 +208,8 @@ function renderizarDiagnosticoBOM(data) {
     } else {
         kpiBox.className = 'card-kpi-bom destaque-alerta';
         const gargalosStr = (data.gargalos || []).join(', ');
-        $('kpiCapacidadeGargalo').textContent = gargalosStr 
-            ? `Limitado por falta de: ${gargalosStr}` 
+        $('kpiCapacidadeGargalo').textContent = gargalosStr
+            ? `Limitado por falta de: ${gargalosStr}`
             : 'Nenhuma peça disponível para montagem ou peças ainda não cadastradas.';
     }
 
@@ -216,24 +224,30 @@ function renderizarDiagnosticoBOM(data) {
     tbody.innerHTML = data.pecas.map(p => {
         const falta = p.faltam_para_meta > 0;
         const ehGargalo = p.eh_gargalo;
-        const fotoThumb = p.foto 
+        const fotoThumb = p.foto
             ? `<img src="${esc(p.foto)}" alt="${esc(p.nome)}" style="width:34px;height:34px;border-radius:4px;object-fit:cover;display:block;margin:auto;">`
             : `<span style="font-size:16px;">🧩</span>`;
+
+        // Cores da peça, com o saldo de cada uma — "qualquer cor" quando não tem nome.
+        const cores = (p.cores || []);
+        const coresHtml = cores.length
+            ? cores.map(c => `<span class="chip-cor-diag">${esc(c.cor || 'qualquer cor')}: <strong>${App.fmtInt.format(c.estoque)}</strong></span>`).join(' ')
+            : '<span class="vazio">—</span>';
 
         return `
         <tr class="${ehGargalo && cap === 0 ? 'linha-gargalo' : ''}">
             <td style="text-align: center; padding: 4px;">${fotoThumb}</td>
             <td>
-                <strong>${App.esc(p.nome)}</strong>
+                <strong>${esc(p.nome)}</strong>
                 ${ehGargalo ? '<span class="tag-gargalo">Gargalo</span>' : ''}
             </td>
-            <td>${App.esc(p.cor || '—')}</td>
+            <td>${coresHtml}</td>
             <td class="num">${p.por_unidade} un</td>
             <td class="num" style="font-weight: 600;">${App.fmtInt.format(p.estoque_atual)} un</td>
             <td class="num">${App.fmtInt.format(p.total_necessario_meta)} un</td>
             <td>
-                ${falta 
-                    ? `<span class="tag-situacao-falta">Faltam ${App.fmtInt.format(p.faltam_para_meta)} un p/ imprimir</span>` 
+                ${falta
+                    ? `<span class="tag-situacao-falta">Faltam ${App.fmtInt.format(p.faltam_para_meta)} un p/ imprimir</span>`
                     : `<span class="tag-situacao-ok">Suficiente (sobra ${App.fmtInt.format(p.sobra_apos_meta)})</span>`}
             </td>
         </tr>`;
@@ -262,7 +276,7 @@ async function executarMontagem() {
     }
 
     const confirma = await App.confirmar(
-        `Confirmar a montagem de ${qtd} unidade(s)? O estoque das peças será baixado e o produto final será incrementado.`,
+        `Confirmar a montagem de ${qtd} unidade(s)? O estoque das peças será baixado (de qualquer cor disponível) e o produto final será incrementado.`,
         { titulo: 'Executar Montagem', botao: 'Confirmar Montagem' }
     );
     if (!confirma) return;
@@ -284,59 +298,66 @@ async function executarMontagem() {
     }
 }
 
-// Editor de Peças do Produto (adicionar/remover linhas com nome, cor, quantidade e estoque)
+// ============================================================
+// Editor de Peças: um bloco por peça (nome, qtd/un, foto) com uma lista
+// de cores aninhada (cada cor com seu próprio saldo). O saldo de uma cor
+// JÁ CADASTRADA (tem cor_id) é somente leitura aqui — quem manda nele é a
+// Bancada da Fábrica; só o saldo inicial de uma cor NOVA é editável.
+// ============================================================
 function renderizarEditorBOM() {
-    const tbody = $('tabelaEditorBOM');
+    const container = $('listaEditorBOM');
     if (!bomLinhasEditor.length) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-3); padding: 12px;">
-            Nenhuma peça cadastrada. Clique em "+ Adicionar Peça".
-        </td></tr>`;
+        container.innerHTML = `<p class="vazio" style="padding:12px 0;">Nenhuma peça cadastrada. Clique em "+ Adicionar Peça".</p>`;
         return;
     }
 
-    tbody.innerHTML = bomLinhasEditor.map((linha, idx) => {
+    container.innerHTML = bomLinhasEditor.map((linha, idx) => {
         const fotoBtn = linha.foto
-            ? `<img src="${esc(linha.foto)}" style="width:34px;height:34px;border-radius:4px;object-fit:cover;cursor:pointer;display:block;margin:auto;" onclick="uploadFotoPecaProdutos(${idx})" title="Clique para trocar foto">`
-            : `<button type="button" class="btn-icone" onclick="uploadFotoPecaProdutos(${idx})" title="Adicionar foto" style="margin:auto;">📷</button>`;
+            ? `<img src="${esc(linha.foto)}" class="foto-peca-editor" onclick="uploadFotoPecaProdutos(${idx})" title="Clique para trocar a foto">`
+            : `<button type="button" class="btn-icone foto-peca-editor-vazia" onclick="uploadFotoPecaProdutos(${idx})" title="Adicionar foto">📷</button>`;
 
-        return `
-        <tr>
-            <td style="text-align: center; vertical-align: middle; padding: 4px;">
-                ${fotoBtn}
-            </td>
-            <td>
-                <input type="text" placeholder="Ex: Hélice, Rotator, Pés..." 
-                       value="${App.esc(linha.nome || '')}" 
-                       oninput="atualizarLinhaBOM(${idx}, 'nome', this.value)" 
-                       style="width: 100%;">
-            </td>
-            <td>
-                <input type="text" placeholder="Ex: Preto, Azul..." 
-                       value="${App.esc(linha.cor || '')}" 
-                       oninput="atualizarLinhaBOM(${idx}, 'cor', this.value)" 
-                       style="width: 100%;">
-            </td>
-            <td>
-                <input type="number" min="1" value="${linha.quantidade || 1}" 
-                       oninput="atualizarLinhaBOM(${idx}, 'quantidade', this.value)" 
-                       style="width: 100%; text-align: center;">
-            </td>
-            <td>
-                ${linha.peca_id
-                    ? `<input type="number" value="${linha.estoque || 0}" readonly tabindex="-1"
+        const coresHtml = linha.cores.map((cor, cidx) => `
+            <div class="linha-cor-editor">
+                <input type="text" placeholder="Nome da cor (deixe em branco se não importar)"
+                       value="${esc(cor.cor || '')}"
+                       oninput="atualizarCorBOM(${idx}, ${cidx}, 'cor', this.value)">
+                ${cor.cor_id
+                    ? `<input type="number" value="${cor.estoque || 0}" readonly tabindex="-1"
                               title="O saldo é atualizado na Bancada da Fábrica, a cada peça impressa."
-                              style="width: 100%; text-align: center; background: var(--surface-3); color: var(--text-3); cursor: not-allowed;">`
-                    : `<input type="number" min="0" value="${linha.estoque || 0}"
-                              oninput="atualizarLinhaBOM(${idx}, 'estoque', this.value)"
-                              title="Saldo inicial desta peça nova."
-                              style="width: 100%; text-align: center;">`}
-            </td>
-            <td style="text-align: center;">
-                <button type="button" class="btn-icone perigo" onclick="removerLinhaBOM(${idx})" data-tip="Remover peça">
+                              class="saldo-cor-editor saldo-cor-editor-travado">`
+                    : `<input type="number" min="0" value="${cor.estoque || 0}"
+                              oninput="atualizarCorBOM(${idx}, ${cidx}, 'estoque', this.value)"
+                              title="Saldo inicial desta cor nova."
+                              class="saldo-cor-editor">`}
+                <button type="button" class="btn-icone perigo" onclick="removerCorBOM(${idx}, ${cidx})"
+                        title="Remover esta cor" ${linha.cores.length <= 1 ? 'disabled' : ''}>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
                 </button>
-            </td>
-        </tr>`;
+            </div>`).join('');
+
+        return `
+        <div class="bloco-peca-editor">
+            <div class="cabecalho-peca-editor">
+                ${fotoBtn}
+                <input type="text" placeholder="Nome da peça (ex.: Hélice, Chave de Fenda...)"
+                       value="${esc(linha.nome || '')}"
+                       oninput="atualizarLinhaBOM(${idx}, 'nome', this.value)"
+                       class="nome-peca-editor">
+                <label class="rotulo-inline">Qtd/un
+                    <input type="number" min="1" value="${linha.quantidade || 1}"
+                           oninput="atualizarLinhaBOM(${idx}, 'quantidade', this.value)"
+                           class="qtd-peca-editor">
+                </label>
+                <button type="button" class="btn-icone perigo" onclick="removerLinhaBOM(${idx})" title="Remover peça">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <div class="lista-cores-editor">
+                <span class="rotulo-cores-editor">Cores desta peça — qualquer uma serve para montar:</span>
+                ${coresHtml}
+                <button type="button" class="secundario pequeno" onclick="adicionarCorBOM(${idx})">+ Adicionar cor</button>
+            </div>
+        </div>`;
     }).join('');
 }
 
@@ -371,12 +392,12 @@ $('inputFotoPecaProdutos')?.addEventListener('change', async function(e) {
 });
 
 function adicionarLinhaBOM() {
-    bomLinhasEditor.push({ peca_id: 0, nome: '', cor: '', quantidade: 1, estoque: 0, foto: '' });
+    bomLinhasEditor.push(novaLinhaPeca());
     renderizarEditorBOM();
-    // Foca no primeiro input da nova linha
+    // Foca no nome da peça recém-criada
     setTimeout(() => {
-        const inputs = $('tabelaEditorBOM').querySelectorAll('input[type="text"]');
-        if (inputs.length) inputs[inputs.length - 2].focus();
+        const nomes = $('listaEditorBOM').querySelectorAll('.nome-peca-editor');
+        if (nomes.length) nomes[nomes.length - 1].focus();
     }, 40);
 }
 
@@ -386,33 +407,66 @@ function removerLinhaBOM(idx) {
 }
 
 function atualizarLinhaBOM(idx, campo, valor) {
-    if (bomLinhasEditor[idx]) {
-        if (campo === 'quantidade') {
-            bomLinhasEditor[idx][campo] = Math.max(1, parseInt(valor) || 1);
-        } else if (campo === 'estoque') {
-            bomLinhasEditor[idx][campo] = Math.max(0, parseInt(valor) || 0);
-        } else {
-            bomLinhasEditor[idx][campo] = valor;
-        }
+    if (!bomLinhasEditor[idx]) return;
+    if (campo === 'quantidade') {
+        bomLinhasEditor[idx][campo] = Math.max(1, parseInt(valor) || 1);
+    } else {
+        bomLinhasEditor[idx][campo] = valor;
+    }
+}
+
+function adicionarCorBOM(idx) {
+    if (!bomLinhasEditor[idx]) return;
+    bomLinhasEditor[idx].cores.push(novaLinhaCor());
+    renderizarEditorBOM();
+    setTimeout(() => {
+        const blocos = $('listaEditorBOM').querySelectorAll('.bloco-peca-editor');
+        const inputs = blocos[idx]?.querySelectorAll('.linha-cor-editor input[type="text"]');
+        if (inputs && inputs.length) inputs[inputs.length - 1].focus();
+    }, 40);
+}
+
+function removerCorBOM(idx, cidx) {
+    const linha = bomLinhasEditor[idx];
+    if (!linha || linha.cores.length <= 1) return; // toda peça precisa de ao menos 1 cor
+    linha.cores.splice(cidx, 1);
+    renderizarEditorBOM();
+}
+
+function atualizarCorBOM(idx, cidx, campo, valor) {
+    const cor = bomLinhasEditor[idx]?.cores[cidx];
+    if (!cor) return;
+    if (campo === 'estoque') {
+        cor[campo] = Math.max(0, parseInt(valor) || 0);
+    } else {
+        cor[campo] = valor;
     }
 }
 
 async function salvarBOM() {
     if (!bomProdutoAtualId) return;
 
-    // Filtrar linhas com nome preenchido
-    // peca_id vai junto para o servidor casar as linhas por id: peça que já
-    // existe mantém o saldo impresso (quem manda nele é a Bancada da Fábrica).
+    // Filtra peças com nome preenchido. peca_id e cor_id vão junto para o
+    // servidor casar as linhas por id: peça/cor que já existe mantém o
+    // saldo impresso (quem manda nele é a Bancada da Fábrica).
     const itensValidos = bomLinhasEditor
         .filter(l => (l.nome || '').trim() !== '')
         .map(l => ({
             peca_id: parseInt(l.peca_id) || 0,
             nome: l.nome.trim(),
-            cor: (l.cor || '').trim(),
             quantidade: Math.max(1, parseInt(l.quantidade) || 1),
-            estoque: Math.max(0, parseInt(l.estoque) || 0), // só usado em peça nova
-            foto: (l.foto || '').trim()
+            foto: (l.foto || '').trim(),
+            cores: l.cores.map(c => ({
+                cor_id: parseInt(c.cor_id) || 0,
+                cor: (c.cor || '').trim(),
+                estoque: Math.max(0, parseInt(c.estoque) || 0), // só usado em cor nova
+            })),
         }));
+
+    if (!itensValidos.length) {
+        App.toast('Cadastre ao menos uma peça com nome antes de salvar.', 'erro');
+        return;
+    }
 
     const btn = $('btnSalvarBOM');
     btn.disabled = true;
@@ -446,9 +500,9 @@ $('btnSalvarBOM')?.addEventListener('click', salvarBOM);
 window.abrirFicha = abrirFicha;
 window.removerLinhaBOM = removerLinhaBOM;
 window.atualizarLinhaBOM = atualizarLinhaBOM;
+window.adicionarCorBOM = adicionarCorBOM;
+window.removerCorBOM = removerCorBOM;
+window.atualizarCorBOM = atualizarCorBOM;
 window.uploadFotoPecaProdutos = uploadFotoPecaProdutos;
 
 carregar();
-
-
-

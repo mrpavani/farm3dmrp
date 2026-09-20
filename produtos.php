@@ -147,15 +147,15 @@ require __DIR__ . '/includes/header.php';
         </div>
 
         <!-- Tabela de Diagnóstico / Peças -->
-        <div class="tabela-rolagem" style="margin-bottom: 18px; max-height: 220px; overflow-y: auto;">
+        <div class="tabela-rolagem" style="margin-bottom: 18px; max-height: 240px; overflow-y: auto;">
             <table>
                 <thead>
                     <tr>
                         <th style="width: 44px; text-align: center;">Foto</th>
                         <th>Peça / Componente</th>
-                        <th>Cor</th>
+                        <th>Cores (estoque)</th>
                         <th class="num">Qtd / un</th>
-                        <th class="num">Estoque</th>
+                        <th class="num">Estoque total</th>
                         <th class="num">Para a Meta</th>
                         <th>Situação / Balanço</th>
                     </tr>
@@ -164,28 +164,19 @@ require __DIR__ . '/includes/header.php';
             </table>
         </div>
 
-        <!-- Editor da Ficha Técnica (Cadastro de Peças: Nome, Cor, Quantidade e Estoque) -->
+        <!-- Editor da Ficha Técnica: cada peça pode ter uma ou mais cores, -->
+        <!-- cada cor com seu próprio saldo (ex.: Chave de Fenda em Cinza e Laranja). -->
         <details style="border-top: 1px solid var(--border); padding-top: 14px; margin-top: 8px;" open>
             <summary style="font-weight: 600; cursor: pointer; color: var(--primary); padding: 4px 0;">
-                ⚙️ Configurar Peças do Produto (Nome, Cor, Quantidade e Saldo de Peças)
+                ⚙️ Configurar Peças do Produto (Nome, Quantidade e Cores)
             </summary>
             <div style="margin-top: 12px;">
-                <p style="font-size: 13px; color: var(--text-3); margin-bottom: 10px;">Cadastre cada peça necessária para montar 1 unidade do produto final (ex: Hélice, Rotator, Pés) com a cor e saldo atual.</p>
-                <div class="tabela-rolagem" style="max-height: 240px; overflow-y: auto;">
-                    <table class="tabela-bom-editor">
-                        <thead>
-                            <tr>
-                                <th style="width: 44px; text-align: center;">Foto</th>
-                                <th>Nome da Peça</th>
-                                <th style="width: 130px;">Cor</th>
-                                <th style="width: 90px;">Qtd / un</th>
-                                <th style="width: 110px;">Estoque Peças</th>
-                                <th style="width: 44px; text-align: center;">Ação</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tabelaEditorBOM"></tbody>
-                    </table>
-                </div>
+                <p style="font-size: 13px; color: var(--text-3); margin-bottom: 10px;">
+                    Cadastre cada peça necessária para montar 1 unidade do produto final (ex: Hélice, Rotator, Pés).
+                    Se a peça existir em mais de uma cor (ex: Cinza e Laranja), adicione uma linha de cor para cada —
+                    qualquer uma serve para montar. Deixe sem nome de cor quando a cor não importa.
+                </p>
+                <div class="lista-editor-bom" id="listaEditorBOM"></div>
 
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
                     <button type="button" id="btnAdicionarLinhaBOM" class="secundario" style="font-size: 13px;">

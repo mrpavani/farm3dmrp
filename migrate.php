@@ -156,6 +156,61 @@ try {
     }
 }
 
+// 10. Peça pode ter mais de uma cor (ex.: Chave de Fenda em Cinza e em
+//     Laranja) ou nenhuma cor fixa (ex.: Suporte, "qualquer cor"). cor e
+//     estoque saem de produto_pecas e passam para produto_pecas_cores —
+//     uma ou mais variantes por peça, cada uma com seu próprio saldo.
+try {
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS produto_pecas_cores (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            peca_id INT NOT NULL,
+            cor VARCHAR(50) DEFAULT NULL,
+            estoque INT NOT NULL DEFAULT 0,
+            foto VARCHAR(255) DEFAULT NULL,
+            criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (peca_id) REFERENCES produto_pecas(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB
+    ");
+    echo "<p>✅ Tabela <b>produto_pecas_cores</b> criada/verificada com sucesso!</p>";
+} catch (PDOException $e) {
+    echo "<p>❌ Erro ao criar tabela <b>produto_pecas_cores</b>: " . htmlspecialchars($e->getMessage()) . "</p>";
+}
+
+try {
+    $pdo->exec("CREATE INDEX idx_pecas_cores_peca ON produto_pecas_cores(peca_id)");
+    echo "<p>✅ Índice em <b>produto_pecas_cores.peca_id</b> criado.</p>";
+} catch (PDOException $e) {
+    if (strpos($e->getMessage(), 'Duplicate key name') !== false) {
+        echo "<p>⚠️ Índice já existe em <i>produto_pecas_cores</i>.</p>";
+    } else {
+        echo "<p>❌ Erro ao criar índice em produto_pecas_cores: " . htmlspecialchars($e->getMessage()) . "</p>";
+    }
+}
+
+// Migra os dados existentes só se produto_pecas ainda tem as colunas cor e
+// estoque (ou seja, esta etapa ainda não rodou nesse banco).
+try {
+    $temColunaCor = $pdo->query("SHOW COLUMNS FROM produto_pecas LIKE 'cor'")->fetch();
+    if ($temColunaCor) {
+        $n = $pdo->exec("
+            INSERT INTO produto_pecas_cores (peca_id, cor, estoque, foto, criado_em)
+            SELECT pp.id, pp.cor, pp.estoque, pp.foto, pp.criado_em
+            FROM produto_pecas pp
+            WHERE NOT EXISTS (SELECT 1 FROM produto_pecas_cores WHERE peca_id = pp.id)
+        ");
+        echo "<p>↳ {$n} peça(s) migrada(s) para <b>produto_pecas_cores</b>, com a cor e o saldo que já tinham.</p>";
+
+        $pdo->exec("ALTER TABLE produto_pecas DROP COLUMN cor");
+        $pdo->exec("ALTER TABLE produto_pecas DROP COLUMN estoque");
+        echo "<p>✅ Colunas <b>cor</b> e <b>estoque</b> removidas de <i>produto_pecas</i> (agora vivem em produto_pecas_cores, uma linha por variante).</p>";
+    } else {
+        echo "<p>⚠️ <i>produto_pecas</i> já não tem as colunas cor/estoque — esta etapa já tinha sido aplicada.</p>";
+    }
+} catch (PDOException $e) {
+    echo "<p>❌ Erro ao migrar peças para produto_pecas_cores: " . htmlspecialchars($e->getMessage()) . "</p>";
+}
+
 echo "<h2>Migração finalizada.</h2>";
 echo "<p><a href='fabrica.php'>Ir para o Painel da Fábrica</a> · <a href='produtos.php'>Ir para Produtos</a></p>";
 

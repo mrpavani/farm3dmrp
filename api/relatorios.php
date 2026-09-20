@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/estoque.php';
 $usuario = exigirLoginApi();
 $pdo = getDB();
 
@@ -98,6 +99,7 @@ $resumo = consultar($pdo, "
 ", $params)[0];
 
 // ---------- Por produto: pedido x produzido x falta ----------
+$sqlMontavelProduto = sqlProdutoMontavel('prod.id');
 $porProduto = consultar($pdo, "
     SELECT prod.id, prod.nome, prod.preco AS preco_tabela,
            ROUND(SUM(pi.quantidade * pi.preco_unitario) / NULLIF(SUM(pi.quantidade), 0), 2) AS preco,
@@ -108,8 +110,7 @@ $porProduto = consultar($pdo, "
            SUM(CASE WHEN $vivo THEN $falta * pi.preco_unitario ELSE 0 END) AS valor_falta,
            COUNT(DISTINCT p.id) AS pedidos,
            prod.estoque AS estoque_pronto,
-           (SELECT MIN(FLOOR(pp.estoque / GREATEST(pp.quantidade, 1)))
-              FROM produto_pecas pp WHERE pp.produto_id = prod.id) AS montavel
+           {$sqlMontavelProduto} AS montavel
     $baseSql
     GROUP BY prod.id, prod.nome, prod.preco, prod.estoque
     ORDER BY qtd_pedida DESC, prod.nome
@@ -199,8 +200,7 @@ $aFabricar = consultar($pdo, "
            MIN(p.data_entrega_prometida) AS entrega_mais_proxima,
            DATEDIFF(MIN(p.data_entrega_prometida), CURDATE()) AS dias,
            COUNT(DISTINCT p.id) AS pedidos,
-           (SELECT MIN(FLOOR(pp.estoque / GREATEST(pp.quantidade, 1)))
-              FROM produto_pecas pp WHERE pp.produto_id = prod.id) AS montavel
+           {$sqlMontavelProduto} AS montavel
     $baseSql AND $pendente
     GROUP BY prod.id, prod.nome, prod.estoque
     HAVING falta_produzir > 0

@@ -7,9 +7,14 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     jsonError('Método não suportado.', 405);
 }
 
-$pecaId = (int) ($_POST['peca_id'] ?? 0);
-$produtoId = (int) ($_POST['produto_id'] ?? 0);
-$pastaAlvo = $pecaId ? 'uploads/pecas/' : 'uploads/produtos/';
+// peca_id/cor_id/produto_id vêm em $_POST no envio multipart (Opção 1); no
+// envio por base64 (Opção 2) vêm junto no corpo JSON, que o PHP não põe em
+// $_POST. Lê o corpo uma única vez aqui para os dois casos enxergarem os ids.
+$corpo = empty($_FILES['foto']['name']) ? readJsonBody() : [];
+$pecaId = (int) ($_POST['peca_id'] ?? $corpo['peca_id'] ?? 0);
+$corId = (int) ($_POST['cor_id'] ?? $corpo['cor_id'] ?? 0);
+$produtoId = (int) ($_POST['produto_id'] ?? $corpo['produto_id'] ?? 0);
+$pastaAlvo = ($pecaId || $corId) ? 'uploads/pecas/' : 'uploads/produtos/';
 $caminhoAbsolutoPasta = __DIR__ . '/../' . $pastaAlvo;
 
 if (!is_dir($caminhoAbsolutoPasta)) {
@@ -33,7 +38,7 @@ if (!empty($_FILES['foto']['name']) && $_FILES['foto']['error'] === UPLOAD_ERR_O
         jsonError('A imagem deve ter no máximo 8MB.');
     }
 
-    $prefixo = $pecaId ? "peca_{$pecaId}_" : ($produtoId ? "prod_{$produtoId}_" : "img_");
+    $prefixo = $corId ? "cor_{$corId}_" : ($pecaId ? "peca_{$pecaId}_" : ($produtoId ? "prod_{$produtoId}_" : "img_"));
     $nomeArquivo = $prefixo . bin2hex(random_bytes(6)) . '.' . $ext;
     $destino = $caminhoAbsolutoPasta . $nomeArquivo;
 
@@ -42,8 +47,7 @@ if (!empty($_FILES['foto']['name']) && $_FILES['foto']['error'] === UPLOAD_ERR_O
     }
 } else {
     // Opção 2: Receber Base64 (ex: imagem da webcam ou crop)
-    $b = readJsonBody();
-    $base64 = $b['base64'] ?? '';
+    $base64 = $corpo['base64'] ?? '';
     if (!empty($base64)) {
         if (preg_match('/^data:image\/(\w+);base64,/', $base64, $tipo)) {
             $ext = strtolower($tipo[1]);
@@ -55,7 +59,7 @@ if (!empty($_FILES['foto']['name']) && $_FILES['foto']['error'] === UPLOAD_ERR_O
             $dadosBinarios = base64_decode($base64);
             if ($dadosBinarios === false) jsonError('Imagem base64 inválida.');
 
-            $prefixo = $pecaId ? "peca_{$pecaId}_" : "img_";
+            $prefixo = $corId ? "cor_{$corId}_" : ($pecaId ? "peca_{$pecaId}_" : "img_");
             $nomeArquivo = $prefixo . bin2hex(random_bytes(6)) . '.' . $ext;
             file_put_contents($caminhoAbsolutoPasta . $nomeArquivo, $dadosBinarios);
         }
@@ -68,7 +72,13 @@ if (!$nomeArquivo) {
 
 $urlRelativa = $pastaAlvo . $nomeArquivo;
 
-// Se enviou peca_id, atualiza no banco
+// Se enviou cor_id, é a foto de uma variante de cor específica da peça.
+if ($corId) {
+    $stmt = $pdo->prepare("UPDATE produto_pecas_cores SET foto = :foto WHERE id = :id");
+    $stmt->execute(['foto' => $urlRelativa, 'id' => $corId]);
+}
+
+// Se enviou peca_id, é a foto padrão/de referência da peça.
 if ($pecaId) {
     $stmt = $pdo->prepare("UPDATE produto_pecas SET foto = :foto WHERE id = :id");
     $stmt->execute(['foto' => $urlRelativa, 'id' => $pecaId]);
@@ -84,5 +94,6 @@ jsonResponse([
     'ok' => true,
     'foto' => $urlRelativa,
     'peca_id' => $pecaId,
+    'cor_id' => $corId,
     'produto_id' => $produtoId
 ]);
