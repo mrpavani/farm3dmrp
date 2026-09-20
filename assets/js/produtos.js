@@ -322,9 +322,14 @@ function renderizarEditorBOM() {
                        style="width: 100%; text-align: center;">
             </td>
             <td>
-                <input type="number" min="0" value="${linha.estoque || 0}" 
-                       oninput="atualizarLinhaBOM(${idx}, 'estoque', this.value)" 
-                       style="width: 100%; text-align: center;">
+                ${linha.peca_id
+                    ? `<input type="number" value="${linha.estoque || 0}" readonly tabindex="-1"
+                              title="O saldo é atualizado na Bancada da Fábrica, a cada peça impressa."
+                              style="width: 100%; text-align: center; background: var(--surface-3); color: var(--text-3); cursor: not-allowed;">`
+                    : `<input type="number" min="0" value="${linha.estoque || 0}"
+                              oninput="atualizarLinhaBOM(${idx}, 'estoque', this.value)"
+                              title="Saldo inicial desta peça nova."
+                              style="width: 100%; text-align: center;">`}
             </td>
             <td style="text-align: center;">
                 <button type="button" class="btn-icone perigo" onclick="removerLinhaBOM(${idx})" data-tip="Remover peça">
@@ -396,13 +401,16 @@ async function salvarBOM() {
     if (!bomProdutoAtualId) return;
 
     // Filtrar linhas com nome preenchido
+    // peca_id vai junto para o servidor casar as linhas por id: peça que já
+    // existe mantém o saldo impresso (quem manda nele é a Bancada da Fábrica).
     const itensValidos = bomLinhasEditor
         .filter(l => (l.nome || '').trim() !== '')
         .map(l => ({
+            peca_id: parseInt(l.peca_id) || 0,
             nome: l.nome.trim(),
             cor: (l.cor || '').trim(),
             quantidade: Math.max(1, parseInt(l.quantidade) || 1),
-            estoque: Math.max(0, parseInt(l.estoque) || 0),
+            estoque: Math.max(0, parseInt(l.estoque) || 0), // só usado em peça nova
             foto: (l.foto || '').trim()
         }));
 

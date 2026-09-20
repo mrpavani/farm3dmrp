@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/estoque.php';
 $usuario = exigirLoginApi();
 $pdo = getDB();
 $method = $_SERVER['REQUEST_METHOD'];
@@ -446,6 +447,22 @@ if ($method === 'DELETE') {
         $prodStmt->execute(['id' => $id]);
         if ((int) $prodStmt->fetchColumn() > 0) {
             throw new Exception('Este pedido já tem produção registrada e não pode ser excluído. Use "Cancelar".');
+        }
+
+        // Devolve ao estoque o que o pedido tinha reservado na criação.
+        // Sem isso o produto pronto sumia junto com o pedido (o "cancelar"
+        // já devolvia; o "excluir" não).
+        $itensStmt = $pdo->prepare("SELECT produto_id, quantidade_estoque FROM pedido_itens WHERE pedido_id = :id AND quantidade_estoque > 0");
+        $itensStmt->execute(['id' => $id]);
+        $devolve = $pdo->prepare("UPDATE produtos SET estoque = estoque + :qtd WHERE id = :id");
+        foreach ($itensStmt->fetchAll() as $it) {
+            $devolve->execute(['qtd' => $it['quantidade_estoque'], 'id' => $it['produto_id']]);
+            registrarMovimento($pdo, 'pedido_estorno', [
+                'produto_id'  => (int) $it['produto_id'],
+                'quantidade'  => (int) $it['quantidade_estoque'],
+                'usuario_id'  => $usuario['id'],
+                'observacoes' => "Exclusão do pedido #$id",
+            ]);
         }
 
         // pedido_itens é removido em cascata (ON DELETE CASCADE)

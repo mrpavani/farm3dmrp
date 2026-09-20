@@ -231,43 +231,63 @@ if ($method === 'POST') {
         $nome = trim($item['nome'] ?? '');
         if ($nome === '') continue;
 
-        $qtd = max(1, (int) ($item['quantidade'] ?? 1));
         $cor = trim($item['cor'] ?? '');
-        $estoque = max(0, (int) ($item['estoque'] ?? 0));
         $foto = trim($item['foto'] ?? '');
 
         $pecasLimpos[] = [
+            'peca_id' => (int) ($item['peca_id'] ?? 0),
             'nome' => $nome,
-            'quantidade' => $qtd,
+            'quantidade' => max(1, (int) ($item['quantidade'] ?? 1)),
             'cor' => $cor === '' ? null : $cor,
-            'estoque' => $estoque,
+            // Só vale para peça nova: o saldo de peça já cadastrada pertence à
+            // Bancada e nunca é sobrescrito por este formulário de cadastro.
+            'estoque_inicial' => max(0, (int) ($item['estoque'] ?? 0)),
             'foto' => $foto === '' ? null : $foto
         ];
     }
 
     $pdo->beginTransaction();
     try {
-        // Substitui a lista de peças do produto
-        $stmtDel = $pdo->prepare("DELETE FROM produto_pecas WHERE produto_id = :pai_id");
-        $stmtDel->execute(['pai_id' => $paiId]);
+        // Upsert por id: quem continua na lista mantém o id (e o saldo), quem
+        // sumiu é removido, quem chegou é inserido. Nunca DELETE + INSERT geral,
+        // senão o estoque impresso e o histórico de movimentos viram órfãos.
+        $stmtAtuais = $pdo->prepare("SELECT id FROM produto_pecas WHERE produto_id = :pai_id FOR UPDATE");
+        $stmtAtuais->execute(['pai_id' => $paiId]);
+        $idsAtuais = array_map('intval', $stmtAtuais->fetchAll(PDO::FETCH_COLUMN));
 
-        if (!empty($pecasLimpos)) {
-            $stmtIns = $pdo->prepare("
-                INSERT INTO produto_pecas (produto_id, nome, quantidade, cor, estoque, foto)
-                VALUES (:produto_id, :nome, :qtd, :cor, :estoque, :foto)
-            ");
-            foreach ($pecasLimpos as $p) {
+        $stmtUpd = $pdo->prepare("
+            UPDATE produto_pecas SET nome = :nome, quantidade = :qtd, cor = :cor, foto = :foto
+            WHERE id = :id AND produto_id = :produto_id
+        ");
+        $stmtIns = $pdo->prepare("
+            INSERT INTO produto_pecas (produto_id, nome, quantidade, cor, estoque, foto)
+            VALUES (:produto_id, :nome, :qtd, :cor, :estoque, :foto)
+        ");
+
+        $mantidos = [];
+        foreach ($pecasLimpos as $p) {
+            if ($p['peca_id'] && in_array($p['peca_id'], $idsAtuais, true)) {
+                $stmtUpd->execute([
+                    'nome' => $p['nome'], 'qtd' => $p['quantidade'], 'cor' => $p['cor'],
+                    'foto' => $p['foto'], 'id' => $p['peca_id'], 'produto_id' => $paiId,
+                ]);
+                $mantidos[] = $p['peca_id'];
+            } else {
                 $stmtIns->execute([
-                    'produto_id' => $paiId,
-                    'nome' => $p['nome'],
-                    'qtd' => $p['quantidade'],
-                    'cor' => $p['cor'],
-                    'estoque' => $p['estoque'],
-                    'foto' => $p['foto']
+                    'produto_id' => $paiId, 'nome' => $p['nome'], 'qtd' => $p['quantidade'],
+                    'cor' => $p['cor'], 'estoque' => $p['estoque_inicial'], 'foto' => $p['foto'],
                 ]);
             }
+        }
 
-            // Atualiza tipo do produto para 'composto' se houver peças cadastradas
+        $removidos = array_diff($idsAtuais, $mantidos);
+        if ($removidos) {
+            $in = implode(',', array_fill(0, count($removidos), '?'));
+            $pdo->prepare("DELETE FROM produto_pecas WHERE produto_id = ? AND id IN ($in)")
+                ->execute(array_merge([$paiId], array_values($removidos)));
+        }
+
+        if (!empty($pecasLimpos)) {
             $pdo->prepare("UPDATE produtos SET tipo = 'composto' WHERE id = :id AND tipo <> 'composto'")
                 ->execute(['id' => $paiId]);
         }
@@ -276,7 +296,8 @@ if ($method === 'POST') {
 
         jsonResponse([
             'ok' => true,
-            'total_pecas' => count($pecasLimpos)
+            'total_pecas' => count($pecasLimpos),
+            'removidas' => count($removidos),
         ]);
     } catch (Exception $e) {
         $pdo->rollBack();

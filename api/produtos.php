@@ -156,12 +156,7 @@ if ($method === 'DELETE') {
         jsonError('Este produto já foi usado em pedidos e não pode ser excluído. Desative-o para que não apareça mais nos pedidos.');
     }
 
-    $usoBOM = $pdo->prepare("SELECT COUNT(*) FROM produto_composicao WHERE componente_id = :id");
-    $usoBOM->execute(['id' => $id]);
-    if ((int) $usoBOM->fetchColumn() > 0) {
-        jsonError('Este item é componente de um produto composto e não pode ser excluído. Remova-o da ficha técnica primeiro ou desative-o.');
-    }
-
+    // As peças do produto saem junto (produto_pecas tem ON DELETE CASCADE).
     $stmt = $pdo->prepare("DELETE FROM produtos WHERE id = :id");
     $stmt->execute(['id' => $id]);
     if ($stmt->rowCount() === 0) jsonError('Produto não encontrado.', 404);
