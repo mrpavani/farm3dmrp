@@ -71,8 +71,43 @@ function acoesPedido(p) {
     return `<div class="acoes-icones">${b.join('')}</div>`;
 }
 
-function botaoProducao(itemId, produtoNome, restante, pedidoId) {
-    return `<button class="pequeno suave" onclick="abrirModalProducao(${itemId}, ${esc(JSON.stringify(produtoNome))}, ${restante}, ${pedidoId})">Registrar produção</button>`;
+function botaoProducao(item, restante, pedidoId, itemId) {
+    const pronto = Number(item.produto_estoque) || 0;
+    const montavel = (item.produto_montavel === null || item.produto_montavel === undefined)
+        ? 'null' : Number(item.produto_montavel);
+    return `<button class="pequeno suave" onclick="abrirModalProducao(${itemId}, ${esc(JSON.stringify(item.produto_nome))}, ${restante}, ${pedidoId}, ${pronto}, ${montavel})">Registrar produção</button>`;
+}
+
+// Diz, por item de pedido, de onde as unidades que faltam podem sair:
+// do estoque de produto pronto, de uma montagem, ou de nenhum dos dois.
+function disponibilidadeItem(i) {
+    const restante = Number(i.quantidade) - Number(i.quantidade_produzida);
+    const pronto = Number(i.produto_estoque) || 0;
+    // NULL = produto sem ficha técnica (impresso direto, sem montagem).
+    const montavel = i.produto_montavel === null || i.produto_montavel === undefined
+        ? null : Number(i.produto_montavel);
+
+    const doEstoque = Math.min(pronto, restante);
+    const faltaApos = restante - doEstoque;
+    const podeMontar = montavel === null ? 0 : Math.min(montavel, faltaApos);
+
+    return { restante, pronto, montavel, doEstoque, faltaApos, podeMontar,
+             cobreTudo: doEstoque + podeMontar >= restante && restante > 0 };
+}
+
+function etiquetaDisponibilidade(i) {
+    const d = disponibilidadeItem(i);
+    if (d.restante <= 0) return '';
+    if (d.doEstoque >= d.restante) {
+        return `<span class="tag-disp pronto" title="Há ${d.pronto} un. montadas no estoque">✓ ${fmtInt.format(d.doEstoque)} em estoque</span>`;
+    }
+    if (d.cobreTudo) {
+        return `<span class="tag-disp montar" title="Peças suficientes para montar o que falta">⚒ dá para montar</span>`;
+    }
+    if (d.doEstoque > 0 || d.podeMontar > 0) {
+        return `<span class="tag-disp parcial">${fmtInt.format(d.doEstoque + d.podeMontar)} de ${fmtInt.format(d.restante)} disponíveis</span>`;
+    }
+    return `<span class="tag-disp falta">sem peças</span>`;
 }
 
 function renderizarPedidos(pedidos) {
@@ -94,10 +129,10 @@ function renderizarPedidos(pedidos) {
             const restante = i.quantidade - i.quantidade_produzida;
             let acao = '';
             if (restante <= 0) acao = '<span class="concluido">✓ Concluído</span>';
-            else if (!finalizado) acao = botaoProducao(i.id, i.produto_nome, restante, p.id);
+            else if (!finalizado) acao = botaoProducao(i, restante, p.id, i.id);
             return `
                 <tr>
-                    <td><strong>${esc(i.produto_nome)}</strong></td>
+                    <td><strong>${esc(i.produto_nome)}</strong>${estoque || finalizado ? '' : etiquetaDisponibilidade(i)}</td>
                     <td class="num">${i.quantidade}</td>
                     <td class="num">${i.quantidade_produzida}</td>
                     <td class="num">${restante}</td>
@@ -228,7 +263,7 @@ function renderizarFabricar(d) {
                 <td class="num">${i.quantidade_produzida}</td>
                 <td class="num"><strong>${i.restante}</strong></td>
                 <td>${esc(i.usuario_nome || '—')}</td>
-                <td style="text-align:right">${botaoProducao(i.item_id, i.produto_nome, Number(i.restante), i.pedido_id)}</td>
+                <td style="text-align:right">${botaoProducao(i, Number(i.restante), i.pedido_id, i.item_id)}</td>
             </tr>`).join('');
 
         const qtdEstoque = Number(g.restante_estoque);
@@ -266,7 +301,7 @@ function renderizarFabricar(d) {
 // ============================================================
 // Registrar produção
 // ============================================================
-function abrirModalProducao(pedidoItemId, produtoNome, restante, pedidoId) {
+function abrirModalProducao(pedidoItemId, produtoNome, restante, pedidoId, pronto = 0, montavel = null) {
     itemAtualId = pedidoItemId;
     restanteAtual = restante;
     $('modalItemInfo').textContent = `${produtoNome} · ordem #${pedidoId} · faltam ${restante} unidade(s)`;
@@ -274,6 +309,28 @@ function abrirModalProducao(pedidoItemId, produtoNome, restante, pedidoId) {
     $('modalQuantidade').value = restante;
     $('modalQuantidade').max = restante;
     $('modalObs').value = '';
+
+    // Mostra de onde as unidades vão sair e, se precisar montar, deixa o
+    // atalho "montar e aplicar" pronto para o operador confirmar.
+    const temFicha = montavel !== null;
+    const doEstoque = Math.min(pronto, restante);
+    const faltaApos = restante - doEstoque;
+    const podeMontar = temFicha ? Math.min(montavel, faltaApos) : 0;
+
+    const partes = [`<b>${fmtInt.format(pronto)}</b> pronto(s) em estoque`];
+    if (temFicha) partes.push(`<b>${fmtInt.format(montavel)}</b> montável(is) com as peças`);
+    $('modalDisponibilidade').innerHTML = partes.join(' · ');
+
+    const linhaMontar = $('modalLinhaMontar');
+    const check = $('modalMontarSeFaltar');
+    const precisaMontar = faltaApos > 0 && podeMontar > 0;
+    linhaMontar.hidden = !precisaMontar;
+    check.checked = precisaMontar;
+    if (precisaMontar) {
+        $('modalMontarTexto').innerHTML =
+            `Montar <b>${fmtInt.format(podeMontar)}</b> un. agora (baixa as peças do estoque) — o estoque pronto cobre só ${fmtInt.format(doEstoque)}.`;
+    }
+
     App.modal.abrir('modalProducao', '#modalQuantidade');
     setTimeout(() => $('modalQuantidade').select(), 60);
 }
@@ -291,9 +348,11 @@ async function confirmarProducao() {
             data_producao: $('modalData').value,
             quantidade,
             observacoes: $('modalObs').value,
+            montar_se_faltar: $('modalMontarSeFaltar').checked,
         });
         const pronto = r.status_pedido === 'pronto' ? ' A ordem ficou PRONTA.' : '';
-        App.toast(`Produção registrada por ${window.USUARIO.nome}.${pronto}`);
+        const montou = r.montadas_agora > 0 ? ` ${fmtInt.format(r.montadas_agora)} un. montada(s).` : '';
+        App.toast(`Produção registrada por ${window.USUARIO.nome}.${montou}${pronto}`);
         App.modal.fechar('modalProducao');
         recarregar();
     } catch (e) {
@@ -373,17 +432,162 @@ function corHex(cor) {
     return map[c] || '#64748b';
 }
 
+let produtosVisiveis = [];
+
 async function carregarPecasFabrica() {
     try {
         dadosPecasCarregados = await App.api('api/fabrica_pecas.php');
-        popularFiltrosPecas(dadosPecasCarregados);
         renderizarPecasFabrica();
     } catch (e) {
         App.toast(e.message, 'erro');
     }
 }
 
-// Filtros simplificados (sem select de produto/cor)
+// Recalcula no cliente tudo o que depende do saldo das peças, para o card
+// responder na hora ao [+] sem precisar recarregar a bancada inteira.
+//   rende    = quantos produtos esta peça sozinha permite montar
+//   montavel = o menor rendimento entre as peças (o gargalo manda)
+function recalcularProduto(p) {
+    let montavel = Infinity;
+    p.pecas.forEach(peca => {
+        peca.rende = Math.floor(Math.max(0, peca.estoque) / Math.max(1, peca.por_unidade));
+        peca.necessario_pedidos = p.demanda_liquida * peca.por_unidade;
+        peca.a_imprimir = Math.max(0, peca.necessario_pedidos - peca.estoque);
+        montavel = Math.min(montavel, peca.rende);
+    });
+    p.montavel = montavel === Infinity ? 0 : montavel;
+    p.gargalos = p.pecas.filter(x => x.rende === p.montavel).map(nomeComCor);
+    p.total_a_imprimir = p.pecas.reduce((s, x) => s + x.a_imprimir, 0);
+    return p;
+}
+
+const nomeComCor = peca => peca.nome + (peca.cor && peca.cor !== 'Padrão' ? ` (${peca.cor})` : '');
+
+// ---------- Cabeçalho do produto: os números da decisão ----------
+function cabecalhoProduto(p) {
+    const classe = p.montavel === 0
+        ? 'vazia'
+        : (p.demanda_liquida > 0 && p.montavel >= p.demanda_liquida ? 'completa' : 'parcial');
+
+    const nomes = p.gargalos.slice(0, 2).map(esc).join(' e ')
+        + (p.gargalos.length > 2 ? ` +${p.gargalos.length - 2}` : '');
+    const legenda = (p.demanda_liquida > 0 && p.montavel >= p.demanda_liquida)
+        ? 'dá para fechar os pedidos'
+        : (nomes ? `gargalo: ${nomes}` : 'sem peças cadastradas');
+
+    const prazo = p.proxima_entrega
+        ? `<span class="prazo-produto">entrega ${App.data(p.proxima_entrega)}${App.etiquetaPrazo(p.proxima_entrega)}</span>`
+        : '';
+
+    // Sugestão de quanto montar: o que os pedidos pedem, limitado ao possível.
+    const sugestao = p.demanda_liquida > 0 ? Math.min(p.montavel, p.demanda_liquida) : p.montavel;
+
+    const fotoProd = p.foto
+        ? `<img src="${esc(p.foto)}" alt="${esc(p.nome)}" loading="lazy">`
+        : `<div class="peca-foto-placeholder">Sem foto</div>`;
+
+    return `
+        <div class="produto-header">
+            <div class="produto-foto">${fotoProd}</div>
+            <div class="produto-info">
+                <h3>${esc(p.nome)}${prazo}</h3>
+                <div class="produto-metricas">
+                    <span class="metrica-montavel ${classe}" title="Unidades que dá para montar agora com as peças já impressas.">
+                        <span class="mm-topo">Montável agora <strong>${fmtInt.format(p.montavel)}</strong></span>
+                        <small>${legenda}</small>
+                    </span>
+                    <span>A fabricar <strong>${fmtInt.format(p.em_producao)}</strong></span>
+                    <span>Estoque pronto <strong>${fmtInt.format(p.estoque)}</strong></span>
+                </div>
+                <div class="bancada-montar">
+                    <label for="qtdMontar-${p.id}">Montar</label>
+                    <input type="number" id="qtdMontar-${p.id}" class="meta-input" min="1"
+                           max="${p.montavel}" value="${sugestao > 0 ? sugestao : 1}" ${p.montavel ? '' : 'disabled'}>
+                    <button type="button" class="pequeno" onclick="montarAgora(${p.id})" ${p.montavel ? '' : 'disabled'}>
+                        Montar e mandar ao estoque
+                    </button>
+                    ${p.montavel ? '' : '<span class="dica-meta">imprima as peças do gargalo para liberar</span>'}
+                </div>
+            </div>
+        </div>`;
+}
+
+// ---------- Linha de peça: saldo editável na própria linha ----------
+function linhaPeca(p, peca) {
+    const foto = peca.foto
+        ? `<img src="${esc(peca.foto)}" alt="${esc(peca.nome)}" loading="lazy">`
+        : `<div class="peca-foto-placeholder min">Sem foto</div>`;
+
+    const situacao = peca.a_imprimir > 0
+        ? `<span class="alerta">Faltam ${fmtInt.format(peca.a_imprimir)}</span>`
+        : `<span class="ok">Suficiente</span>`;
+
+    return `
+        <div class="linha-peca-produto" data-peca="${peca.peca_id}">
+            <div class="foto-miniatura" onclick="abrirUploadFotoPeca(${peca.peca_id})" title="Clique para trocar a foto">${foto}</div>
+            <div class="info-peca">
+                <strong>${esc(peca.nome)}</strong>
+                <span class="badge-cor-min" style="background:${corHex(peca.cor)};"></span> ${esc(peca.cor)}
+                <br><span class="qtd-un">${peca.por_unidade} un/produto · rende ${fmtInt.format(peca.rende)} produto(s)</span>
+            </div>
+            <div class="produzir-peca">${situacao}</div>
+            <div class="stepper-peca">
+                <button type="button" class="btn-step" onclick="ajustarPeca(${peca.peca_id}, -1)" title="Tirar 1 do saldo">−</button>
+                <input type="number" class="saldo-peca" min="0" value="${peca.estoque}"
+                       onchange="definirSaldoPeca(${peca.peca_id}, this.value)"
+                       title="Saldo em estoque — edite para corrigir a contagem">
+                <button type="button" class="btn-step mais" onclick="ajustarPeca(${peca.peca_id}, 1)" title="Imprimiu mais 1">+</button>
+            </div>
+            <div class="acoes-peca">
+                <button type="button" class="pequeno secundario" onclick="abrirModalProduzirPeca(${peca.peca_id}, ${p.id})" title="Registrar um lote maior">+ Lote</button>
+            </div>
+        </div>`;
+}
+
+function conteudoCardProduto(p) {
+    return cabecalhoProduto(p) + `
+        <div class="produto-pecas">
+            <h4>Peças (${p.pecas.length}) · ${fmtInt.format(p.total_pecas_por_unidade)} por produto montado</h4>
+            <div class="lista-pecas">${p.pecas.map(peca => linhaPeca(p, peca)).join('')}</div>
+        </div>`;
+}
+
+// Redesenha só o card mexido, preservando o scroll e o resto da tela.
+function atualizarCardProduto(p) {
+    const card = document.querySelector(`.card-produto-fabrica[data-produto="${p.id}"]`);
+    if (card) card.innerHTML = conteudoCardProduto(p);
+}
+
+function atualizarResumoPecas() {
+    const totalAImprimir = produtosVisiveis.reduce((s, p) => s + p.total_a_imprimir, 0);
+    const totalEstoque = produtosVisiveis.reduce((s, p) => s + p.pecas.reduce((a, x) => a + x.estoque, 0), 0);
+    const comFila = produtosVisiveis.reduce((s, p) => s + p.pecas.filter(x => x.a_imprimir > 0).length, 0);
+    const totalMontavel = produtosVisiveis.reduce((s, p) => s + p.montavel, 0);
+    const produtosMontaveis = produtosVisiveis.filter(p => p.montavel > 0).length;
+
+    $('pecasResumo').innerHTML = `
+        <div class="kpi kpi-montavel">
+            <div class="rotulo">Montável agora</div>
+            <div class="valor">${fmtInt.format(totalMontavel)}</div>
+            <div class="sub">unidades prontas para montar, em ${fmtInt.format(produtosMontaveis)} produto(s)</div>
+        </div>
+        <div class="kpi ${totalAImprimir > 0 ? 'kpi-alerta' : ''}">
+            <div class="rotulo">Total a Imprimir</div>
+            <div class="valor">${fmtInt.format(totalAImprimir)}</div>
+            <div class="sub">peças pendentes para os pedidos abertos</div>
+        </div>
+        <div class="kpi">
+            <div class="rotulo">Peças com Fila</div>
+            <div class="valor">${fmtInt.format(comFila)}</div>
+            <div class="sub">modelos precisando de impressão</div>
+        </div>
+        <div class="kpi">
+            <div class="rotulo">Estoque de Peças</div>
+            <div class="valor">${fmtInt.format(totalEstoque)}</div>
+            <div class="sub">peças soltas prontas na bancada</div>
+        </div>
+    `;
+}
 
 function renderizarPecasFabrica() {
     if (!dadosPecasCarregados) return;
@@ -391,164 +595,146 @@ function renderizarPecasFabrica() {
     const termo = App.normalizar($('pecaBusca').value.trim());
     const statusFiltro = $('pecaFiltroStatus').value;
 
-    const filtradas = (dadosPecasCarregados.produtos || []).filter(p => {
-        if (termo && !App.normalizar(`${p.nome}`).includes(termo)) return false;
-        
-        const pecasFila = p.pecas.reduce((s, peca) => s + peca.a_imprimir, 0);
-        if (statusFiltro === 'imprimir' && pecasFila <= 0) return false;
-        if (statusFiltro === 'ok' && pecasFila > 0) return false;
-        return true;
-    });
+    produtosVisiveis = (dadosPecasCarregados.produtos || [])
+        .map(recalcularProduto)
+        .filter(p => {
+            if (termo && !App.normalizar(p.nome).includes(termo)) return false;
+            if (statusFiltro === 'imprimir' && p.total_a_imprimir <= 0) return false;
+            if (statusFiltro === 'ok' && p.total_a_imprimir > 0) return false;
+            if (statusFiltro === 'montavel' && p.montavel <= 0) return false;
+            return true;
+        });
 
-    // Renderizar KPIs
-    const totalAImprimir = dadosPecasCarregados.resumo.total_a_imprimir || 0;
-    const totalEstoque = dadosPecasCarregados.resumo.total_estoque || 0;
-    const comFila = dadosPecasCarregados.resumo.pecas_com_fila || 0;
-
-    $('pecasResumo').innerHTML = `
-        <div class="kpi ${totalAImprimir > 0 ? 'atrasado' : 'sucesso'}">
-            <span class="rotulo">Total a Imprimir</span>
-            <span class="valor">${fmtInt.format(totalAImprimir)}</span>
-            <span class="sub">unidades de peças pendentes</span>
-        </div>
-        <div class="kpi ${comFila > 0 ? 'proximo' : ''}">
-            <span class="rotulo">Peças com Fila</span>
-            <span class="valor">${fmtInt.format(comFila)}</span>
-            <span class="sub">modelos precisando de produção</span>
-        </div>
-        <div class="kpi">
-            <span class="rotulo">Estoque de Peças</span>
-            <span class="valor">${fmtInt.format(totalEstoque)}</span>
-            <span class="sub">peças soltas prontas no estoque</span>
-        </div>
-        <div class="kpi">
-            <span class="rotulo">Produtos Catalogados</span>
-            <span class="valor">${fmtInt.format(filtradas.length)}</span>
-            <span class="sub">produtos no sistema</span>
-        </div>
-    `;
+    atualizarResumoPecas();
 
     const container = $('gridPecasFabrica');
-    if (!filtradas.length) {
-        container.innerHTML = `<div style="grid-column: 1 / -1;">${App.estadoVazio('📦', 'Nenhum produto encontrado', 'Ajuste os filtros ou cadastre novos produtos.')}</div>`;
+    if (!produtosVisiveis.length) {
+        container.innerHTML = `<div style="grid-column: 1 / -1;">${App.estadoVazio('📦', 'Nenhum produto encontrado', 'Ajuste os filtros ou cadastre as peças do produto em Produtos → Ficha Técnica.')}</div>`;
         return;
     }
 
-    container.innerHTML = filtradas.map(p => {
-        const pecasHtml = p.pecas.map(peca => {
-            const precisaImprimir = peca.a_imprimir > 0;
-            const fotoPeca = peca.foto
-                ? `<img src="${esc(peca.foto)}" alt="${esc(peca.nome)}" loading="lazy">`
-                : `<div class="peca-foto-placeholder min">Sem foto</div>`;
-
-            return `
-                <div class="linha-peca-produto">
-                    <div class="foto-miniatura">
-                        ${fotoPeca}
-                    </div>
-                    <div class="info-peca">
-                        <strong>${esc(peca.nome)}</strong> 
-                        <span class="badge-cor-min" style="background:${corHex(peca.cor)};"></span> ${esc(peca.cor)}
-                        <br><span class="qtd-un">Qtd: ${peca.por_unidade} un/produto</span>
-                    </div>
-                    <div class="estoque-peca">
-                        Estoque: <strong>${fmtInt.format(peca.estoque)}</strong>
-                    </div>
-                    <div class="produzir-peca">
-                        <span class="${precisaImprimir ? 'alerta' : 'ok'}">
-                            ${precisaImprimir ? `Faltam ${fmtInt.format(peca.a_imprimir)}` : 'Suficiente'}
-                        </span>
-                    </div>
-                    <div class="acoes-peca">
-                        <button type="button" class="pequeno" onclick="abrirModalProduzirPeca(${peca.peca_id}, ${p.id})">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><path d="M12 5v14M5 12h14"/></svg> Produzir
-                        </button>
-                    </div>
-                </div>
-            `;
-        }).join('');
-
-        const fotoProd = p.foto
-            ? `<img src="${esc(p.foto)}" alt="${esc(p.nome)}" loading="lazy">`
-            : `<div class="peca-foto-placeholder">Sem foto</div>`;
-
-        return `
-        <article class="card-produto-fabrica">
-            <div class="produto-header">
-                <div class="produto-foto">
-                    ${fotoProd}
-                </div>
-                <div class="produto-info">
-                    <h3>${esc(p.nome)}</h3>
-                    <div class="produto-metricas">
-                        <span>Estoque Pronto: <strong>${p.estoque}</strong></span>
-                        <span>Em Produção: <strong>${p.em_producao}</strong></span>
-                    </div>
-                    <div class="simulador-meta">
-                        <label>Meta Desejada:</label>
-                        <input type="number" min="0" value="${p.em_producao}" class="meta-input" data-produto="${p.id}" onchange="recalcularMetaProduto(${p.id}, this.value)">
-                        <span class="dica-meta">(Baseado em pedidos)</span>
-                    </div>
-                </div>
-            </div>
-            <div class="produto-pecas">
-                <h4>Peças (${p.pecas.length})</h4>
-                <div class="lista-pecas" id="lista-pecas-${p.id}">
-                    ${pecasHtml}
-                </div>
-            </div>
-        </article>`;
-    }).join('');
+    container.innerHTML = produtosVisiveis.map(p =>
+        `<article class="card-produto-fabrica" data-produto="${p.id}">${conteudoCardProduto(p)}</article>`
+    ).join('');
 }
 
-window.recalcularMetaProduto = function(prodId, meta) {
-    const metaNum = parseInt(meta) || 0;
-    const p = (dadosPecasCarregados.produtos || []).find(x => x.id === prodId);
+// ---------- Ações de saldo ----------
+function produtoDaPeca(pecaId) {
+    return (dadosPecasCarregados.produtos || []).find(p => p.pecas.some(x => x.peca_id === pecaId));
+}
+
+function aplicarNovoSaldo(pecaId, novoEstoque) {
+    // Se ainda há cliques não enviados, o valor local já está à frente do
+    // servidor: deixa como está, o próximo envio reconcilia.
+    if (pendentesPeca.has(pecaId)) return;
+    const p = produtoDaPeca(pecaId);
     if (!p) return;
+    p.pecas.find(x => x.peca_id === pecaId).estoque = Number(novoEstoque);
+    recalcularProduto(p);
+    atualizarCardProduto(p);
+    atualizarResumoPecas();
+    agendarContador();
+}
 
-    // A meta desejada afeta a quantidade a_imprimir das peças localmente na interface
-    // Demanda Líquida Base = Meta
-    const demandaLiquidaProd = Math.max(0, metaNum - p.estoque);
+// Contadores das abas: agrupa, para clicar [+] dez vezes não virar 20 requisições.
+let timerContador = null;
+function agendarContador() {
+    clearTimeout(timerContador);
+    timerContador = setTimeout(atualizarContador, 700);
+}
 
-    const pecasHtml = p.pecas.map(peca => {
-        const necessario = demandaLiquidaProd * peca.por_unidade;
-        const aImprimir = Math.max(0, necessario - peca.estoque);
-        const precisaImprimir = aImprimir > 0;
-        
-        const fotoPeca = peca.foto
-            ? `<img src="${esc(peca.foto)}" alt="${esc(peca.nome)}" loading="lazy">`
-            : `<div class="peca-foto-placeholder min">Sem foto</div>`;
+// Cliques rápidos no [+] somam na tela na hora e vão ao servidor agrupados,
+// para nenhum clique ser perdido enquanto uma gravação está em andamento.
+const pendentesPeca = new Map();   // peca_id -> { delta, timer }
 
-        return `
-            <div class="linha-peca-produto">
-                <div class="foto-miniatura">
-                    ${fotoPeca}
-                </div>
-                <div class="info-peca">
-                    <strong>${esc(peca.nome)}</strong> 
-                    <span class="badge-cor-min" style="background:${corHex(peca.cor)};"></span> ${esc(peca.cor)}
-                    <br><span class="qtd-un">Qtd: ${peca.por_unidade} un/produto</span>
-                </div>
-                <div class="estoque-peca">
-                    Estoque: <strong>${fmtInt.format(peca.estoque)}</strong>
-                </div>
-                <div class="produzir-peca">
-                    <span class="${precisaImprimir ? 'alerta' : 'ok'}">
-                        ${precisaImprimir ? `Faltam ${fmtInt.format(aImprimir)}` : 'Suficiente'}
-                    </span>
-                </div>
-                <div class="acoes-peca">
-                    <button type="button" class="pequeno" onclick="abrirModalProduzirPeca(${peca.peca_id}, ${p.id})">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><path d="M12 5v14M5 12h14"/></svg> Produzir
-                    </button>
-                </div>
-            </div>
-        `;
-    }).join('');
+function ajustarPeca(pecaId, delta) {
+    const p = produtoDaPeca(pecaId);
+    if (!p) return;
+    const peca = p.pecas.find(x => x.peca_id === pecaId);
+    if (peca.estoque + delta < 0) return;      // não deixa negativar
 
-    const lista = $('lista-pecas-' + prodId);
-    if (lista) lista.innerHTML = pecasHtml;
-};
+    peca.estoque += delta;                      // resposta imediata na tela
+    recalcularProduto(p);
+    atualizarCardProduto(p);
+    atualizarResumoPecas();
+
+    const pend = pendentesPeca.get(pecaId) || { delta: 0, timer: null };
+    pend.delta += delta;
+    clearTimeout(pend.timer);
+    pend.timer = setTimeout(() => enviarPendentePeca(pecaId), 500);
+    pendentesPeca.set(pecaId, pend);
+}
+
+// [+] entra no histórico como "peça produzida"; [−] como ajuste de contagem.
+async function enviarPendentePeca(pecaId) {
+    const pend = pendentesPeca.get(pecaId);
+    if (!pend || !pend.delta) { pendentesPeca.delete(pecaId); return; }
+
+    const delta = pend.delta;
+    pendentesPeca.delete(pecaId);
+    try {
+        const r = delta > 0
+            ? await App.api('api/fabrica_pecas.php?acao=registrar_producao_peca', 'POST',
+                { peca_id: pecaId, quantidade: delta })
+            : await App.api('api/fabrica_pecas.php?acao=ajustar_saldo_peca', 'POST',
+                { peca_id: pecaId, delta });
+        aplicarNovoSaldo(pecaId, r.novo_estoque);
+    } catch (e) {
+        App.toast(e.message, 'erro');
+        carregarPecasFabrica();
+    }
+}
+
+// Garante que nada pendente se perca ao trocar de aba ou sair da página.
+function enviarTodosPendentes() {
+    [...pendentesPeca.keys()].forEach(id => {
+        clearTimeout(pendentesPeca.get(id).timer);
+        enviarPendentePeca(id);
+    });
+}
+window.addEventListener('beforeunload', enviarTodosPendentes);
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') enviarTodosPendentes();
+});
+
+async function definirSaldoPeca(pecaId, valor) {
+    const novo = Math.max(0, parseInt(valor, 10) || 0);
+    clearTimeout(pendentesPeca.get(pecaId)?.timer);
+    pendentesPeca.delete(pecaId);   // digitar o saldo exato manda nos cliques pendentes
+    try {
+        const r = await App.api('api/fabrica_pecas.php?acao=ajustar_saldo_peca', 'POST',
+            { peca_id: pecaId, estoque: novo });
+        aplicarNovoSaldo(pecaId, r.novo_estoque);
+        App.toast('Saldo corrigido.');
+    } catch (e) {
+        App.toast(e.message, 'erro');
+        carregarPecasFabrica();
+    }
+}
+
+// Montagem: baixa as peças da ficha técnica e gera produto pronto no estoque.
+async function montarAgora(prodId) {
+    const p = produtosVisiveis.find(x => x.id === prodId);
+    if (!p) return;
+    const qtd = parseInt($(`qtdMontar-${prodId}`)?.value, 10) || 0;
+    if (qtd <= 0) return App.toast('Informe quantas unidades montar.', 'erro');
+    if (qtd > p.montavel) return App.toast(`Só dá para montar ${p.montavel} agora.`, 'erro');
+
+    const ok = await App.confirmar(
+        `Montar ${qtd} un. de "${p.nome}"? As peças saem do estoque e viram produto pronto.`,
+        { titulo: 'Montar produto', botao: `Montar ${qtd}` });
+    if (!ok) return;
+
+    try {
+        const r = await App.api('api/fabrica_pecas.php?acao=montar', 'POST',
+            { produto_id: prodId, quantidade: qtd });
+        App.toast(r.mensagem);
+        await carregarPecasFabrica();   // a montagem mexe em várias peças de uma vez
+        atualizarContador();
+    } catch (e) {
+        App.toast(e.message, 'erro');
+    }
+}
 
 // Upload de Foto de Peça
 function abrirUploadFotoPeca(pecaId) {
@@ -675,6 +861,9 @@ $('modalPecaQtd').addEventListener('keydown', e => { if (e.key === 'Enter') conf
 // Tornar funções globais para onclick nos cards
 window.abrirUploadFotoPeca = abrirUploadFotoPeca;
 window.abrirModalProduzirPeca = abrirModalProduzirPeca;
+window.ajustarPeca = ajustarPeca;
+window.definirSaldoPeca = definirSaldoPeca;
+window.montarAgora = montarAgora;
 
 carregarProdutosFiltro();
 const abaInicial = location.hash === '#pecas' ? 'pecas' : (location.hash === '#fabricar' ? 'fabricar' : 'pedidos');

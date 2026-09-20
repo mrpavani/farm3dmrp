@@ -17,7 +17,7 @@ require __DIR__ . '/includes/header.php';
                 Fabricar <span class="contador" id="contadorFabricar" hidden></span>
             </button>
             <button type="button" role="tab" class="aba" data-aba="pecas" aria-selected="false" aria-controls="abaPecas">
-                Peças para Imprimir <span class="contador" id="contadorPecas" hidden></span>
+                Bancada <span class="contador" id="contadorPecas" hidden></span>
             </button>
         </div>
         <button type="button" id="btnNovaOrdemEstoque">
@@ -108,6 +108,7 @@ require __DIR__ . '/includes/header.php';
                     <select id="pecaFiltroStatus">
                         <option value="">Todos os produtos</option>
                         <option value="imprimir">Com peças a imprimir</option>
+                        <option value="montavel">Prontos para montar</option>
                         <option value="ok">Estoque de peças suficiente</option>
                     </select>
                 </div>
@@ -117,7 +118,9 @@ require __DIR__ . '/includes/header.php';
                 </div>
             </div>
             <p class="vazio" style="margin:12px 0 0;">
-                Visão focada no <strong>Produto</strong>. A quantidade a produzir de cada peça é baseada na demanda de pedidos. Você pode simular a meta desejada.
+                Cada vez que imprimir uma peça, use <strong>+</strong> na linha dela: o saldo grava na hora e o
+                <strong>Montável agora</strong> do produto se atualiza sozinho. Quando o número cobrir o que você precisa,
+                clique em <strong>Montar</strong> — as peças saem do estoque e viram produto pronto.
             </p>
         </div>
 
@@ -138,6 +141,7 @@ require __DIR__ . '/includes/header.php';
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
             </button>
         </div>
+        <p class="disponibilidade-modal" id="modalDisponibilidade"></p>
         <div class="linha">
             <div>
                 <label for="modalQuantidade">Quantidade produzida</label>
@@ -148,6 +152,10 @@ require __DIR__ . '/includes/header.php';
                 <input type="date" id="modalData">
             </div>
         </div>
+        <label class="linha-montar" id="modalLinhaMontar" hidden>
+            <input type="checkbox" id="modalMontarSeFaltar">
+            <span id="modalMontarTexto"></span>
+        </label>
         <label for="modalObs">Observações</label>
         <textarea id="modalObs" rows="2" placeholder="Opcional"></textarea>
         <p class="vazio" style="margin:12px 0 0;">Será registrado por <strong><?= e($usuario['nome']) ?></strong>.</p>

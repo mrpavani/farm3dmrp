@@ -490,9 +490,12 @@ td.sem-borda .estado-vazio { border: 0; padding: 30px 10px; }
 }
 .kpi .rotulo { font-size: 12px; font-weight: 500; color: var(--text-3); }
 .kpi .valor { font-size: 26px; font-weight: 700; letter-spacing: -.02em; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.kpi .sub { font-size: 11.5px; color: var(--text-3); margin-top: 2px; }
 .kpi-alerta { background: var(--danger-bg); border-color: var(--danger-bd); }
 .kpi-alerta .valor, .kpi-alerta .rotulo { color: var(--danger); }
 .kpi-estoque .valor { color: var(--violet); }
+.kpi-montavel { background: var(--success-bg); border-color: var(--success-bd); }
+.kpi-montavel .valor, .kpi-montavel .rotulo { color: var(--success); }
 
 /* ---------- Pedidos (cartões) ---------- */
 .pedido-bloco {
@@ -631,6 +634,7 @@ td.contato a:hover { color: var(--primary); }
 /* ---------- Relatórios ---------- */
 .atalhos { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 14px; }
 .barra-dia { background: linear-gradient(90deg, #818cf8, var(--primary)); height: 8px; border-radius: 999px; min-width: 3px; }
+
 
 /* ---------- Login ---------- */
 .pagina-login {
@@ -893,6 +897,21 @@ td.contato a:hover { color: var(--primary); }
 }
 .produto-metricas span { background: var(--surface); padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border-strong); }
 .produto-metricas strong { color: var(--text); font-variant-numeric: tabular-nums; }
+
+/* "Montável agora": unidades que saem do estoque de peças sem imprimir nada. */
+.produto-metricas .metrica-montavel {
+    display: inline-flex; flex-direction: column; align-items: flex-start;
+    padding: 6px 12px; line-height: 1.25;
+}
+.metrica-montavel .mm-topo { display: flex; align-items: baseline; gap: 7px; font-weight: 600; }
+.metrica-montavel strong { font-size: 20px; line-height: 1.1; }
+.metrica-montavel small { font-size: 11.5px; font-weight: 400; color: var(--text-3); }
+.produto-metricas .metrica-montavel.completa { background: var(--success-bg); border-color: var(--success-bd); color: var(--success); }
+.metrica-montavel.completa strong, .metrica-montavel.completa small { color: var(--success); }
+.produto-metricas .metrica-montavel.parcial { background: var(--violet-bg); border-color: var(--violet-bd); color: var(--violet); }
+.metrica-montavel.parcial strong { color: var(--violet); }
+.produto-metricas .metrica-montavel.vazia { background: var(--danger-bg); border-color: var(--danger-bd); color: var(--danger); }
+.metrica-montavel.vazia strong, .metrica-montavel.vazia small { color: var(--danger); }
 .simulador-meta {
     display: flex; align-items: center; gap: 10px; font-size: 13.5px; font-weight: 500; color: var(--text);
 }
@@ -912,7 +931,7 @@ td.contato a:hover { color: var(--primary); }
     display: flex; flex-direction: column; gap: 8px;
 }
 .linha-peca-produto {
-    display: grid; grid-template-columns: 50px 1.5fr 1fr 1fr 100px; gap: 14px; align-items: center;
+    display: grid; grid-template-columns: 50px minmax(0,1.6fr) 1fr 132px 86px; gap: 14px; align-items: center;
     padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm);
     background: var(--surface); transition: background .1s;
 }
@@ -933,15 +952,59 @@ td.contato a:hover { color: var(--primary); }
 .produzir-peca .ok { color: var(--success-solid); background: var(--success-bg); padding: 2px 8px; border-radius: 6px; }
 .acoes-peca { text-align: right; }
 
+/* Stepper de saldo: grava a cada clique, sem modal e sem botão "salvar". */
+.stepper-peca { display: flex; align-items: center; gap: 4px; justify-content: center; }
+.btn-step {
+    width: 30px; height: 32px; min-height: 32px; padding: 0; flex: none;
+    font-size: 17px; font-weight: 700; line-height: 1; border-radius: var(--radius-sm);
+    background: var(--surface-3); color: var(--text-2); border: 1px solid var(--border-strong); box-shadow: none;
+}
+.btn-step:hover { background: var(--surface-2); color: var(--text); }
+.btn-step.mais { background: var(--success-bg); color: var(--success); border-color: var(--success-bd); }
+.btn-step.mais:hover { background: var(--success-solid); color: #fff; border-color: var(--success-solid); }
+.saldo-peca {
+    width: 58px; height: 32px; min-height: 32px; margin: 0; padding: 0 4px;
+    text-align: center; font-weight: 700; font-size: 15px; font-variant-numeric: tabular-nums;
+}
+
+/* Bloco de montagem no cabeçalho do produto. */
+.bancada-montar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13.5px; }
+.bancada-montar label { margin: 0; font-weight: 600; white-space: nowrap; }
+.bancada-montar .meta-input { width: 66px; }
+.prazo-produto { font-size: 12px; font-weight: 500; color: var(--text-3); margin-left: 10px; white-space: nowrap; }
+
+/* Etiqueta de disponibilidade no item do pedido. */
+.tag-disp {
+    display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 6px;
+    font-size: 11.5px; font-weight: 600; white-space: nowrap; border: 1px solid transparent;
+}
+.tag-disp.pronto  { background: var(--success-bg); color: var(--success); border-color: var(--success-bd); }
+.tag-disp.montar  { background: var(--violet-bg);  color: var(--violet);  border-color: var(--violet-bd); }
+.tag-disp.parcial { background: var(--warning-bg); color: var(--warning); border-color: var(--warning-bd); }
+.tag-disp.falta   { background: var(--danger-bg);  color: var(--danger);  border-color: var(--danger-bd); }
+
+/* Modal de produção: de onde saem as unidades. */
+.disponibilidade-modal {
+    margin: 10px 0 0; padding: 8px 12px; border-radius: var(--radius-sm);
+    background: var(--surface-3); color: var(--text-2); font-size: 13px;
+}
+.linha-montar {
+    display: flex; align-items: flex-start; gap: 9px; margin-top: 12px; padding: 10px 12px;
+    border: 1px solid var(--violet-bd); background: var(--violet-bg); border-radius: var(--radius-sm);
+    font-size: 13px; font-weight: 500; color: var(--text); cursor: pointer;
+}
+.linha-montar input[type="checkbox"] { width: 16px; height: 16px; margin: 2px 0 0; flex: none; accent-color: var(--violet); }
+
 @media (max-width: 768px) {
     .linha-peca-produto {
-        grid-template-columns: 50px 1fr; grid-template-rows: auto auto auto; gap: 10px;
+        grid-template-columns: 50px 1fr auto; grid-template-rows: auto auto auto; gap: 10px;
     }
     .info-peca { grid-column: 2 / -1; }
-    .estoque-peca { grid-column: 1 / 3; text-align: left; }
     .produzir-peca { grid-column: 1 / 2; text-align: left; }
-    .acoes-peca { grid-column: 2 / 3; text-align: right; }
+    .stepper-peca { grid-column: 2 / 3; justify-content: flex-start; }
+    .acoes-peca { grid-column: 3 / 4; text-align: right; }
     .produto-foto { width: 80px; }
     .produto-info { padding: 12px 16px; }
-    .produto-metricas { flex-direction: column; gap: 8px; }
+    .produto-metricas { flex-direction: column; gap: 8px; align-items: stretch; }
+    .prazo-produto { display: block; margin: 4px 0 0; }
 }
