@@ -216,21 +216,8 @@ if ($method === 'POST') {
             $preco = precoAtualProduto($pdo, (int) $item['produto_id']);
 
             if ($tipo === 'venda') {
-                $prodStmt = $pdo->prepare("SELECT estoque FROM produtos WHERE id = :id FOR UPDATE");
-                $prodStmt->execute(['id' => $item['produto_id']]);
-                $estoqueAtual = (int) $prodStmt->fetchColumn();
-
-                if ($estoqueAtual > 0) {
-                    $qtdEstoque = min($qtd, $estoqueAtual);
-                    $updEstoque->execute(['qtd' => $qtdEstoque, 'id' => $item['produto_id']]);
-                    registrarMovimento($pdo, 'pedido_atendido', [
-                        'produto_id'   => (int) $item['produto_id'],
-                        'quantidade'   => -$qtdEstoque,
-                        'saldo_depois' => $estoqueAtual - $qtdEstoque,
-                        'usuario_id'   => $usuario['id'],
-                        'observacoes'  => "Alocado do estoque na criação do pedido #$pedidoId",
-                    ]);
-                }
+                // Alocação automática desativada: o estoque não será puxado automaticamente
+                // para o pedido na criação. O usuário alocará manualmente.
             }
 
             $itemStmt->execute([
@@ -316,21 +303,8 @@ if ($method === 'PUT') {
             if (!$itemId) {
                 $qtdEstoque = 0;
                 if ($pedido['tipo'] === 'venda') {
-                    $prodStmt = $pdo->prepare("SELECT estoque FROM produtos WHERE id = :id FOR UPDATE");
-                    $prodStmt->execute(['id' => $produtoId]);
-                    $estoqueAtual = (int) $prodStmt->fetchColumn();
-                    if ($estoqueAtual > 0) {
-                        $qtdEstoque = min($qtd, $estoqueAtual);
-                        $pdo->prepare("UPDATE produtos SET estoque = estoque - :qtd WHERE id = :id")
-                            ->execute(['qtd' => $qtdEstoque, 'id' => $produtoId]);
-                        registrarMovimento($pdo, 'pedido_atendido', [
-                            'produto_id'   => $produtoId,
-                            'quantidade'   => -$qtdEstoque,
-                            'saldo_depois' => $estoqueAtual - $qtdEstoque,
-                            'usuario_id'   => $usuario['id'],
-                            'observacoes'  => "Alocado do estoque ao adicionar item no pedido #$id",
-                        ]);
-                    }
+                    // Alocação automática desativada: o estoque não será puxado automaticamente
+                    // ao adicionar novo item. O usuário alocará manualmente.
                 }
                 $insStmt->execute([
                     'pedido_id' => $id,

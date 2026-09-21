@@ -69,10 +69,9 @@ window.FormPedido = (() => {
             <select data-role="produto" aria-label="Produto" ${produzido > 0 ? 'disabled' : ''}>${opcoes}</select>
             <span class="preco-item" data-role="preco">—</span>
             <input type="number" data-role="quantidade" aria-label="Quantidade" inputmode="numeric"
-                   min="${Math.max(1, produzido)}" value="${item ? item.quantidade : 1}">
-            ${produzido > 0
-                ? `<span class="info-produzido" title="Já atendido">${badges.join(' e ')}</span>`
-                : App.botaoIcone('excluir', 'Remover produto', '', 'perigo')}`;
+                   min="${Math.max(1, prodFabrica)}" value="${item ? item.quantidade : 1}">
+            ${badges.length ? `<span class="info-produzido" title="Já atendido">${badges.join(' e ')}</span>` : ''}
+            ${prodFabrica === 0 ? App.botaoIcone('excluir', 'Remover produto', '', 'perigo') : ''}`;
 
         const sel = div.querySelector('[data-role="produto"]');
         const atualizar = () => {
