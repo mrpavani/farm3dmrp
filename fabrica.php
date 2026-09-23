@@ -10,14 +10,19 @@ require __DIR__ . '/includes/header.php';
 <main>
     <div id="msg" aria-live="polite"></div>
 
+    <!-- Painel de Cards Numéricos da Linha de Produção -->
+    <div class="resumo-grid kpis-fabrica-topo" id="fabricaHeroKpis"></div>
+
     <div class="card-titulo" style="margin-bottom:18px;">
         <div class="abas" role="tablist" style="margin:0;">
-            <button type="button" role="tab" class="aba" data-aba="pedidos" aria-selected="true" aria-controls="abaPedidos">Pedidos</button>
+            <button type="button" role="tab" class="aba" data-aba="pedidos" aria-selected="true" aria-controls="abaPedidos">
+                Pedidos <span class="contador" id="contadorPedidos" hidden></span>
+            </button>
             <button type="button" role="tab" class="aba" data-aba="fabricar" aria-selected="false" aria-controls="abaFabricar">
-                Fabricar <span class="contador" id="contadorFabricar" hidden></span>
+                Visão por Produto <span class="contador" id="contadorFabricar" hidden></span>
             </button>
             <button type="button" role="tab" class="aba" data-aba="pecas" aria-selected="false" aria-controls="abaPecas">
-                Bancada <span class="contador" id="contadorPecas" hidden></span>
+                Linha de Produção / Bancada <span class="contador" id="contadorPecas" hidden></span>
             </button>
         </div>
         <button type="button" id="btnNovaOrdemEstoque">
@@ -28,7 +33,7 @@ require __DIR__ . '/includes/header.php';
 
     <!-- ===================== ABA PEDIDOS ===================== -->
     <section id="abaPedidos" role="tabpanel">
-        <div class="card">
+        <div class="card card-filtros-fabrica">
             <div class="filtros">
                 <div>
                     <label for="tipoFiltro">Origem</label>
@@ -68,16 +73,20 @@ require __DIR__ . '/includes/header.php';
 
     <!-- ===================== ABA FABRICAR ===================== -->
     <section id="abaFabricar" role="tabpanel" hidden>
-        <div class="card">
+        <div class="card card-filtros-fabrica">
             <div class="filtros">
+                <div style="flex: 1.5; min-width: 200px;">
+                    <label for="fabProdutoBusca">Buscar por produto</label>
+                    <input type="search" id="fabProdutoBusca" placeholder="Filtrar por nome do produto…">
+                </div>
                 <div>
                     <label for="fabEntregaAte">Entrega até</label>
                     <input type="date" id="fabEntregaAte">
                 </div>
                 <div>
-                    <label for="fabProduto">Produto</label>
+                    <label for="fabProduto">Selecionar</label>
                     <select id="fabProduto">
-                        <option value="">Todos</option>
+                        <option value="">Todos os produtos</option>
                     </select>
                 </div>
                 <div class="acoes">
@@ -85,10 +94,6 @@ require __DIR__ . '/includes/header.php';
                     <button type="button" class="secundario" id="btnFabAtualizar">Atualizar</button>
                 </div>
             </div>
-            <p class="vazio" style="margin:12px 0 0;">
-                Soma, por produto, o que falta produzir nos pedidos de clientes e nas ordens de estoque
-                <strong>abertos</strong> ou <strong>em produção</strong>, com a data de entrega de cada um.
-            </p>
         </div>
 
         <div class="resumo-grid" id="fabResumo"></div>
@@ -97,19 +102,22 @@ require __DIR__ . '/includes/header.php';
 
     <!-- ===================== ABA PRODUTOS & PRODUÇÃO ===================== -->
     <section id="abaPecas" role="tabpanel" hidden>
-        <div class="card">
+        <div class="card card-filtros-fabrica">
             <div class="filtros">
-                <div style="flex: 1.5; min-width: 180px;">
-                    <label for="pecaBusca">Buscar produto</label>
-                    <input type="search" id="pecaBusca" placeholder="Nome do produto...">
+                <div style="flex: 1.6; min-width: 200px;">
+                    <label for="pecaBusca">Buscar produto ou peça</label>
+                    <div class="busca-input-wrap">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                        <input type="search" id="pecaBusca" placeholder="Digite o nome do produto (ex.: Suporte, Helicóptero)...">
+                    </div>
                 </div>
                 <div>
                     <label for="pecaFiltroStatus">Status da Fila</label>
                     <select id="pecaFiltroStatus">
                         <option value="">Todos os produtos</option>
-                        <option value="imprimir">Com peças a imprimir</option>
-                        <option value="montavel">Prontos para montar</option>
-                        <option value="ok">Estoque de peças suficiente</option>
+                        <option value="montavel">🚀 Prontos para montar</option>
+                        <option value="imprimir">🖨️ Com peças a imprimir</option>
+                        <option value="ok">✅ Estoque suficiente</option>
                     </select>
                 </div>
                 <div class="acoes">
@@ -117,15 +125,38 @@ require __DIR__ . '/includes/header.php';
                     <button type="button" class="secundario" id="btnPecasAtualizar">Atualizar</button>
                 </div>
             </div>
-            <p class="vazio" style="margin:12px 0 0;">
-                Cada vez que imprimir uma peça, use <strong>+</strong> na linha dela: o saldo grava na hora e o
-                <strong>Montável agora</strong> do produto se atualiza sozinho. Quando o número cobrir o que você precisa,
-                clique em <strong>Montar</strong> — as peças saem do estoque e viram produto pronto.
-            </p>
+
+            <!-- Filtros rápidos de 1 clique em pílulas -->
+            <div class="pills-filtros-rapidos" id="pillsFiltrosFabrica">
+                <button type="button" class="pill-filtro ativo" data-filtro="">Todos os produtos</button>
+                <button type="button" class="pill-filtro" data-filtro="montavel">🚀 Prontos para montar (<span id="countPillMontavel">0</span>)</button>
+                <button type="button" class="pill-filtro" data-filtro="imprimir">🖨️ A imprimir (<span id="countPillImprimir">0</span>)</button>
+                <button type="button" class="pill-filtro" data-filtro="ok">✅ Peças OK</button>
+            </div>
         </div>
 
         <div class="resumo-grid" id="pecasResumo"></div>
-        <div class="lista-produtos-fabrica" id="gridPecasFabrica"></div>
+
+        <!-- Listagem de Produtos / Linha de Produção -->
+        <section class="card card-lista">
+            <div class="tabela-rolagem">
+                <table class="tabela-bancada-fabrica">
+                    <thead>
+                        <tr>
+                            <th style="min-width: 220px;">Produto</th>
+                            <th style="min-width: 140px;">Prazo &amp; Fila</th>
+                            <th style="min-width: 200px;">Situação / Gargalo</th>
+                            <th style="width: 130px;" class="num">Montável Agora</th>
+                            <th style="width: 110px;" class="num">A Fabricar</th>
+                            <th style="width: 110px;" class="num">Estoque</th>
+                            <th style="width: 130px;" class="num">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="gridPecasFabrica"></tbody>
+                </table>
+            </div>
+            <div class="rodape-lista" id="rodapePecas"></div>
+        </section>
     </section>
 </main>
 
@@ -209,6 +240,63 @@ require __DIR__ . '/includes/header.php';
         <div class="modal-rodape">
             <button type="button" class="secundario" data-fechar-modal>Cancelar</button>
             <button type="button" id="btnConfirmarNovaCor">Adicionar cor</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Gerenciar peças e atualizar peças fabricadas de um produto -->
+<div id="modalGerenciarPecas" class="modal" hidden>
+    <div class="card modal-caixa modal-pecas-gerenciar" role="dialog" aria-modal="true" aria-labelledby="modalGerenciarPecasTitulo">
+        <div class="modal-cabecalho">
+            <div class="modal-titulo-com-foto">
+                <div id="modalGerenciarPecasFoto" class="modal-prod-foto"></div>
+                <div>
+                    <h2 id="modalGerenciarPecasTitulo">Peças do Produto</h2>
+                    <p id="modalGerenciarPecasSub" class="modal-sub"></p>
+                </div>
+            </div>
+            <button type="button" class="btn-icone" data-fechar-modal aria-label="Fechar">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
+        </div>
+        
+        <!-- Resumo / Métricas Rápidas do Produto no Modal -->
+        <div class="modal-resumo-pecas" id="modalGerenciarPecasResumo"></div>
+
+        <!-- Lista de Peças e Variações de Cores com Steppers -->
+        <div class="modal-lista-pecas-corpo" id="modalGerenciarPecasLista"></div>
+
+        <div class="modal-rodape">
+            <p class="modal-dica-rodape">💡 O saldo das peças é salvo automaticamente.</p>
+            <button type="button" class="primario" data-fechar-modal>Concluir</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Montar unidades de um produto -->
+<div id="modalMontarProduto" class="modal" hidden>
+    <div class="card modal-caixa" role="dialog" aria-modal="true" aria-labelledby="modalMontarTitulo">
+        <div class="modal-cabecalho">
+            <div>
+                <h2 id="modalMontarTitulo">Montar Produto</h2>
+                <p id="modalMontarSub" class="modal-sub"></p>
+            </div>
+            <button type="button" class="btn-icone" data-fechar-modal aria-label="Fechar">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <div class="modal-montar-resumo" id="modalMontarResumo"></div>
+        <div style="margin-top: 14px;">
+            <label for="modalMontarQtd">Quantidade a montar</label>
+            <input type="number" id="modalMontarQtd" min="1" value="1" style="font-size: 20px; font-weight: 700; text-align: center;">
+            <div class="atalhos" id="atalhosMontarQtd" style="margin-top: 8px; justify-content: center;"></div>
+        </div>
+        <p class="vazio" style="margin: 12px 0 0; font-size: 13px;">
+            ℹ️ Ao confirmar, as peças necessárias serão deduzidas do estoque e as unidades montadas serão adicionadas ao estoque do produto acabado.
+        </p>
+        <div class="modal-rodape">
+            <button type="button" class="secundario" data-fechar-modal>Cancelar</button>
+            <button type="button" id="btnConfirmarMontarModal" class="sucesso">Confirmar Montagem</button>
         </div>
     </div>
 </div>

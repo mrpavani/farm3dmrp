@@ -10,6 +10,9 @@ require __DIR__ . '/includes/header.php';
 <main>
     <div id="msg" aria-live="polite"></div>
 
+    <!-- Cards Numéricos de Resumo dos Pedidos -->
+    <div class="resumo-grid kpis-pedidos" id="pedidosResumo"></div>
+
     <div class="barra-lista">
         <label class="busca">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
@@ -40,13 +43,13 @@ require __DIR__ . '/includes/header.php';
             <table>
                 <thead>
                     <tr>
-                        <th>Pedido</th>
-                        <th>Itens</th>
-                        <th>Entrega</th>
-                        <th>Progresso</th>
-                        <th>Status</th>
-                        <th>Criado por</th>
-                        <th class="num">Ações</th>
+                        <th style="width:110px;">Pedido</th>
+                        <th style="min-width:200px;">Cliente / Destino</th>
+                        <th style="min-width:230px;">Itens Solicitados</th>
+                        <th style="min-width:140px;">Previsão Entrega</th>
+                        <th style="min-width:150px;">Progresso</th>
+                        <th style="min-width:120px;">Status</th>
+                        <th class="num" style="width:130px;">Ações</th>
                     </tr>
                 </thead>
                 <tbody id="tabelaPedidos"></tbody>

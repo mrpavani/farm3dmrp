@@ -210,44 +210,119 @@ async function carregarFabricar() {
     }
 }
 
-// Contadores das abas Fabricar e Peças
-async function atualizarContador() {
-    try {
-        const [dFab, dPecas] = await Promise.all([
-            App.api('api/fabricar.php'),
-            App.api('api/fabrica_pecas.php')
-        ]);
-        $('contadorFabricar').textContent = fmtInt.format(dFab.resumo.unidades);
-        $('contadorFabricar').hidden = !dFab.resumo.unidades;
+// Contadores das abas e Hero KPIs da Linha de Produção
+let dadosFabricarCarregados = null;
 
-        $('contadorPecas').textContent = fmtInt.format(dPecas.resumo.total_a_imprimir);
-        $('contadorPecas').hidden = !dPecas.resumo.total_a_imprimir;
-    } catch (e) { /* ignorado */ }
+async function atualizarHeroKpis() {
+    try {
+        const [dFab, dPecas, pedidosAbertos] = await Promise.all([
+            App.api('api/fabricar.php'),
+            App.api('api/fabrica_pecas.php'),
+            App.api('api/pedidos.php?status=aberto,em_producao')
+        ]);
+
+        const prods = dPecas.produtos || [];
+        const totalMontavel = prods.reduce((s, p) => s + (p.montavel && p.montavel !== Infinity ? p.montavel : 0), 0);
+        const prodsMontaveis = prods.filter(p => p.montavel > 0).length;
+        const totalAImprimir = dPecas.resumo ? dPecas.resumo.total_a_imprimir : 0;
+        const totalPedidos = Array.isArray(pedidosAbertos) ? pedidosAbertos.length : 0;
+        const todosItens = (dFab.produtos || []).flatMap(g => g.itens || []);
+        const atrasadas = todosItens.filter(i => App.diasAte(i.data_entrega_prometida) < 0)
+            .reduce((s, i) => s + Number(i.restante), 0);
+        const unidadesFabricar = dFab.resumo ? dFab.resumo.unidades : 0;
+
+        const hero = $('fabricaHeroKpis');
+        if (hero) {
+            hero.innerHTML = `
+                <div class="kpi kpi-hero kpi-montavel card-kpi-clicavel" onclick="mostrarAba('pecas'); filtrarBancada('montavel');" role="button" tabindex="0" title="Clique para ver produtos que já podem ser montados">
+                    <div class="kpi-topo">
+                        <span class="rotulo">Montável Agora</span>
+                        <span class="kpi-icone">🚀</span>
+                    </div>
+                    <div class="valor">${fmtInt.format(totalMontavel)}</div>
+                    <div class="sub">unidades prontas · em ${fmtInt.format(prodsMontaveis)} produto(s)</div>
+                </div>
+                <div class="kpi kpi-hero ${totalAImprimir > 0 ? 'kpi-producao' : ''} card-kpi-clicavel" onclick="mostrarAba('pecas'); filtrarBancada('imprimir');" role="button" tabindex="0" title="Clique para ver peças pendentes de impressão">
+                    <div class="kpi-topo">
+                        <span class="rotulo">Peças a Imprimir</span>
+                        <span class="kpi-icone">🖨️</span>
+                    </div>
+                    <div class="valor">${fmtInt.format(totalAImprimir)}</div>
+                    <div class="sub">peças na fila de impressão 3D</div>
+                </div>
+                <div class="kpi kpi-hero card-kpi-clicavel" onclick="mostrarAba('pedidos');" role="button" tabindex="0" title="Clique para ver a lista de pedidos">
+                    <div class="kpi-topo">
+                        <span class="rotulo">Ordens na Fábrica</span>
+                        <span class="kpi-icone">📋</span>
+                    </div>
+                    <div class="valor">${fmtInt.format(totalPedidos)}</div>
+                    <div class="sub">${fmtInt.format(unidadesFabricar)} produtos a produzir</div>
+                </div>
+                <div class="kpi kpi-hero ${atrasadas > 0 ? 'kpi-alerta' : ''} card-kpi-clicavel" onclick="mostrarAba('fabricar');" role="button" tabindex="0" title="Clique para priorizar produtos na visão por entrega">
+                    <div class="kpi-topo">
+                        <span class="rotulo">Atrasadas / Urgentes</span>
+                        <span class="kpi-icone">🚨</span>
+                    </div>
+                    <div class="valor">${fmtInt.format(atrasadas)}</div>
+                    <div class="sub">${atrasadas > 0 ? 'prioridade urgente na produção' : 'nenhum pedido atrasado'}</div>
+                </div>
+            `;
+        }
+
+        if ($('contadorPedidos')) {
+            $('contadorPedidos').textContent = fmtInt.format(totalPedidos);
+            $('contadorPedidos').hidden = !totalPedidos;
+        }
+        if ($('contadorFabricar')) {
+            $('contadorFabricar').textContent = fmtInt.format(unidadesFabricar);
+            $('contadorFabricar').hidden = !unidadesFabricar;
+        }
+        if ($('contadorPecas')) {
+            $('contadorPecas').textContent = fmtInt.format(totalAImprimir);
+            $('contadorPecas').hidden = !totalAImprimir;
+        }
+    } catch (e) {
+        console.warn('Erro ao atualizar hero KPIs:', e);
+    }
 }
 
+async function atualizarContador() {
+    await atualizarHeroKpis();
+}
 
 function renderizarFabricar(d) {
+    dadosFabricarCarregados = d;
+    aplicarFiltroFabricar();
+}
+
+function aplicarFiltroFabricar() {
+    if (!dadosFabricarCarregados) return;
+    const d = dadosFabricarCarregados;
+    const busca = App.normalizar(($('fabProdutoBusca')?.value || '').trim());
+
     const todos = d.produtos.flatMap(g => g.itens);
     const soma = lista => lista.reduce((s, i) => s + Number(i.restante), 0);
     const atrasadas = soma(todos.filter(i => App.diasAte(i.data_entrega_prometida) < 0));
     const prox7 = soma(todos.filter(i => { const n = App.diasAte(i.data_entrega_prometida); return n >= 0 && n <= 7; }));
 
     const kpis = [
-        ['Unidades a fabricar', d.resumo.unidades, ''],
-        ['Para clientes', d.resumo.unidades - d.resumo.unidades_estoque, ''],
-        ['Para estoque', d.resumo.unidades_estoque, 'kpi-estoque'],
+        ['Total a Fabricar', d.resumo.unidades, ''],
+        ['Para Clientes', d.resumo.unidades - d.resumo.unidades_estoque, ''],
+        ['Para Estoque', d.resumo.unidades_estoque, 'kpi-estoque'],
         ['Atrasadas', atrasadas, atrasadas ? 'kpi-alerta' : ''],
         ['Vencem em 7 dias', prox7, ''],
     ];
     $('fabResumo').innerHTML = kpis.map(([rot, val, cls]) =>
         `<div class="kpi ${cls}"><div class="rotulo">${rot}</div><div class="valor">${fmtInt.format(val)}</div></div>`).join('');
 
-    if (!d.produtos.length) {
-        $('listaFabricar').innerHTML = App.estadoVazio('🎉', 'Nada pendente de fabricação', 'Não há pedidos nem ordens de estoque aguardando produção para esse filtro.');
+    const produtosFiltrados = d.produtos.filter(g => !busca || App.normalizar(g.produto_nome).includes(busca));
+
+    if (!produtosFiltrados.length) {
+        $('listaFabricar').innerHTML = App.estadoVazio('🎉', 'Nenhum produto pendente encontrado', busca ? 'Tente outro termo na busca.' : 'Não há pedidos aguardando produção para esse filtro.');
         return;
     }
 
-    $('listaFabricar').innerHTML = d.produtos.map(g => {
+    $('listaFabricar').innerHTML = produtosFiltrados.map(g => {
         const chips = g.por_data.map(x => {
             const n = App.diasAte(x.data);
             const cls = n < 0 ? 'atrasado' : (n <= 1 ? 'urgente' : (n <= 3 ? 'proximo' : ''));
@@ -439,18 +514,27 @@ function corHex(cor) {
 }
 
 let produtosVisiveis = [];
+let produtoAtualGerenciarPecasId = null;
+let produtoAtualMontarId = null;
 
 async function carregarPecasFabrica() {
     try {
         dadosPecasCarregados = await App.api('api/fabrica_pecas.php');
         renderizarPecasFabrica();
+        if (produtoAtualGerenciarPecasId) {
+            const p = (dadosPecasCarregados.produtos || []).find(x => x.id === produtoAtualGerenciarPecasId);
+            if (p) {
+                recalcularProduto(p);
+                renderizarModalGerenciarPecas(p);
+            }
+        }
     } catch (e) {
         App.toast(e.message, 'erro');
     }
 }
 
-// Recalcula no cliente tudo o que depende do saldo das peças, para o card
-// responder na hora ao [+] sem precisar recarregar a bancada inteira.
+// Recalcula no cliente tudo o que depende do saldo das peças, para a tela
+// responder na hora ao [+] sem precisar recarregar o servidor.
 //   estoque  = soma do saldo de todas as cores da peça (qualquer uma monta)
 //   rende    = quantos produtos esta peça sozinha permite montar
 //   montavel = o menor rendimento entre as peças (o gargalo manda)
@@ -469,56 +553,100 @@ function recalcularProduto(p) {
     return p;
 }
 
-// ---------- Cabeçalho do produto: os números da decisão ----------
-function cabecalhoProduto(p) {
-    const classe = p.montavel === 0
-        ? 'vazia'
-        : (p.demanda_liquida > 0 && p.montavel >= p.demanda_liquida ? 'completa' : 'parcial');
+function filtrarBancada(status) {
+    $('pecaFiltroStatus').value = status;
+    document.querySelectorAll('#pillsFiltrosFabrica .pill-filtro').forEach(btn => {
+        btn.classList.toggle('ativo', btn.dataset.filtro === status);
+    });
+    renderizarPecasFabrica();
+}
+
+// ---------- Linha da Tabela de Linha de Produção / Bancada ----------
+function linhaTabelaBancada(p) {
+    const fotoProd = p.foto
+        ? `<img src="${esc(p.foto)}" alt="${esc(p.nome)}" loading="lazy">`
+        : `<div class="bancada-thumb-placeholder">Sem foto</div>`;
 
     const nomes = p.gargalos.slice(0, 2).map(esc).join(' e ')
         + (p.gargalos.length > 2 ? ` +${p.gargalos.length - 2}` : '');
-    const legenda = (p.demanda_liquida > 0 && p.montavel >= p.demanda_liquida)
-        ? 'dá para fechar os pedidos'
-        : (nomes ? `gargalo: ${nomes}` : 'sem peças cadastradas');
+
+    let tagStatus = '';
+    if (p.demanda_liquida > 0 && p.montavel >= p.demanda_liquida) {
+        tagStatus = `<span class="badge-status-montagem pronto" title="Peças suficientes para cobrir toda a demanda aberta">✓ Pronto p/ montar (${fmtInt.format(p.demanda_liquida)} un)</span>`;
+    } else if (nomes) {
+        tagStatus = `<span class="badge-status-montagem gargalo" title="Peça limitando a montagem">⚠️ Gargalo: ${nomes}</span>`;
+    } else if (!p.pecas || !p.pecas.length) {
+        tagStatus = `<span class="badge-status-montagem vazio">Sem ficha técnica</span>`;
+    } else {
+        tagStatus = `<span class="badge-status-montagem ok">✓ Peças equilibradas</span>`;
+    }
 
     const prazo = p.proxima_entrega
-        ? `<span class="prazo-produto">entrega ${App.data(p.proxima_entrega)}${App.etiquetaPrazo(p.proxima_entrega)}</span>`
+        ? `<span class="chip-prazo-produto">${App.data(p.proxima_entrega)}${App.etiquetaPrazo(p.proxima_entrega)}</span>`
+        : '<span class="vazio">Sem pedidos</span>';
+
+    const pedidosQtd = p.qtd_pedidos
+        ? `<span class="tag-pedidos-count">📋 ${p.qtd_pedidos} pedido(s)</span>`
         : '';
 
-    // Sugestão de quanto montar: o que os pedidos pedem, limitado ao possível.
-    const sugestao = p.demanda_liquida > 0 ? Math.min(p.montavel, p.demanda_liquida) : p.montavel;
+    const badgeMontavel = p.montavel > 0
+        ? `<span class="badge-bancada-montavel pronto" title="${p.montavel} unidades que já podem ser montadas agora">🚀 ${fmtInt.format(p.montavel)}</span>`
+        : `<span class="badge-bancada-montavel zero" title="Saldo insuficiente de peças">0</span>`;
 
-    const fotoProd = p.foto
-        ? `<img src="${esc(p.foto)}" alt="${esc(p.nome)}" loading="lazy">`
-        : `<div class="peca-foto-placeholder">Sem foto</div>`;
+    const aFabricar = `<span class="bancada-num-normal" title="${p.em_producao} unidades em pedidos pendentes">${fmtInt.format(p.em_producao)}</span>`;
+    const estoque = `<span class="bancada-num-normal" title="${p.estoque} unidades montadas em estoque">${fmtInt.format(p.estoque)}</span>`;
+
+    const btnPecas = App.botaoIcone('pecas', 'Peças: atualizar fabricação e saldo', `abrirModalGerenciarPecas(${p.id})`, 'primario');
+    const btnMontar = p.montavel > 0
+        ? App.botaoIcone('montagem', 'Montar unidades acabadas', `abrirModalMontarProduto(${p.id})`, 'sucesso')
+        : `<button type="button" class="btn-icone desativado" disabled data-tip="Sem peças suficientes para montagem" aria-label="Montar (indisponível)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></button>`;
 
     return `
-        <div class="produto-header">
-            <div class="produto-foto">${fotoProd}</div>
-            <div class="produto-info">
-                <h3>${esc(p.nome)}${prazo}</h3>
-                <div class="produto-metricas">
-                    <span class="metrica-montavel ${classe}" title="Unidades que dá para montar agora com as peças já impressas.">
-                        <span class="mm-topo">Montável agora <strong>${fmtInt.format(p.montavel)}</strong></span>
-                        <small>${legenda}</small>
-                    </span>
-                    <span>A fabricar <strong>${fmtInt.format(p.em_producao)}</strong></span>
-                    <span>Estoque pronto <strong>${fmtInt.format(p.estoque)}</strong></span>
+        <tr class="linha-bancada-produto ${p.montavel > 0 ? 'produto-pode-montar' : ''}" data-produto-id="${p.id}">
+            <td>
+                <div class="bancada-produto-celula">
+                    <div class="bancada-thumb">${fotoProd}</div>
+                    <div class="bancada-prod-info">
+                        <span class="bancada-prod-nome">${esc(p.nome)}</span>
+                        <span class="bancada-prod-sub">${p.pecas.length} peças · ${fmtInt.format(p.total_pecas_por_unidade)} un por montagem</span>
+                    </div>
                 </div>
-                <div class="bancada-montar">
-                    <label for="qtdMontar-${p.id}">Montar</label>
-                    <input type="number" id="qtdMontar-${p.id}" class="meta-input" min="1"
-                           max="${p.montavel}" value="${sugestao > 0 ? sugestao : 1}" ${p.montavel ? '' : 'disabled'}>
-                    <button type="button" class="pequeno" onclick="montarAgora(${p.id})" ${p.montavel ? '' : 'disabled'}>
-                        Montar e mandar ao estoque
-                    </button>
-                    ${p.montavel ? '' : '<span class="dica-meta">imprima as peças do gargalo para liberar</span>'}
+            </td>
+            <td>
+                <div class="bancada-prazo-wrap">
+                    ${prazo}
+                    ${pedidosQtd}
                 </div>
-            </div>
-        </div>`;
+            </td>
+            <td>${tagStatus}</td>
+            <td class="num">${badgeMontavel}</td>
+            <td class="num">${aFabricar}</td>
+            <td class="num">${estoque}</td>
+            <td class="num">
+                <div class="acoes-icones" style="justify-content: flex-end;">
+                    ${btnPecas}
+                    ${btnMontar}
+                </div>
+            </td>
+        </tr>
+    `;
 }
 
-// ---------- Linha de cor dentro de uma peça: saldo editável na própria linha ----------
+// Redesenha só a linha do produto mexido, sem perder a posição do scroll.
+function atualizarLinhaProduto(p) {
+    const tr = document.querySelector(`tr.linha-bancada-produto[data-produto-id="${p.id}"]`);
+    if (tr) {
+        tr.outerHTML = linhaTabelaBancada(p);
+    }
+    if (produtoAtualGerenciarPecasId === p.id) {
+        atualizarMetricasModalPecas(p);
+    }
+}
+function atualizarCardProduto(p) {
+    atualizarLinhaProduto(p);
+}
+
+// ---------- Linha de cor dentro do modal de peças ----------
 function linhaCor(p, peca, cor) {
     const foto = cor.foto
         ? `<img src="${esc(cor.foto)}" alt="${esc(cor.cor || peca.nome)}" loading="lazy">`
@@ -539,43 +667,190 @@ function linhaCor(p, peca, cor) {
                 <button type="button" class="btn-step mais" onclick="ajustarCor(${cor.cor_id}, 1)" title="Imprimiu mais 1">+</button>
             </div>
             <div class="acoes-peca">
-                <button type="button" class="pequeno secundario" onclick="abrirModalProduzirPeca(${cor.cor_id}, ${p.id})" title="Registrar um lote maior">+ Lote</button>
+                <button type="button" class="pequeno secundario btn-lote" onclick="abrirModalProduzirPeca(${cor.cor_id}, ${p.id})" title="Registrar um lote maior">+ Lote</button>
             </div>
         </div>`;
 }
 
-// ---------- Bloco de uma peça: nome, rendimento total e a lista de cores ----------
-function blocoPeca(p, peca) {
-    const situacao = peca.a_imprimir > 0
-        ? `<span class="alerta">Faltam ${fmtInt.format(peca.a_imprimir)}</span>`
-        : `<span class="ok">Suficiente</span>`;
+// ---------- Modal: Gerenciar / Atualizar Peças Fabricadas ----------
+function abrirModalGerenciarPecas(prodId) {
+    produtoAtualGerenciarPecasId = prodId;
+    const p = (dadosPecasCarregados.produtos || []).find(x => x.id === prodId);
+    if (!p) return;
+    recalcularProduto(p);
+    renderizarModalGerenciarPecas(p);
+    App.modal.abrir('modalGerenciarPecas');
+}
 
-    return `
-        <div class="grupo-peca-produto" data-peca="${peca.peca_id}">
-            <div class="cabecalho-grupo-peca">
+function renderizarModalGerenciarPecas(p) {
+    if (!p) return;
+
+    const fotoProd = p.foto
+        ? `<img src="${esc(p.foto)}" alt="${esc(p.nome)}">`
+        : `<div class="bancada-thumb-placeholder">Sem foto</div>`;
+
+    $('modalGerenciarPecasFoto').innerHTML = fotoProd;
+    $('modalGerenciarPecasTitulo').textContent = `Peças: ${p.nome}`;
+    $('modalGerenciarPecasSub').textContent = `${p.pecas.length} tipos de peça cadastrados · Total ${fmtInt.format(p.total_pecas_por_unidade)} un por montagem`;
+
+    atualizarMetricasModalPecas(p);
+
+    if (!p.pecas.length) {
+        $('modalGerenciarPecasLista').innerHTML = `<p class="vazio" style="padding: 24px; text-align: center;">Este produto ainda não possui peças cadastradas na ficha técnica.</p>`;
+        return;
+    }
+
+    $('modalGerenciarPecasLista').innerHTML = p.pecas.map(peca => {
+        const situacao = peca.a_imprimir > 0
+            ? `<span class="alerta">Faltam ${fmtInt.format(peca.a_imprimir)} un</span>`
+            : `<span class="ok">✓ Estoque OK</span>`;
+
+        return `
+        <div class="modal-peca-card" data-peca="${peca.peca_id}">
+            <div class="modal-peca-card-topo">
                 <strong>${esc(peca.nome)}</strong>
-                <span class="qtd-un">${peca.por_unidade} un/produto · rende ${fmtInt.format(peca.rende)} produto(s)</span>
+                <span class="qtd-un">${peca.por_unidade} un/produto · rende ${fmtInt.format(peca.rende)} prod.</span>
                 ${situacao}
-                <button type="button" class="pequeno secundario btn-nova-cor" onclick="abrirModalNovaCor(${peca.peca_id}, ${p.id})" title="Cadastrar outra cor desta peça">+ cor</button>
+                <button type="button" class="pequeno secundario btn-nova-cor" onclick="abrirModalNovaCor(${peca.peca_id}, ${p.id})" title="Cadastrar outra cor desta peça">+ Cor</button>
             </div>
-            <div class="lista-cores-peca">
-                ${peca.cores.map(cor => linhaCor(p, peca, cor)).join('')}
+            <div class="modal-peca-cores-lista">
+                ${peca.cores && peca.cores.length
+                    ? peca.cores.map(cor => linhaCor(p, peca, cor)).join('')
+                    : `<p class="vazio" style="padding: 8px 12px; margin: 0; font-size: 13px;">Nenhuma cor cadastrada. Clique no botão <b>+ Cor</b> acima para adicionar.</p>`}
             </div>
         </div>`;
+    }).join('');
 }
 
-function conteudoCardProduto(p) {
-    return cabecalhoProduto(p) + `
-        <div class="produto-pecas">
-            <h4>Peças (${p.pecas.length}) · ${fmtInt.format(p.total_pecas_por_unidade)} por produto montado</h4>
-            <div class="lista-pecas">${p.pecas.map(peca => blocoPeca(p, peca)).join('')}</div>
-        </div>`;
+function atualizarMetricasModalPecas(p) {
+    const resumoEl = $('modalGerenciarPecasResumo');
+    if (!resumoEl) return;
+
+    const nomesGargalo = p.gargalos.slice(0, 2).map(esc).join(' e ')
+        + (p.gargalos.length > 2 ? ` +${p.gargalos.length - 2}` : '');
+
+    resumoEl.innerHTML = `
+        <div class="modal-resumo-card ${p.montavel > 0 ? 'destaque-montavel' : ''}">
+            <span class="lbl">Montável Agora</span>
+            <span class="val">${fmtInt.format(p.montavel)}</span>
+        </div>
+        <div class="modal-resumo-card">
+            <span class="lbl">Demanda Aberta</span>
+            <span class="val">${fmtInt.format(p.em_producao)}</span>
+        </div>
+        <div class="modal-resumo-card">
+            <span class="lbl">Estoque Acabado</span>
+            <span class="val">${fmtInt.format(p.estoque)}</span>
+        </div>
+        <div class="modal-resumo-card" title="${nomesGargalo || 'Equilibrado'}">
+            <span class="lbl">Principal Gargalo</span>
+            <span class="val" style="font-size: 13px; font-weight: 700; color: ${p.gargalos.length ? 'var(--warning)' : 'var(--success)'};">${nomesGargalo || 'Equilibrado'}</span>
+        </div>
+    `;
+
+    p.pecas.forEach(peca => {
+        const cardPeca = document.querySelector(`.modal-peca-card[data-peca="${peca.peca_id}"]`);
+        if (cardPeca) {
+            const qtdUn = cardPeca.querySelector('.qtd-un');
+            if (qtdUn) qtdUn.textContent = `${peca.por_unidade} un/produto · rende ${fmtInt.format(peca.rende)} prod.`;
+            const badge = cardPeca.querySelector('.alerta, .ok');
+            if (badge) {
+                if (peca.a_imprimir > 0) {
+                    badge.className = 'alerta';
+                    badge.textContent = `Faltam ${fmtInt.format(peca.a_imprimir)} un`;
+                } else {
+                    badge.className = 'ok';
+                    badge.textContent = '✓ Estoque OK';
+                }
+            }
+        }
+    });
 }
 
-// Redesenha só o card mexido, preservando o scroll e o resto da tela.
-function atualizarCardProduto(p) {
-    const card = document.querySelector(`.card-produto-fabrica[data-produto="${p.id}"]`);
-    if (card) card.innerHTML = conteudoCardProduto(p);
+// ---------- Modal: Montagem de Produto Acabado ----------
+function abrirModalMontarProduto(prodId) {
+    produtoAtualMontarId = prodId;
+    const p = (dadosPecasCarregados.produtos || []).find(x => x.id === prodId);
+    if (!p) return;
+    recalcularProduto(p);
+    if (p.montavel <= 0) {
+        App.toast('Não há peças suficientes para montar este produto.', 'aviso');
+        return;
+    }
+
+    $('modalMontarTitulo').textContent = `Montar: ${p.nome}`;
+    $('modalMontarSub').textContent = `Concluir montagem de produtos utilizando peças do estoque`;
+
+    $('modalMontarResumo').innerHTML = `
+        <div class="modal-resumo-card destaque-montavel">
+            <span class="lbl">Montável Agora</span>
+            <span class="val">${fmtInt.format(p.montavel)}</span>
+        </div>
+        <div class="modal-resumo-card">
+            <span class="lbl">Demanda Aberta</span>
+            <span class="val">${fmtInt.format(p.em_producao)}</span>
+        </div>
+        <div class="modal-resumo-card">
+            <span class="lbl">Estoque Atual</span>
+            <span class="val">${fmtInt.format(p.estoque)}</span>
+        </div>
+    `;
+
+    const sugestao = p.demanda_liquida > 0 ? Math.min(p.montavel, p.demanda_liquida) : p.montavel;
+    const inputQtd = $('modalMontarQtd');
+    inputQtd.max = p.montavel;
+    inputQtd.value = sugestao > 0 ? sugestao : 1;
+
+    const atalhos = [];
+    if (p.montavel >= 1) atalhos.push(1);
+    if (p.montavel >= 5) atalhos.push(5);
+    if (p.montavel >= 10) atalhos.push(10);
+    if (p.demanda_liquida > 0 && p.demanda_liquida <= p.montavel && !atalhos.includes(p.demanda_liquida)) {
+        atalhos.push(p.demanda_liquida);
+    }
+    atalhos.sort((a,b) => a - b);
+
+    let atalhosHtml = atalhos.map(qtd => `
+        <button type="button" class="secundario" style="padding: 2px 10px; font-size: 12px; min-height: 28px;" onclick="$('modalMontarQtd').value = ${qtd}">
+            ${qtd === p.demanda_liquida ? `Atender Pedidos (${qtd})` : `+${qtd}`}
+        </button>
+    `).join('');
+
+    atalhosHtml += `
+        <button type="button" class="secundario" style="padding: 2px 10px; font-size: 12px; min-height: 28px; font-weight: 700;" onclick="$('modalMontarQtd').value = ${p.montavel}">
+            Máximo (${p.montavel})
+        </button>
+    `;
+
+    $('atalhosMontarQtd').innerHTML = atalhosHtml;
+    App.modal.abrir('modalMontarProduto', '#modalMontarQtd');
+}
+
+async function confirmarMontarModal() {
+    if (!produtoAtualMontarId) return;
+    const p = (dadosPecasCarregados.produtos || []).find(x => x.id === produtoAtualMontarId);
+    if (!p) return;
+
+    const qtd = parseInt($('modalMontarQtd').value, 10) || 0;
+    if (qtd <= 0) return App.toast('Informe quantas unidades montar.', 'erro');
+    if (qtd > p.montavel) return App.toast(`Só é possível montar até ${p.montavel} unidades agora.`, 'erro');
+
+    const btn = $('btnConfirmarMontarModal');
+    btn.disabled = true;
+    try {
+        const r = await App.api('api/fabrica_pecas.php?acao=montar', 'POST', {
+            produto_id: produtoAtualMontarId,
+            quantidade: qtd
+        });
+        App.toast(r.mensagem || `Montagem de ${qtd} un. concluída com sucesso!`);
+        App.modal.fechar('modalMontarProduto');
+        await carregarPecasFabrica();
+        atualizarContador();
+    } catch (e) {
+        App.toast(e.message, 'erro');
+    } finally {
+        btn.disabled = false;
+    }
 }
 
 function atualizarResumoPecas() {
@@ -585,26 +860,43 @@ function atualizarResumoPecas() {
     const totalMontavel = produtosVisiveis.reduce((s, p) => s + p.montavel, 0);
     const produtosMontaveis = produtosVisiveis.filter(p => p.montavel > 0).length;
 
+    const pillMontavel = $('countPillMontavel');
+    if (pillMontavel) pillMontavel.textContent = fmtInt.format(produtosMontaveis);
+    const pillImprimir = $('countPillImprimir');
+    if (pillImprimir) pillImprimir.textContent = fmtInt.format(comFila);
+
     $('pecasResumo').innerHTML = `
-        <div class="kpi kpi-montavel">
-            <div class="rotulo">Montável agora</div>
+        <div class="kpi kpi-montavel card-kpi-clicavel" onclick="filtrarBancada('montavel')" role="button" tabindex="0" title="Clique para filtrar produtos montáveis">
+            <div class="kpi-topo">
+                <span class="rotulo">Montável Agora</span>
+                <span class="kpi-icone">🚀</span>
+            </div>
             <div class="valor">${fmtInt.format(totalMontavel)}</div>
-            <div class="sub">unidades prontas para montar, em ${fmtInt.format(produtosMontaveis)} produto(s)</div>
+            <div class="sub">em ${fmtInt.format(produtosMontaveis)} produto(s) prontos</div>
         </div>
-        <div class="kpi ${totalAImprimir > 0 ? 'kpi-alerta' : ''}">
-            <div class="rotulo">Total a Imprimir</div>
+        <div class="kpi ${totalAImprimir > 0 ? 'kpi-producao' : ''} card-kpi-clicavel" onclick="filtrarBancada('imprimir')" role="button" tabindex="0" title="Clique para filtrar produtos precisando de impressão">
+            <div class="kpi-topo">
+                <span class="rotulo">Total a Imprimir</span>
+                <span class="kpi-icone">🖨️</span>
+            </div>
             <div class="valor">${fmtInt.format(totalAImprimir)}</div>
-            <div class="sub">peças pendentes para os pedidos abertos</div>
+            <div class="sub">peças pendentes na fila 3D</div>
         </div>
         <div class="kpi">
-            <div class="rotulo">Peças com Fila</div>
+            <div class="kpi-topo">
+                <span class="rotulo">Peças com Fila</span>
+                <span class="kpi-icone">⚡</span>
+            </div>
             <div class="valor">${fmtInt.format(comFila)}</div>
-            <div class="sub">modelos precisando de impressão</div>
+            <div class="sub">modelos aguardando produção</div>
         </div>
         <div class="kpi">
-            <div class="rotulo">Estoque de Peças</div>
+            <div class="kpi-topo">
+                <span class="rotulo">Estoque de Peças</span>
+                <span class="kpi-icone">📦</span>
+            </div>
             <div class="valor">${fmtInt.format(totalEstoque)}</div>
-            <div class="sub">peças soltas prontas na bancada, somando todas as cores</div>
+            <div class="sub">peças soltas prontas na bancada</div>
         </div>
     `;
 }
@@ -628,14 +920,18 @@ function renderizarPecasFabrica() {
     atualizarResumoPecas();
 
     const container = $('gridPecasFabrica');
+    if (!container) return;
+
     if (!produtosVisiveis.length) {
-        container.innerHTML = `<div style="grid-column: 1 / -1;">${App.estadoVazio('📦', 'Nenhum produto encontrado', 'Ajuste os filtros ou cadastre as peças do produto em Produtos → Ficha Técnica.')}</div>`;
+        container.innerHTML = `<tr><td colspan="7">${App.estadoVazio('📦', 'Nenhum produto encontrado', 'Ajuste os termos de busca ou filtros rápidos.')}</td></tr>`;
+        if ($('rodapePecas')) $('rodapePecas').innerHTML = '';
         return;
     }
 
-    container.innerHTML = produtosVisiveis.map(p =>
-        `<article class="card-produto-fabrica" data-produto="${p.id}">${conteudoCardProduto(p)}</article>`
-    ).join('');
+    container.innerHTML = produtosVisiveis.map(linhaTabelaBancada).join('');
+    if ($('rodapePecas')) {
+        $('rodapePecas').innerHTML = `Mostrando <strong>${produtosVisiveis.length}</strong> produto(s) na bancada de montagem.`;
+    }
 }
 
 // ---------- Ações de saldo (o saldo vive na cor, não na peça) ----------
@@ -656,9 +952,11 @@ function aplicarNovoSaldoCor(corId, novoEstoque) {
     const peca = pecaDaCor(p, corId);
     peca.cores.find(c => c.cor_id === corId).estoque = Number(novoEstoque);
     recalcularProduto(p);
-    atualizarCardProduto(p);
+    atualizarLinhaProduto(p);
     atualizarResumoPecas();
     agendarContador();
+    const inputSaldo = document.querySelector(`.linha-cor-produto[data-cor="${corId}"] .saldo-peca`);
+    if (inputSaldo) inputSaldo.value = novoEstoque;
 }
 
 // Contadores das abas: agrupa, para clicar [+] dez vezes não virar 20 requisições.
@@ -681,8 +979,11 @@ function ajustarCor(corId, delta) {
 
     cor.estoque += delta;                      // resposta imediata na tela
     recalcularProduto(p);
-    atualizarCardProduto(p);
+    atualizarLinhaProduto(p);
     atualizarResumoPecas();
+
+    const inputSaldo = document.querySelector(`.linha-cor-produto[data-cor="${corId}"] .saldo-peca`);
+    if (inputSaldo) inputSaldo.value = cor.estoque;
 
     const pend = pendentesCor.get(corId) || { delta: 0, timer: null };
     pend.delta += delta;
@@ -905,10 +1206,12 @@ $('btnLimparPedidos').addEventListener('click', () => {
 });
 $('fabProduto').addEventListener('change', carregarFabricar);
 $('fabEntregaAte').addEventListener('change', carregarFabricar);
+if ($('fabProdutoBusca')) $('fabProdutoBusca').addEventListener('input', aplicarFiltroFabricar);
 $('btnFabAtualizar').addEventListener('click', carregarFabricar);
 $('btnFabLimpar').addEventListener('click', () => {
     $('fabEntregaAte').value = '';
     $('fabProduto').value = '';
+    if ($('fabProdutoBusca')) $('fabProdutoBusca').value = '';
     carregarFabricar();
 });
 $('btnConfirmarProducao').addEventListener('click', confirmarProducao);
@@ -920,12 +1223,22 @@ $('btnNovaOrdemEstoque').addEventListener('click', () => FormPedido.abrir({
 
 // Eventos da aba de Peças
 $('pecaBusca').addEventListener('input', renderizarPecasFabrica);
-$('pecaFiltroStatus').addEventListener('change', renderizarPecasFabrica);
+$('pecaFiltroStatus').addEventListener('change', () => {
+    const v = $('pecaFiltroStatus').value;
+    document.querySelectorAll('#pillsFiltrosFabrica .pill-filtro').forEach(btn => {
+        btn.classList.toggle('ativo', btn.dataset.filtro === v);
+    });
+    renderizarPecasFabrica();
+});
+
+document.querySelectorAll('#pillsFiltrosFabrica .pill-filtro').forEach(btn => {
+    btn.addEventListener('click', () => filtrarBancada(btn.dataset.filtro));
+});
+
 $('btnPecasAtualizar').addEventListener('click', carregarPecasFabrica);
 $('btnPecasLimpar').addEventListener('click', () => {
     $('pecaBusca').value = '';
-    $('pecaFiltroStatus').value = '';
-    renderizarPecasFabrica();
+    filtrarBancada('');
 });
 $('btnConfirmarProducaoPeca').addEventListener('click', confirmarProducaoPeca);
 $('modalPecaQtd').addEventListener('keydown', e => { if (e.key === 'Enter') confirmarProducaoPeca(); });
@@ -933,15 +1246,37 @@ $('btnConfirmarNovaCor').addEventListener('click', confirmarNovaCor);
 $('modalNovaCorNome').addEventListener('keydown', e => { if (e.key === 'Enter') confirmarNovaCor(); });
 $('modalNovaCorQtd').addEventListener('keydown', e => { if (e.key === 'Enter') confirmarNovaCor(); });
 
-// Tornar funções globais para onclick nos cards
+if ($('btnConfirmarMontarModal')) {
+    $('btnConfirmarMontarModal').addEventListener('click', confirmarMontarModal);
+}
+if ($('modalMontarQtd')) {
+    $('modalMontarQtd').addEventListener('keydown', e => { if (e.key === 'Enter') confirmarMontarModal(); });
+}
+if ($('modalGerenciarPecas')) {
+    $('modalGerenciarPecas').addEventListener('fechado', () => {
+        produtoAtualGerenciarPecasId = null;
+    });
+}
+if ($('modalMontarProduto')) {
+    $('modalMontarProduto').addEventListener('fechado', () => {
+        produtoAtualMontarId = null;
+    });
+}
+
+// Tornar funções globais para onclick nos botões da tabela e modais
 window.abrirUploadFotoCor = abrirUploadFotoCor;
 window.abrirModalProduzirPeca = abrirModalProduzirPeca;
 window.abrirModalNovaCor = abrirModalNovaCor;
+window.abrirModalGerenciarPecas = abrirModalGerenciarPecas;
+window.abrirModalMontarProduto = abrirModalMontarProduto;
+window.confirmarMontarModal = confirmarMontarModal;
 window.ajustarCor = ajustarCor;
 window.definirSaldoCor = definirSaldoCor;
 window.montarAgora = montarAgora;
+window.filtrarBancada = filtrarBancada;
 
 carregarProdutosFiltro();
 const abaInicial = location.hash === '#pecas' ? 'pecas' : (location.hash === '#fabricar' ? 'fabricar' : 'pedidos');
 mostrarAba(abaInicial);
+atualizarHeroKpis();
 
