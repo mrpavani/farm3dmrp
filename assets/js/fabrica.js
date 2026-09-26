@@ -158,6 +158,9 @@ function renderizarPedidos(pedidos) {
                         <span>Criado em <b>${App.data(p.data_pedido)}</b></span>
                         <span>${estoque ? 'Concluir até' : 'Entrega'} <b>${App.data(p.data_entrega_prometida)}</b>${pendente ? App.etiquetaPrazo(p.data_entrega_prometida) : ''}</span>
                         <span>por <b>${p.usuario_nome ? esc(p.usuario_nome) : '—'}</b></span>
+                        ${(p.tempo_futuro_formatado || (p.peso_futuro_gramas > 0)) && pendente ? `
+                            <span title="Estimativa futura de tempo e filamento para produzir o que falta">⏱️ Restam <b>${p.tempo_futuro_formatado || '00:00:00'}</b> · ⚖️ <b>${(App.num ? App.num(p.peso_futuro_gramas || 0, 1) : Number(p.peso_futuro_gramas || 0).toFixed(1))}g</b></span>
+                        ` : ''}
                     </div>
                 </div>
                 <div class="pedido-status">
@@ -567,26 +570,30 @@ function linhaTabelaBancada(p) {
         ? `<img src="${esc(p.foto)}" alt="${esc(p.nome)}" loading="lazy">`
         : `<div class="bancada-thumb-placeholder">Sem foto</div>`;
 
-    const nomes = p.gargalos.slice(0, 2).map(esc).join(' e ')
-        + (p.gargalos.length > 2 ? ` +${p.gargalos.length - 2}` : '');
+    const todosGargalos = p.gargalos && p.gargalos.length ? p.gargalos.map(esc).join(', ') : '';
 
     let tagStatus = '';
     if (p.demanda_liquida > 0 && p.montavel >= p.demanda_liquida) {
-        tagStatus = `<span class="badge-status-montagem pronto" title="Peças suficientes para cobrir toda a demanda aberta">✓ Pronto p/ montar (${fmtInt.format(p.demanda_liquida)} un)</span>`;
-    } else if (nomes) {
-        tagStatus = `<span class="badge-status-montagem gargalo" title="Peça limitando a montagem">⚠️ Gargalo: ${nomes}</span>`;
+        tagStatus = `<span class="badge-status-montagem pronto" title="Peças suficientes para montar toda a demanda aberta (${fmtInt.format(p.demanda_liquida)} un)">✓ Pronto</span>`;
+    } else if (p.gargalos && p.gargalos.length) {
+        const extra = p.gargalos.length > 1 ? `<small>+${p.gargalos.length - 1}</small>` : '';
+        tagStatus = `<span class="badge-status-montagem gargalo" title="Peça(s) limitando a montagem: ${todosGargalos}">⚠️ Gargalo ${extra}</span>`;
     } else if (!p.pecas || !p.pecas.length) {
-        tagStatus = `<span class="badge-status-montagem vazio">Sem ficha técnica</span>`;
+        tagStatus = `<span class="badge-status-montagem vazio" title="Sem ficha técnica cadastrada">—</span>`;
     } else {
-        tagStatus = `<span class="badge-status-montagem ok">✓ Peças equilibradas</span>`;
+        tagStatus = `<span class="badge-status-montagem ok" title="Estoque de peças balanceado">✓ OK</span>`;
     }
 
     const prazo = p.proxima_entrega
-        ? `<span class="chip-prazo-produto">${App.data(p.proxima_entrega)}${App.etiquetaPrazo(p.proxima_entrega)}</span>`
+        ? `<span class="chip-prazo-produto"><span class="prazo-data">${App.data(p.proxima_entrega)}</span>${App.etiquetaPrazo(p.proxima_entrega)}</span>`
         : '<span class="vazio">Sem pedidos</span>';
 
     const pedidosQtd = p.qtd_pedidos
-        ? `<span class="tag-pedidos-count">📋 ${p.qtd_pedidos} pedido(s)</span>`
+        ? `<span class="tag-pedidos-count">📋 ${p.qtd_pedidos} pedido${p.qtd_pedidos > 1 ? 's' : ''}</span>`
+        : '';
+
+    const filaDetalhe = (p.tempo_fila_segundos > 0)
+        ? `<span class="tag-fila-detalhe" title="Fila de impressão pendente: ${p.tempo_fila_formatado} (${(App.num ? App.num(p.peso_fila_gramas || 0, 1) : Number(p.peso_fila_gramas || 0).toFixed(1))}g)">⏱️ ${p.tempo_fila_formatado}</span>`
         : '';
 
     const badgeMontavel = p.montavel > 0
@@ -608,17 +615,23 @@ function linhaTabelaBancada(p) {
                     <div class="bancada-thumb">${fotoProd}</div>
                     <div class="bancada-prod-info">
                         <span class="bancada-prod-nome">${esc(p.nome)}</span>
-                        <span class="bancada-prod-sub">${p.pecas.length} peças · ${fmtInt.format(p.total_pecas_por_unidade)} un por montagem</span>
+                        <span class="bancada-prod-sub">${p.pecas.length} peças · ${fmtInt.format(p.total_pecas_por_unidade)} un por montagem${p.tempo_un_formatado ? ` · ⏱️ ${p.tempo_un_formatado}/un` : ''}${p.peso_un_gramas > 0 ? ` · ⚖️ ${(App.num ? App.num(p.peso_un_gramas, 1) : Number(p.peso_un_gramas).toFixed(1))}g` : ''}</span>
                     </div>
                 </div>
             </td>
             <td>
                 <div class="bancada-prazo-wrap">
                     ${prazo}
-                    ${pedidosQtd}
+                    ${pedidosQtd || filaDetalhe ? `
+                        <div class="bancada-detalhe-pedidos">
+                            ${pedidosQtd}
+                            ${pedidosQtd && filaDetalhe ? '<span class="ponto-sep">·</span>' : ''}
+                            ${filaDetalhe}
+                        </div>
+                    ` : ''}
                 </div>
             </td>
-            <td>${tagStatus}</td>
+            <td style="text-align: center;">${tagStatus}</td>
             <td class="num">${badgeMontavel}</td>
             <td class="num">${aFabricar}</td>
             <td class="num">${estoque}</td>
@@ -709,7 +722,7 @@ function renderizarModalGerenciarPecas(p) {
         <div class="modal-peca-card" data-peca="${peca.peca_id}">
             <div class="modal-peca-card-topo">
                 <strong>${esc(peca.nome)}</strong>
-                <span class="qtd-un">${peca.por_unidade} un/produto · rende ${fmtInt.format(peca.rende)} prod.</span>
+                <span class="qtd-un">${peca.por_unidade} un/produto · rende ${fmtInt.format(peca.rende)} prod.${peca.tempo_producao_formatado ? ` · ⏱️ ${peca.tempo_producao_formatado}` : ''}${peca.peso_gramas > 0 ? ` · ⚖️ ${(App.num ? App.num(peca.peso_gramas, 1) : Number(peca.peso_gramas).toFixed(1))}g` : ''}</span>
                 ${situacao}
                 <button type="button" class="pequeno secundario btn-nova-cor" onclick="abrirModalNovaCor(${peca.peca_id}, ${p.id})" title="Cadastrar outra cor desta peça">+ Cor</button>
             </div>

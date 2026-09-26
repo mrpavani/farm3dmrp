@@ -144,8 +144,8 @@ require __DIR__ . '/includes/header.php';
                     <thead>
                         <tr>
                             <th style="min-width: 220px;">Produto</th>
-                            <th style="min-width: 140px;">Prazo &amp; Fila</th>
-                            <th style="min-width: 200px;">Situação / Gargalo</th>
+                            <th style="min-width: 170px;">Prazo</th>
+                            <th style="width: 130px; text-align: center;">Situação</th>
                             <th style="width: 130px;" class="num">Montável Agora</th>
                             <th style="width: 110px;" class="num">A Fabricar</th>
                             <th style="width: 110px;" class="num">Estoque</th>

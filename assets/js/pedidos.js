@@ -150,6 +150,12 @@ function renderizar() {
                     <div class="progresso-trilha">
                         <div class="progresso-barra-fill ${pct === 100 ? 'completa' : ''}" style="width:${pct}%"></div>
                     </div>
+                    ${(p.tempo_futuro_formatado || p.peso_futuro_gramas > 0) && pendente ? `
+                        <div class="progresso-estimativa" style="display:flex; justify-content:space-between; font-size:11px; color:var(--cor-texto-mutado, #64748b); margin-top:4px;" title="Estimativa futura de tempo e filamento para concluir o que falta">
+                            <span>⏱️ ${p.tempo_futuro_formatado || '00:00:00'}</span>
+                            <span>⚖️ ${(App.num ? App.num(p.peso_futuro_gramas || 0, 1) : Number(p.peso_futuro_gramas || 0).toFixed(1))}g</span>
+                        </div>
+                    ` : ''}
                 </div>
             </td>
             <td class="col-status">

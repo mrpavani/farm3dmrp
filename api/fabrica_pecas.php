@@ -9,8 +9,8 @@ $method = $_SERVER['REQUEST_METHOD'];
 // recalcular a capacidade de montagem do produto depois de mexer no saldo).
 function buscarCor(PDO $pdo, int $corId): ?array {
     $stmt = $pdo->prepare("
-        SELECT pc.id AS cor_id, pc.cor, pc.estoque, pc.peca_id,
-               pp.nome AS peca_nome, pp.produto_id
+        SELECT pc.id AS cor_id, pc.cor, pc.estoque, pc.peso_gramas AS cor_peso, pc.peca_id,
+               pp.nome AS peca_nome, pp.produto_id, pp.peso_gramas AS peca_peso, pp.quantidade AS peca_qtd
         FROM produto_pecas_cores pc
         JOIN produto_pecas pp ON pp.id = pc.peca_id
         WHERE pc.id = :id FOR UPDATE
@@ -30,6 +30,7 @@ if ($method === 'POST') {
     $acao = $_GET['acao'] ?? '';
 
     // 1. Imprimiu peça: soma ao saldo de uma cor. É o botão [+] da bancada.
+    // Baixa automaticamente o filamento gasto daquela cor pelo PEPS.
     if ($acao === 'registrar_producao_peca') {
         $b = readJsonBody();
         $corId = (int) ($b['cor_id'] ?? 0);
@@ -57,16 +58,42 @@ if ($method === 'POST') {
                 'observacoes'  => 'cor: ' . rotuloCor($cor['cor']),
             ]);
 
+            // Baixa automática de filamento em gramas pelo PEPS
+            $pesoUnidadePeca = 0.0;
+            if ($cor['cor_peso'] !== null && (float)$cor['cor_peso'] > 0) {
+                $pesoUnidadePeca = (float) $cor['cor_peso'];
+            } elseif ($cor['peca_peso'] !== null && (float)$cor['peca_peso'] > 0) {
+                $pecaQtdPai = max(1, (int)($cor['peca_qtd'] ?? 1));
+                $pesoUnidadePeca = (float)$cor['peca_peso'] / $pecaQtdPai;
+            }
+
+            $gramasTotalGastas = round($pesoUnidadePeca * $qtd, 2);
+            $infoFilamento = null;
+            if ($gramasTotalGastas > 0) {
+                $infoFilamento = darBaixaFilamentoConsumo($pdo, (string)$cor['cor'], $gramasTotalGastas, [
+                    'peca_id' => (int) $cor['peca_id'],
+                    'produto_id' => (int) $cor['produto_id'],
+                    'usuario_id' => $usuario['id'],
+                    'observacoes' => "Impressão de {$qtd} un. da peça {$cor['peca_nome']} (" . rotuloCor($cor['cor']) . ")",
+                ]);
+            }
+
             $capacidade = capacidadeMontagem($pdo, (int) $cor['produto_id']);
             $pdo->commit();
 
+            $msg = sprintf('+%d de "%s". Saldo: %d.', $qtd, rotuloPeca(['nome' => $cor['peca_nome']], $cor['cor']), $novoSaldo);
+            if ($gramasTotalGastas > 0) {
+                $msg .= sprintf(' Baixado %.1fg de filamento (%s).', $gramasTotalGastas, rotuloCor($cor['cor']));
+            }
+
             jsonResponse([
                 'ok' => true,
-                'mensagem' => sprintf('+%d de "%s". Saldo: %d.', $qtd, rotuloPeca(['nome' => $cor['peca_nome']], $cor['cor']), $novoSaldo),
+                'mensagem' => $msg,
                 'novo_estoque' => $novoSaldo,
                 'produto_id' => (int) $cor['produto_id'],
                 'montavel' => $capacidade['capacidade'],
                 'gargalos' => $capacidade['gargalos'],
+                'filamento_baixado_gramas' => $gramasTotalGastas,
             ]);
         } catch (Exception $e) {
             $pdo->rollBack();
@@ -241,6 +268,7 @@ if ($method === 'GET') {
         SELECT
             pp.id AS peca_id, pp.produto_id, pp.nome AS peca_nome,
             pp.quantidade AS por_unidade, pp.foto AS peca_foto,
+            pp.peso_gramas AS peca_peso, pp.tempo_producao_segundos AS peca_tempo,
             prod.nome AS produto_nome, prod.estoque AS estoque_produto_pronto,
             prod.ativo AS produto_ativo, prod.foto AS produto_foto
         FROM produto_pecas pp
@@ -253,7 +281,7 @@ if ($method === 'GET') {
         $pecaIds = array_column($pecasLinhas, 'peca_id');
         $in = implode(',', array_fill(0, count($pecaIds), '?'));
         $stmtCores = $pdo->prepare("
-            SELECT id AS cor_id, peca_id, cor, estoque, foto
+            SELECT id AS cor_id, peca_id, cor, estoque, foto, peso_gramas
             FROM produto_pecas_cores WHERE peca_id IN ($in) ORDER BY id ASC
         ");
         $stmtCores->execute($pecaIds);
@@ -314,11 +342,24 @@ if ($method === 'GET') {
             $status = ($proxima && $proxima <= date('Y-m-d')) ? 'urgente' : 'imprimir';
         }
 
+        $tempoPeca1un = (int) ($l['peca_tempo'] ?? 0);
+        $pesoPeca1un = (float) ($l['peca_peso'] ?? 0);
+        $tempoUnitario = $porUnidade > 0 ? ($tempoPeca1un / $porUnidade) : 0;
+        $pesoUnitario = $porUnidade > 0 ? ($pesoPeca1un / $porUnidade) : 0;
+        $tempoFilaSegundos = (int) round($tempoUnitario * $aImprimir);
+        $pesoFilaGramas = round($pesoUnitario * $aImprimir, 2);
+
         $produtos[$pid]['pecas'][] = [
             'peca_id' => (int) $l['peca_id'],
             'nome' => $l['peca_nome'],
             'foto' => $l['peca_foto'],
             'por_unidade' => $porUnidade,
+            'tempo_producao_segundos' => $tempoPeca1un,
+            'tempo_formatado' => formatarTempoHHMMSS($tempoPeca1un),
+            'tempo_fila_segundos' => $tempoFilaSegundos,
+            'tempo_fila_formatado' => formatarTempoHHMMSS($tempoFilaSegundos),
+            'peso_gramas' => $pesoPeca1un,
+            'peso_fila_gramas' => $pesoFilaGramas,
             'estoque' => $estoquePeca,
             // Quantos produtos esta peça (somando todas as cores) permite montar.
             'rende' => intdiv(max(0, $estoquePeca), $porUnidade),
@@ -331,11 +372,12 @@ if ($method === 'GET') {
                 'cor' => trim((string) $c['cor']) === '' ? null : $c['cor'],
                 'foto' => $c['foto'],
                 'estoque' => (int) $c['estoque'],
+                'peso_gramas' => $c['peso_gramas'] !== null ? (float) $c['peso_gramas'] : null,
             ], $cores),
         ];
     }
 
-    // 3. Fecha os agregados por produto: quem é o gargalo da montagem.
+    // 3. Fecha os agregados por produto: quem é o gargalo da montagem e tempo futuro total.
     $lista = [];
     $totalMontavel = 0;
     foreach ($produtos as $p) {
@@ -347,6 +389,11 @@ if ($method === 'GET') {
         }
         $p['total_pecas_por_unidade'] = array_sum(array_column($p['pecas'], 'por_unidade'));
         $p['total_a_imprimir'] = array_sum(array_column($p['pecas'], 'a_imprimir'));
+        $tempoFilaProd = array_sum(array_column($p['pecas'], 'tempo_fila_segundos'));
+        $p['tempo_fila_segundos'] = $tempoFilaProd;
+        $p['tempo_fila_formatado'] = formatarTempoHHMMSS($tempoFilaProd);
+        $p['peso_fila_gramas'] = round(array_sum(array_column($p['pecas'], 'peso_fila_gramas')), 2);
+
         $totalMontavel += $p['montavel'];
         $lista[] = $p;
     }
@@ -362,6 +409,9 @@ if ($method === 'GET') {
         return strcmp($a['nome'], $b['nome']);
     });
 
+    $totalTempoFilaGeral = array_sum(array_column($lista, 'tempo_fila_segundos'));
+    $totalPesoFilaGeral = round(array_sum(array_column($lista, 'peso_fila_gramas')), 2);
+
     jsonResponse([
         'resumo' => [
             'total_produtos' => count($lista),
@@ -369,6 +419,9 @@ if ($method === 'GET') {
             'total_a_imprimir' => $totalAImprimir,
             'total_estoque' => $totalEstoquePecas,
             'total_montavel' => $totalMontavel,
+            'tempo_futuro_segundos' => $totalTempoFilaGeral,
+            'tempo_futuro_formatado' => formatarTempoHHMMSS($totalTempoFilaGeral),
+            'peso_futuro_gramas' => $totalPesoFilaGeral,
         ],
         'produtos' => $lista,
     ]);

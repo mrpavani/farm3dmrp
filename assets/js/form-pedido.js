@@ -97,6 +97,9 @@ window.FormPedido = (() => {
 
     function atualizarResumo() {
         let itens = 0, unidades = 0, valor = 0;
+        let tempoSegundos = 0, pesoGramas = 0;
+        const coresTotais = {};
+
         $('pedItens').querySelectorAll('.item-linha').forEach(div => {
             const p = produtos.find(x => String(x.id) === div.querySelector('[data-role="produto"]').value);
             const q = parseInt(div.querySelector('[data-role="quantidade"]').value, 10) || 0;
@@ -104,12 +107,53 @@ window.FormPedido = (() => {
             itens++;
             unidades += q;
             valor += q * Number(p.preco);
+
+            const t1 = Number(p.tempo_producao_segundos) || 0;
+            const w1 = Number(p.peso_gramas) || 0;
+            tempoSegundos += t1 * q;
+            pesoGramas += w1 * q;
+
+            const coresArr = p.consumo_cores || [];
+            if (coresArr.length) {
+                coresArr.forEach(c => {
+                    const cNome = c.cor || 'qualquer cor';
+                    const g = (Number(c.gramas_1un) || 0) * q;
+                    coresTotais[cNome] = (coresTotais[cNome] || 0) + g;
+                });
+            } else if (w1 > 0) {
+                coresTotais['qualquer cor'] = (coresTotais['qualquer cor'] || 0) + (w1 * q);
+            }
         });
         $('pedResumoItens').textContent = itens;
         $('pedResumoItensRot').textContent = itens === 1 ? 'item' : 'itens';
         $('pedResumoUnidadesRot').textContent = unidades === 1 ? 'unidade' : 'unidades';
         $('pedResumoUnidades').textContent = App.fmtInt.format(unidades);
         $('pedResumoValor').textContent = App.fmtMoeda.format(valor);
+
+        // Tempo futuro em HH:mm:ss
+        if ($('pedResumoTempo')) {
+            const s = Math.round(tempoSegundos);
+            const horas = Math.floor(s / 3600);
+            const resto = s % 3600;
+            const minutos = Math.floor(resto / 60);
+            const segs = resto % 60;
+            $('pedResumoTempo').textContent = `${String(horas).padStart(2, '0')}:${String(minutos).padStart(2, '0')}:${String(segs).padStart(2, '0')}`;
+        }
+        if ($('pedResumoFilamento')) {
+            $('pedResumoFilamento').textContent = `${Math.round(pesoGramas * 10) / 10} g`;
+        }
+        if ($('pedCoresDistribuicao')) {
+            const entries = Object.entries(coresTotais).filter(([, g]) => g > 0);
+            if (entries.length) {
+                $('pedCoresDistribuicao').innerHTML = '<span>🎨 Cores:</span>' + entries.map(([c, g]) =>
+                    `<span class="chip-cor-diag" style="font-size:11px;">${App.esc(c)}: <b>${Math.round(g * 10) / 10}g</b></span>`
+                ).join(' ');
+                $('pedCoresDistribuicao').hidden = false;
+            } else {
+                $('pedCoresDistribuicao').innerHTML = '';
+                $('pedCoresDistribuicao').hidden = true;
+            }
+        }
     }
 
     // ---------- Abrir ----------

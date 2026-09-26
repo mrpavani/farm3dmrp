@@ -19,6 +19,7 @@ $icones = [
     'produtos'  => '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.3 7 12 12l8.7-5M12 22V12"/>',
     'relatorio' => '<path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/>',
     'usuarios'  => '<rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+    'filamento' => '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M12 3a9 9 0 0 1 9 9"/><path d="M3 12a9 9 0 0 0 9 9"/>',
     'sair'      => '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
     'menu'      => '<path d="M4 6h16M4 12h16M4 18h16"/>',
 ];
@@ -35,6 +36,7 @@ $menu = [
     'Cadastros' => [
         'clientes.php' => ['Clientes', 'clientes'],
         'produtos.php' => ['Produtos', 'produtos'],
+        'filamentos.php' => ['Estoque Filamento', 'filamento'],
     ],
     'Análise' => [
         'relatorios.php' => ['Relatórios', 'relatorio'],

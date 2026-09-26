@@ -117,8 +117,20 @@ function renderizar(d) {
     $('contaFabricar').textContent = d.a_fabricar.length;
     $('contaFabricar').hidden = !d.a_fabricar.length;
 
+    // Alerta de filamentos da carteira
+    if (d.planejamento_filamento) {
+        const fFalta = d.planejamento_filamento.total_cores_com_falta || 0;
+        const badgeFil = $('contaAlertaFilamento');
+        if (badgeFil) {
+            badgeFil.textContent = fFalta > 0 ? `${fFalta} em falta` : 'ok';
+            badgeFil.className = `contador ${fFalta > 0 ? 'atrasado' : ''}`;
+            badgeFil.hidden = fFalta === 0;
+        }
+    }
+
     renderEntregas(d.agenda);
     renderFabricar(d.a_fabricar);
+    renderFilamento(d);
     renderPedidos(d.por_pedido);
     renderProdutos(d.por_produto, r);
     renderClientes(d.por_cliente);
@@ -187,6 +199,238 @@ function renderFabricar(lista) {
         }),
         null,
         'Nada pendente de fabricação neste período. 🎉'
+    );
+}
+
+// ---------- Controle de Filamentos & Demanda da Carteira ----------
+function renderFilamento(d) {
+    const pf = d.planejamento_filamento;
+    const est = d.estoque_filamentos;
+
+    // Alerta em destaque no topo da aba de filamentos
+    const boxAlerta = $('alertaGeralFilamentoCarteira');
+    if (boxAlerta) {
+        if (pf && pf.tem_alerta_geral) {
+            boxAlerta.style.display = 'block';
+            boxAlerta.className = 'alerta-erro';
+            boxAlerta.innerHTML = `
+                <div style="display:flex; align-items:flex-start; gap:10px; background: rgba(239, 68, 68, 0.12); border: 1px solid var(--perigo); border-radius: var(--radius); padding: 12px 16px;">
+                    <span style="font-size:22px;">🚨</span>
+                    <div>
+                        <strong style="color: var(--perigo);">ALERTA CRÍTICO: Falta filamento para atender os pedidos em aberto!</strong>
+                        <div style="font-size:13px; margin-top:3px; color: var(--text);">
+                            Há <b>${pf.total_cores_com_falta} cor(es)</b> com estoque insuficiente. É necessário comprar ao menos <b>${pf.rolos_para_comprar_total} rolo(s) de 1kg</b> para honrar as entregas prometidas.
+                        </div>
+                    </div>
+                </div>
+            `;
+        } else {
+            boxAlerta.style.display = 'block';
+            boxAlerta.className = 'alerta-sucesso';
+            boxAlerta.innerHTML = `
+                <div style="display:flex; align-items:center; gap:8px; background: rgba(34, 197, 94, 0.12); border: 1px solid var(--sucesso); border-radius: var(--radius); padding: 10px 16px;">
+                    <span style="font-size:18px;">✅</span>
+                    <strong style="color: var(--sucesso);">Estoque de filamento suficiente para atender todos os pedidos pendentes da carteira!</strong>
+                </div>
+            `;
+        }
+    }
+
+    // Tabela 1: Demanda da Carteira de Pedidos
+    const coresDemanda = pf?.cores || [];
+    if ($('painelDemandaFilamento')) {
+        if (!coresDemanda.length) {
+            $('painelDemandaFilamento').innerHTML = '<p class="vazio">Nenhum pedido pendente demandando filamento no momento.</p>';
+        } else {
+            $('painelDemandaFilamento').innerHTML = tabela(
+                [['Cor'], ['Necessidade (g)', 1], ['Rolos Nec.', 1], ['Estoque Atual (g)', 1], ['Saldo Projetado (g)', 1], ['Falta Comprar', 1], ['Custo Est. (R$)', 1], ['Diagnóstico / Alerta']],
+                coresDemanda.map(c => {
+                    const falta = c.falta_gramas > 0;
+                    const hex = c.cor_hex || '#6366f1';
+                    const alertaHtml = falta
+                        ? `<span class="tag-status atrasado" style="font-weight:700;">🚨 Faltam ${fmtInt.format(c.falta_gramas)}g (${c.rolos_comprar} rolo(s))</span>`
+                        : `<span class="tag-status pronto">✅ Atende (sobra ${fmtInt.format(c.saldo_projetado_gramas)}g)</span>`;
+
+                    return [
+                        [`<div style="display:flex;align-items:center;gap:6px;"><span style="width:14px;height:14px;border-radius:50%;background-color:${esc(hex)};border:1px solid var(--border);display:inline-block;"></span><b>${esc(c.cor)}</b></div>`],
+                        [`<strong>${fmtInt.format(c.gramas_necessarias)} g</strong>`, 1],
+                        [`${c.rolos_necessarios} un`, 1],
+                        [`${fmtInt.format(c.estoque_atual_gramas)} g`, 1],
+                        [`<span style="font-weight:600; color:${c.saldo_projetado_gramas < 0 ? 'var(--perigo)' : 'var(--sucesso)'};">${fmtInt.format(c.saldo_projetado_gramas)} g</span>`, 1],
+                        [`<b style="color:${falta ? 'var(--perigo)' : 'var(--text-3)'};">${falta ? `${c.rolos_comprar} rolo(s)` : '0'}</b>`, 1],
+                        [`${fmtMoeda.format(c.custo_estimado)}`, 1],
+                        [alertaHtml],
+                    ];
+                })
+            );
+        }
+    }
+
+    // Tabela 2: Inventário de Filamentos
+    const itensEst = est?.itens || [];
+    if ($('painelInventarioFilamento')) {
+        if (!itensEst.length) {
+            $('painelInventarioFilamento').innerHTML = '<p class="vazio">Nenhum filamento cadastrado no estoque ainda. <a href="filamentos.php">Cadastre aqui</a>.</p>';
+        } else {
+            $('painelInventarioFilamento').innerHTML = tabela(
+                [['Cor'], ['Tipo / Marca'], ['Saldo em Estoque', 1], ['Rolos (1kg)', 1], ['Custo Médio Ponderado', 1], ['Custo Lote PEPS Ativo', 1], ['Valor Total Estoque', 1], ['Situação']],
+                itensEst.map(f => {
+                    const hex = f.cor_hex || '#6366f1';
+                    return [
+                        [`<div style="display:flex;align-items:center;gap:6px;"><span style="width:14px;height:14px;border-radius:50%;background-color:${esc(hex)};border:1px solid var(--border);display:inline-block;"></span><b>${esc(f.cor)}</b></div>`],
+                        [`${esc(f.tipo)} · ${esc(f.marca)}`],
+                        [`<strong>${fmtInt.format(f.estoque_gramas)} g</strong>`, 1],
+                        [`${Number(f.estoque_rolos).toFixed(2)} un`, 1],
+                        [`${fmtMoeda.format(f.custo_medio_kg)} / kg`, 1],
+                        [`<b style="color:var(--primary);">${fmtMoeda.format(f.custo_peps_kg)} / kg</b>`, 1],
+                        [`${fmtMoeda.format(f.valor_total_estoque)}`, 1],
+                        [`<span class="tag-status ${f.status === 'ok' ? 'pronto' : (f.status === 'baixo' ? 'parcial' : 'atrasado')}">${f.status === 'ok' ? 'Em estoque' : (f.status === 'baixo' ? 'Estoque baixo' : 'Zerado')}</span>`],
+                    ];
+                })
+            );
+        }
+    }
+}
+
+// ============================================================
+// Simulador / Planejador de Eventos Grandes
+// ============================================================
+let itensEventoSimulador = [
+    { produto_id: 0, quantidade: 100 }
+];
+let listaProdutosGeral = [];
+
+function renderLinhasEventoSimulador() {
+    const container = $('listaItensSimuladorEvento');
+    if (!container) return;
+
+    if (!itensEventoSimulador.length) {
+        itensEventoSimulador = [{ produto_id: 0, quantidade: 100 }];
+    }
+
+    container.innerHTML = itensEventoSimulador.map((item, idx) => `
+        <div style="display: flex; gap: 10px; align-items: center; background: var(--surface-1); padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border);">
+            <div style="flex: 2;">
+                <label style="font-size:11px; margin-bottom:2px; display:block;">Produto para o Evento</label>
+                <select class="sel-prod-evento" onchange="atualizarItemEvento(${idx}, 'produto_id', this.value)" style="margin:0; width:100%;">
+                    <option value="">Selecione o produto...</option>
+                    ${listaProdutosGeral.map(p => `
+                        <option value="${p.id}" ${Number(p.id) === Number(item.produto_id) ? 'selected' : ''}>
+                            ${esc(p.nome)} (${p.tipo || 'simples'}) — ${Number(p.peso_gramas) > 0 ? p.peso_gramas + 'g' : 'peso n/d'}
+                        </option>
+                    `).join('')}
+                </select>
+            </div>
+            <div style="flex: 1; max-width: 150px;">
+                <label style="font-size:11px; margin-bottom:2px; display:block;">Quantidade (un)</label>
+                <input type="number" min="1" step="1" value="${item.quantidade || 100}" oninput="atualizarItemEvento(${idx}, 'quantidade', this.value)" style="margin:0; width:100%; text-align:center;">
+            </div>
+            <div style="padding-top: 14px;">
+                <button type="button" class="btn-icone perigo" onclick="removerLinhaEvento(${idx})" title="Remover item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                </button>
+            </div>
+        </div>
+    `).join('');
+}
+
+function atualizarItemEvento(idx, campo, valor) {
+    if (!itensEventoSimulador[idx]) return;
+    itensEventoSimulador[idx][campo] = campo === 'quantidade' ? Math.max(1, parseInt(valor) || 1) : parseInt(valor) || 0;
+}
+
+function adicionarLinhaEvento() {
+    itensEventoSimulador.push({ produto_id: 0, quantidade: 100 });
+    renderLinhasEventoSimulador();
+}
+
+function removerLinhaEvento(idx) {
+    if (itensEventoSimulador.length > 1) {
+        itensEventoSimulador.splice(idx, 1);
+    } else {
+        itensEventoSimulador = [{ produto_id: 0, quantidade: 100 }];
+    }
+    renderLinhasEventoSimulador();
+}
+
+async function calcularPlanejamentoEvento() {
+    const itensValidos = itensEventoSimulador.filter(x => x.produto_id > 0 && x.quantidade > 0);
+    if (!itensValidos.length) {
+        App.toast('Selecione ao menos um produto e quantidade para o evento.', 'erro');
+        return;
+    }
+
+    const btn = $('btnCalcularEvento');
+    btn.disabled = true;
+    try {
+        const res = await App.api('api/relatorios.php', 'POST', { itens: itensValidos });
+        renderResultadoEvento(res);
+        $('resultadoPlanejamentoEvento').style.display = 'block';
+        $('resultadoPlanejamentoEvento').scrollIntoView({ behavior: 'smooth' });
+    } catch (e) {
+        App.toast(e.message, 'erro');
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+function renderResultadoEvento(res) {
+    // KPIs do Evento
+    const kpis = [
+        ['Tempo de Impressão Total', res.tempo_total_formatado || '00:00:00', 'Horas estimadas de máquina', ''],
+        ['Filamento Total Necessário', `${(res.peso_total_kg || 0).toLocaleString('pt-BR', {minimumFractionDigits:2})} kg`, `${fmtInt.format(res.peso_total_gramas)} gramas`, ''],
+        ['Custo Financeiro Estimado', fmtMoeda.format(res.custo_total_estimado || 0), 'Custo de material consumido (PEPS)', 'kpi-montavel'],
+        ['Rolos a Comprar', `${res.rolos_para_comprar_total || 0} rolos`, res.tem_alerta_geral ? '🚨 Falta material no estoque!' : '✅ Estoque atende 100%', res.tem_alerta_geral ? 'kpi-alerta' : ''],
+    ];
+    $('kpisEvento').innerHTML = kpis.map(([rot, val, sub, cls]) =>
+        `<div class="kpi ${cls}"><div class="rotulo">${rot}</div><div class="valor">${val}</div><div class="sub">${sub}</div></div>`).join('');
+
+    // Alerta do Evento
+    const alertaDiv = $('alertaGeralEvento');
+    if (res.tem_alerta_geral) {
+        alertaDiv.className = 'alerta-erro';
+        alertaDiv.innerHTML = `
+            <div style="display:flex; align-items:flex-start; gap:10px; background: rgba(239, 68, 68, 0.12); border: 1px solid var(--perigo); border-radius: var(--radius); padding: 12px 16px;">
+                <span style="font-size:24px;">🚨</span>
+                <div>
+                    <strong style="color: var(--perigo);">ESTOQUE INSUFICIENTE PARA O EVENTO: ${res.total_cores_com_falta} cor(es) em falta!</strong>
+                    <p style="margin:4px 0 0 0; font-size:13px; color: var(--text);">
+                        Para atender esse lote de produção, você precisará providenciar a compra de <b>${res.rolos_para_comprar_total} carretel(is) de 1kg</b> conforme a lista de cores abaixo.
+                    </p>
+                </div>
+            </div>
+        `;
+    } else {
+        alertaDiv.className = 'alerta-sucesso';
+        alertaDiv.innerHTML = `
+            <div style="display:flex; align-items:center; gap:8px; background: rgba(34, 197, 94, 0.12); border: 1px solid var(--sucesso); border-radius: var(--radius); padding: 10px 16px;">
+                <span style="font-size:20px;">🎉</span>
+                <strong style="color: var(--sucesso);">ESTOQUE 100% SUFICIENTE! Todas as cores necessárias estão disponíveis nos carretéis em estoque.</strong>
+            </div>
+        `;
+    }
+
+    // Tabela por Cor
+    $('tabelaCoresEvento').innerHTML = tabela(
+        [['Cor do Filamento'], ['Consumo do Evento', 1], ['Rolos (1kg)', 1], ['Estoque Atual (g)', 1], ['Saldo Após Evento (g)', 1], ['Falta Comprar', 1], ['Custo Est. (R$)', 1], ['Diagnóstico do Evento']],
+        (res.cores || []).map(c => {
+            const falta = c.falta_gramas > 0;
+            const hex = c.cor_hex || '#6366f1';
+            const diag = falta
+                ? `<span class="tag-status atrasado" style="font-weight:700;">🚨 Comprar ${c.rolos_comprar} rolo(s) (faltam ${fmtInt.format(c.falta_gramas)}g)</span>`
+                : `<span class="tag-status pronto">✅ Atende (sobrará ${fmtInt.format(c.saldo_projetado_gramas)}g)</span>`;
+
+            return [
+                [`<div style="display:flex;align-items:center;gap:6px;"><span style="width:14px;height:14px;border-radius:50%;background-color:${esc(hex)};border:1px solid var(--border);display:inline-block;"></span><b>${esc(c.cor)}</b></div>`],
+                [`<strong>${fmtInt.format(c.gramas_necessarias)} g</strong>`, 1],
+                [`${c.rolos_necessarios} un`, 1],
+                [`${fmtInt.format(c.estoque_atual_gramas)} g`, 1],
+                [`<span style="font-weight:600; color:${c.saldo_projetado_gramas < 0 ? 'var(--perigo)' : 'var(--sucesso)'};">${fmtInt.format(c.saldo_projetado_gramas)} g</span>`, 1],
+                [`<b style="color:${falta ? 'var(--perigo)' : 'var(--text-3)'};">${falta ? `${c.rolos_comprar} rolo(s)` : '0'}</b>`, 1],
+                [`${fmtMoeda.format(c.custo_estimado)}`, 1],
+                [diag],
+            ];
+        })
     );
 }
 
@@ -416,7 +660,19 @@ document.querySelectorAll('[data-periodo]').forEach(b =>
 document.querySelectorAll('.aba').forEach(b =>
     b.addEventListener('click', () => mostrarAba(b.dataset.aba)));
 
+// Eventos do Planejador de Eventos
+$('btnAdicionarItemEvento')?.addEventListener('click', adicionarLinhaEvento);
+$('btnCalcularEvento')?.addEventListener('click', calcularPlanejamentoEvento);
+window.atualizarItemEvento = atualizarItemEvento;
+window.removerLinhaEvento = removerLinhaEvento;
+
 (async function init() {
+    try {
+        const prods = await App.api('api/produtos.php?todos=1');
+        listaProdutosGeral = (prods || []).filter(p => Number(p.ativo) === 1);
+        renderLinhasEventoSimulador();
+    } catch (_) {}
+
     await Promise.all([
         popular('api/produtos.php?todos=1', $('relProduto'), p => [p.id, p.nome + (Number(p.ativo) ? '' : ' (inativo)')]),
         popular('api/clientes.php', $('relCliente'), c => [c.id, c.nome]),

@@ -67,11 +67,14 @@ require_once __DIR__ . '/modal_cliente.php';
                 <textarea id="pedObs" rows="2" placeholder="Cores, acabamento, forma de entrega..."></textarea>
             </section>
 
-            <div class="resumo-inline" aria-live="polite">
+            <div class="resumo-inline" aria-live="polite" style="display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;">
                 <span><strong id="pedResumoItens">0</strong> <span id="pedResumoItensRot">itens</span></span>
                 <span><strong id="pedResumoUnidades">0</strong> <span id="pedResumoUnidadesRot">unidades</span></span>
+                <span>⏱️ Tempo futuro: <strong id="pedResumoTempo" style="color:var(--primary);">00:00:00</strong></span>
+                <span>⚖️ Filamento: <strong id="pedResumoFilamento" style="color:var(--primary);">0 g</strong></span>
                 <span>Valor estimado <span class="total" id="pedResumoValor">R$ 0,00</span></span>
             </div>
+            <div id="pedCoresDistribuicao" style="margin-top:6px;font-size:12px;color:var(--text-3);display:flex;gap:6px;flex-wrap:wrap;align-items:center;"></div>
 
             <div class="modal-rodape">
                 <button type="button" class="secundario" data-fechar-modal>Cancelar</button>

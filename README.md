@@ -9,44 +9,48 @@ quem criou cada pedido e quem registrou cada produção.
 
 ```
 pedidos3d/
-├── schema.sql                  ← criação do banco (instalação nova)
-├── migracao_00N_*.sql          ← atualizações para bancos já existentes
-├── config.php                  ← credenciais do banco
+├── atualizar_banco_producao.sql ← script idempotente consolidado para produção (phpMyAdmin)
+├── schema_producao_limpo.sql    ← criação do banco limpo do zero (14 tabelas)
+├── limpar_banco_producao.sql    ← limpeza de dados de teste (mantém administradores)
+├── migrate.php                  ← migração e atualização automática via navegador
+├── database/
+│   └── migrations/              ← histórico de migrações (001 a 013) e schemas legados
+├── config.php                   ← credenciais locais do banco
+├── config_producao.php          ← modelo de credenciais de produção
 ├── includes/
-│   ├── db.php                  ← conexão PDO + helpers (JSON, status, clientes)
-│   ├── auth.php                ← sessão, login, validação de usuários
-│   ├── header.php / footer.php ← layout: menu lateral + cabeçalho da página
-│   ├── modal_pedido.php        ← modal de pedido/ordem de estoque (compartilhado)
-│   └── modal_cliente.php       ← modal de cliente (compartilhado)
-├── api/                        ← endpoints JSON (todos exigem login)
-│   ├── pedidos.php  producoes.php  fabricar.php
-│   ├── clientes.php produtos.php   usuarios.php  relatorios.php
-├── login.php  logout.php
-├── index.php                   ← redireciona para pedidos.php
-├── pedidos.php                 ← módulo Pedidos (lista + modal)
-├── fabrica.php                 ← painel: abas Pedidos e Fabricar
-├── clientes.php  produtos.php  usuarios.php  ← módulos (lista + modal)
-├── relatorios.php
+│   ├── db.php                   ← conexão PDO + helpers (JSON, status, clientes)
+│   ├── auth.php                 ← sessão, login, validação de usuários
+│   ├── estoque.php              ← movimentação de estoque, BOM e baixa PEPS de filamento
+│   ├── header.php               ← menu lateral responsivo + cabeçalho da página
+│   └── modal_pedido.php         ← modal compartilhado de pedidos e ordens de estoque
+├── api/                         ← endpoints REST/JSON (todos protegidos por sessão)
+│   ├── pedidos.php  producoes.php   fabrica_pecas.php
+│   ├── clientes.php produtos.php    produtos_composicao.php
+│   ├── filamentos.php usuarios.php  relatorios.php
+├── login.php  logout.php perfil.php
+├── index.php                    ← redirecionamento inicial
+├── pedidos.php                  ← módulo de Pedidos e Ordens de Produção
+├── fabrica.php                  ← painel MRP (Fábrica, Apontamento e Fila de Peças)
+├── produtos.php                 ← catálogo de produtos, fichas técnicas e precificação
+├── filamentos.php               ← gestão de carretéis/lotes (PEPS) e estoque em gramas
+├── clientes.php usuarios.php    ← cadastros e controle de acesso
+├── relatorios.php               ← relatórios financeiros e de produção
 └── assets/
-    ├── css/style.css           ← design system
+    ├── css/style.css            ← design system e temas
     └── js/
-        ├── comum.js            ← App: api, ícones, modais, confirmação, toasts
-        ├── form-pedido.js      ← FormPedido.abrir()
-        ├── form-cliente.js     ← FormCliente.abrir()
-        └── pedidos, fabrica, clientes, produtos, usuarios, relatorios .js
+        ├── comum.js             ← utilitários: modais, máscaras, toasts, chamadas API
+        ├── form-pedido.js       ← lógica do modal dinâmico de pedido
+        └── *.js                 ← scripts específicos de cada módulo
 ```
 
-## Como instalar
+## Como instalar ou atualizar o banco
 
-1. Suba o banco: `mysql -u root -p < schema.sql`
-   (cria o banco `pedidos3d` e 3 produtos de exemplo).
-   Se o banco foi criado com uma versão anterior, rode as migrações em ordem:
-   ```
-   mysql -u root -p pedidos3d < migracao_001_clientes_email_descricao.sql
-   mysql -u root -p pedidos3d < migracao_002_usuarios.sql
-   mysql -u root -p pedidos3d < migracao_003_admin.sql
-   mysql -u root -p pedidos3d < migracao_004_producao_estoque.sql
-   ```
+1. **Em Produção ou Atualização:**
+   - **Opção 1 (phpMyAdmin):** Execute o arquivo `atualizar_banco_producao.sql` no phpMyAdmin. Ele é 100% não-destrutivo e seguro.
+   - **Opção 2 (Navegador):** Acesse `https://seusite.com.br/migrate.php`.
+2. **Nova Instalação do Zero:**
+   - Suba o banco: `mysql -u root -p < schema_producao_limpo.sql`.
+
 2. Edite `config.php` com o usuário/senha do seu MySQL.
 3. Rode num servidor PHP 8+ (Apache/Nginx) ou localmente:
    `php -S localhost:8000` dentro da pasta.

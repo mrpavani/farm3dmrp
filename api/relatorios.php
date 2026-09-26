@@ -22,6 +22,22 @@ $pdo = getDB();
 // pedido. Reajustar o produto depois não altera o histórico. Em "por produto",
 // "preco" é a média praticada e "preco_tabela" é o preço atual do catálogo.
 // ------------------------------------------------------------
+// ------------------------------------------------------------
+// POST /api/relatorios.php?acao=planejar_evento
+// Body: { itens: [ { produto_id: 1, quantidade: 500 }, ... ] }
+// Simula eventos grandes e calcula gramas por cor, rolos necessários,
+// custo estimado em R$ e alerta se o estoque não for suficiente.
+// ------------------------------------------------------------
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $b = readJsonBody();
+    $itens = $b['itens'] ?? [];
+    if (!is_array($itens) || empty($itens)) {
+        jsonError('Envie os produtos e quantidades para planejar o evento.');
+    }
+    $resultado = planejarConsumoFilamento($pdo, $itens);
+    jsonResponse($resultado);
+}
+
 if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     jsonError('Método não suportado.', 405);
 }
@@ -233,6 +249,30 @@ $producaoPorUsuario = consultar($pdo, "
     ORDER BY pecas DESC
 ", $params);
 
+// ---------- Planejamento de Filamento para a Carteira de Pedidos ----------
+$demandaFabricar = [];
+foreach ($aFabricar as $af) {
+    if ((int)$af['falta_produzir'] > 0) {
+        $demandaFabricar[] = ['produto_id' => (int)$af['id'], 'quantidade' => (int)$af['falta_produzir']];
+    }
+}
+$planejamentoFilamentoCarteira = planejarConsumoFilamento($pdo, $demandaFabricar);
+
+// ---------- Inventário de Filamentos em Estoque ----------
+$stmtFil = $pdo->query("SELECT id FROM filamentos WHERE ativo = 1 ORDER BY cor ASC");
+$filIds = $stmtFil->fetchAll(PDO::FETCH_COLUMN);
+$estoqueFilamentos = [];
+$totalGramasEstoque = 0.0;
+$totalValorEstoque = 0.0;
+foreach ($filIds as $fId) {
+    $r = obterResumoFilamento($pdo, (int)$fId);
+    if ($r) {
+        $estoqueFilamentos[] = $r;
+        $totalGramasEstoque += (float) $r['estoque_gramas'];
+        $totalValorEstoque += (float) $r['valor_total_estoque'];
+    }
+}
+
 jsonResponse([
     'periodo' => ['de' => $de, 'ate' => $ate, 'base' => $base],
     'resumo' => $resumo,
@@ -243,4 +283,12 @@ jsonResponse([
     'a_fabricar' => $aFabricar,
     'producao_por_dia' => $producaoPorDia,
     'producao_por_usuario' => $producaoPorUsuario,
+    'planejamento_filamento' => $planejamentoFilamentoCarteira,
+    'estoque_filamentos' => [
+        'total_gramas' => round($totalGramasEstoque, 2),
+        'total_kg' => round($totalGramasEstoque / 1000, 2),
+        'total_rolos' => round($totalGramasEstoque / 1000, 2),
+        'valor_total' => round($totalValorEstoque, 2),
+        'itens' => $estoqueFilamentos,
+    ],
 ]);

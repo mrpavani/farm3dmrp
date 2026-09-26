@@ -21,6 +21,7 @@ window.App = (() => {
     // ---------- Formatação ----------
     const fmtInt = new Intl.NumberFormat('pt-BR');
     const fmtMoeda = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+    const num = (n, casas = 1) => new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: casas }).format(Number(n) || 0);
 
     const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -208,7 +209,7 @@ window.App = (() => {
     const normalizar = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
     return {
-        fmtInt, fmtMoeda, esc, isoEmDias, hoje: () => isoEmDias(0), data, dataHora, diasAte, etiquetaPrazo,
+        fmtInt, fmtMoeda, moeda: v => fmtMoeda.format(Number(v) || 0), num, esc, isoEmDias, hoje: () => isoEmDias(0), data, dataHora, diasAte, etiquetaPrazo,
         api, icone, botaoIcone, modal, confirmar, toast, estadoVazio, normalizar,
     };
 })();

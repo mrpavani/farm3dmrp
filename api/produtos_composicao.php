@@ -6,32 +6,48 @@ $pdo = getDB();
 $method = $_SERVER['REQUEST_METHOD'];
 
 // Busca as peças de um produto com suas cores aninhadas, já com os totais
-// (soma das cores) e o diagnóstico de capacidade para a $meta informada.
-// Uma peça pode ter várias cores em estoque (ex.: Chave de fenda em Cinza
-// e em Laranja) — qualquer cor serve para montar, então o que conta para
-// a capacidade é a SOMA do estoque das cores da peça.
+// (soma das cores), o diagnóstico de capacidade para a $meta informada,
+// e os cálculos consolidados de peso em gramas (filamento) e tempo futuro HH:mm:ss.
 function diagnosticoPecas(PDO $pdo, int $paiId, int $meta): array {
     $stmtPecas = $pdo->prepare("
-        SELECT id AS peca_id, nome, quantidade AS por_unidade, foto
+        SELECT id AS peca_id, nome, quantidade AS por_unidade, foto,
+               peso_gramas, tempo_producao_segundos
         FROM produto_pecas WHERE produto_id = :pai_id ORDER BY id ASC
     ");
     $stmtPecas->execute(['pai_id' => $paiId]);
     $pecas = $stmtPecas->fetchAll();
-    if (!$pecas) return ['capacidade_maxima' => 0, 'gargalos' => [], 'pecas' => []];
+    if (!$pecas) {
+        return [
+            'capacidade_maxima' => 0,
+            'gargalos' => [],
+            'pecas' => [],
+            'resumo_1un' => ['peso_total_gramas' => 0.0, 'tempo_total_segundos' => 0, 'tempo_formatado' => '00:00:00', 'cores' => []],
+            'resumo_meta' => [
+                'meta' => $meta, 'peso_total_gramas' => 0.0, 'tempo_total_segundos' => 0, 'tempo_formatado' => '00:00:00',
+                'peso_faltante_gramas' => 0.0, 'tempo_faltante_segundos' => 0, 'tempo_faltante_formatado' => '00:00:00',
+                'cores' => [], 'cores_faltante' => []
+            ]
+        ];
+    }
 
     $pecaIds = array_column($pecas, 'peca_id');
     $in = implode(',', array_fill(0, count($pecaIds), '?'));
     $stmtCores = $pdo->prepare("
-        SELECT id AS cor_id, peca_id, cor, estoque, foto
+        SELECT id AS cor_id, peca_id, cor, estoque, foto, peso_gramas, tempo_producao_segundos
         FROM produto_pecas_cores WHERE peca_id IN ($in) ORDER BY id ASC
     ");
     $stmtCores->execute($pecaIds);
     $coresPorPeca = [];
     foreach ($stmtCores->fetchAll() as $c) {
+        $c['tempo_formatado'] = $c['tempo_producao_segundos'] !== null ? formatarTempoHHMMSS((int)$c['tempo_producao_segundos']) : '';
         $coresPorPeca[(int) $c['peca_id']][] = $c;
     }
 
     $capacidadeMaxima = PHP_INT_MAX;
+    $pesoTotal1un = 0.0;
+    $tempoTotal1un = 0;
+    $coresConsumo1un = [];
+
     foreach ($pecas as &$p) {
         $cores = $coresPorPeca[(int) $p['peca_id']] ?? [];
         $p['cores'] = $cores;
@@ -39,11 +55,37 @@ function diagnosticoPecas(PDO $pdo, int $paiId, int $meta): array {
         $porUnidade = max(1, (int) $p['por_unidade']);
         $p['capacidade_individual'] = intdiv(max(0, $p['estoque_atual']), $porUnidade);
         $capacidadeMaxima = min($capacidadeMaxima, $p['capacidade_individual']);
+
+        $pesoPeca = (float) ($p['peso_gramas'] ?? 0);
+        $tempoPeca = (int) ($p['tempo_producao_segundos'] ?? 0);
+        $p['peso_gramas'] = $pesoPeca;
+        $p['tempo_producao_segundos'] = $tempoPeca;
+        $p['tempo_formatado'] = formatarTempoHHMMSS($tempoPeca);
+
+        $pesoTotal1un += $pesoPeca;
+        $tempoTotal1un += $tempoPeca;
+
+        if ($cores) {
+            $qtdCores = count($cores);
+            foreach ($cores as $c) {
+                $cNome = trim((string) $c['cor']) ?: 'qualquer cor';
+                $pCor = $c['peso_gramas'] !== null ? (float) $c['peso_gramas'] : ($pesoPeca > 0 ? ($pesoPeca / $qtdCores) : 0.0);
+                $coresConsumo1un[$cNome] = ($coresConsumo1un[$cNome] ?? 0.0) + $pCor;
+            }
+        } else {
+            $coresConsumo1un['qualquer cor'] = ($coresConsumo1un['qualquer cor'] ?? 0.0) + $pesoPeca;
+        }
     }
     unset($p);
     if ($capacidadeMaxima === PHP_INT_MAX) $capacidadeMaxima = 0;
 
     $gargalos = [];
+    $tempoMetaBruto = 0;
+    $tempoMetaFaltante = 0;
+    $pesoMetaBruto = $pesoTotal1un * $meta;
+    $pesoMetaFaltante = 0.0;
+    $coresConsumoFaltante = [];
+
     foreach ($pecas as &$p) {
         $porUnidade = max(1, (int) $p['por_unidade']);
         $p['total_necessario_meta'] = $meta * $porUnidade;
@@ -52,16 +94,78 @@ function diagnosticoPecas(PDO $pdo, int $paiId, int $meta): array {
         $p['situacao'] = $p['faltam_para_meta'] > 0 ? 'insuficiente' : 'ok';
         $p['eh_gargalo'] = ($p['capacidade_individual'] === $capacidadeMaxima);
         if ($p['eh_gargalo']) $gargalos[] = $p['nome'];
+
+        $tempoPeca = (int) $p['tempo_producao_segundos'];
+        $pesoPeca = (float) $p['peso_gramas'];
+
+        $tempoPecaMetaTotal = $tempoPeca * $meta;
+        $p['tempo_meta_total_segundos'] = $tempoPecaMetaTotal;
+        $p['tempo_meta_total_formatado'] = formatarTempoHHMMSS($tempoPecaMetaTotal);
+        $tempoMetaBruto += $tempoPecaMetaTotal;
+
+        $tempoFaltantePeca = (int) round($tempoPeca * ($p['faltam_para_meta'] / $porUnidade));
+        $p['tempo_meta_faltante_segundos'] = $tempoFaltantePeca;
+        $p['tempo_meta_faltante_formatado'] = formatarTempoHHMMSS($tempoFaltantePeca);
+        $tempoMetaFaltante += $tempoFaltantePeca;
+
+        $pesoFaltantePeca = (float) ($pesoPeca * ($p['faltam_para_meta'] / $porUnidade));
+        $pesoMetaFaltante += $pesoFaltantePeca;
+
+        $cores = $p['cores'] ?? [];
+        if ($cores) {
+            $qtdCores = count($cores);
+            foreach ($cores as $c) {
+                $cNome = trim((string) $c['cor']) ?: 'qualquer cor';
+                $pCor = $c['peso_gramas'] !== null ? (float) $c['peso_gramas'] : ($pesoPeca > 0 ? ($pesoPeca / $qtdCores) : 0.0);
+                $coresConsumoFaltante[$cNome] = ($coresConsumoFaltante[$cNome] ?? 0.0) + ($pCor * ($p['faltam_para_meta'] / $porUnidade));
+            }
+        }
     }
     unset($p);
 
-    return ['capacidade_maxima' => $capacidadeMaxima, 'gargalos' => $gargalos, 'pecas' => $pecas];
+    $coresResumo1un = [];
+    foreach ($coresConsumo1un as $cNome => $g) {
+        $coresResumo1un[] = ['cor' => $cNome, 'peso_gramas' => round($g, 2)];
+    }
+
+    $coresResumoMeta = [];
+    foreach ($coresConsumo1un as $cNome => $g) {
+        $coresResumoMeta[] = ['cor' => $cNome, 'peso_gramas' => round($g * $meta, 2)];
+    }
+
+    $coresResumoFaltante = [];
+    foreach ($coresConsumoFaltante as $cNome => $g) {
+        $coresResumoFaltante[] = ['cor' => $cNome, 'peso_gramas' => round($g, 2)];
+    }
+
+    return [
+        'capacidade_maxima' => $capacidadeMaxima,
+        'gargalos' => $gargalos,
+        'pecas' => $pecas,
+        'resumo_1un' => [
+            'peso_total_gramas' => round($pesoTotal1un, 2),
+            'tempo_total_segundos' => $tempoTotal1un,
+            'tempo_formatado' => formatarTempoHHMMSS($tempoTotal1un),
+            'cores' => $coresResumo1un,
+        ],
+        'resumo_meta' => [
+            'meta' => $meta,
+            'peso_total_gramas' => round($pesoMetaBruto, 2),
+            'tempo_total_segundos' => $tempoMetaBruto,
+            'tempo_formatado' => formatarTempoHHMMSS($tempoMetaBruto),
+            'peso_faltante_gramas' => round($pesoMetaFaltante, 2),
+            'tempo_faltante_segundos' => $tempoMetaFaltante,
+            'tempo_faltante_formatado' => formatarTempoHHMMSS($tempoMetaFaltante),
+            'cores' => $coresResumoMeta,
+            'cores_faltante' => $coresResumoFaltante,
+        ],
+    ];
 }
 
 // ------------------------------------------------------------
 // GET /api/produtos_composicao.php?produto_pai_id=N&meta=M
 // Retorna as peças cadastradas do produto (com suas cores), capacidade
-// de montagem e diagnóstico de gargalos para a meta informada.
+// de montagem, diagnóstico de gargalos e cálculos de peso e tempo.
 // ------------------------------------------------------------
 if ($method === 'GET') {
     $paiId = (int) ($_GET['produto_pai_id'] ?? 0);
@@ -71,12 +175,13 @@ if ($method === 'GET') {
         jsonError('Informe o id do produto.');
     }
 
-    $stmtProd = $pdo->prepare("SELECT id, nome, tipo, estoque, preco, ativo FROM produtos WHERE id = :id");
+    $stmtProd = $pdo->prepare("SELECT id, nome, tipo, estoque, preco, peso_gramas, tempo_producao_segundos, ativo FROM produtos WHERE id = :id");
     $stmtProd->execute(['id' => $paiId]);
     $produto = $stmtProd->fetch();
     if (!$produto) {
         jsonError('Produto não encontrado.', 404);
     }
+    $produto['tempo_producao_formatado'] = formatarTempoHHMMSS((int) ($produto['tempo_producao_segundos'] ?? 0));
 
     $diag = diagnosticoPecas($pdo, $paiId, $meta);
 
@@ -87,6 +192,8 @@ if ($method === 'GET') {
         'pode_atender_meta' => ($diag['capacidade_maxima'] >= $meta),
         'gargalos' => $diag['gargalos'],
         'pecas' => $diag['pecas'],
+        'resumo_1un' => $diag['resumo_1un'],
+        'resumo_meta' => $diag['resumo_meta'],
     ]);
 }
 
@@ -161,26 +268,39 @@ if ($method === 'POST') {
         if ($nome === '') continue;
 
         $foto = trim($item['foto'] ?? '');
+        $pesoPeca = max(0.0, (float) ($item['peso_gramas'] ?? 0));
+        $tempoPeca = converterParaSegundos($item['tempo_producao_segundos'] ?? ($item['tempo'] ?? 0));
         $coresEntrada = is_array($item['cores'] ?? null) ? $item['cores'] : [];
 
         $cores = [];
         foreach ($coresEntrada as $c) {
             $corNome = trim($c['cor'] ?? '');
+            $pesoCor = isset($c['peso_gramas']) && $c['peso_gramas'] !== '' && $c['peso_gramas'] !== null
+                ? max(0.0, (float) $c['peso_gramas'])
+                : null;
+            $tempoCor = isset($c['tempo_producao_segundos']) && $c['tempo_producao_segundos'] !== '' && $c['tempo_producao_segundos'] !== null
+                ? converterParaSegundos($c['tempo_producao_segundos'])
+                : null;
+
             $cores[] = [
                 'cor_id' => (int) ($c['cor_id'] ?? 0),
                 'cor' => $corNome === '' ? null : $corNome,
                 'estoque_inicial' => max(0, (int) ($c['estoque'] ?? 0)),
+                'peso_gramas' => $pesoCor,
+                'tempo_producao_segundos' => $tempoCor,
                 'foto' => trim($c['foto'] ?? '') ?: null,
             ];
         }
         if (!$cores) {
-            $cores[] = ['cor_id' => 0, 'cor' => null, 'estoque_inicial' => 0, 'foto' => null];
+            $cores[] = ['cor_id' => 0, 'cor' => null, 'estoque_inicial' => 0, 'peso_gramas' => null, 'tempo_producao_segundos' => null, 'foto' => null];
         }
 
         $pecasLimpas[] = [
             'peca_id' => (int) ($item['peca_id'] ?? 0),
             'nome' => $nome,
             'quantidade' => max(1, (int) ($item['quantidade'] ?? 1)),
+            'peso_gramas' => $pesoPeca,
+            'tempo_producao_segundos' => $tempoPeca,
             'foto' => $foto === '' ? null : $foto,
             'cores' => $cores,
         ];
@@ -194,23 +314,24 @@ if ($method === 'POST') {
         $idsAtuais = array_map('intval', $stmtAtuais->fetchAll(PDO::FETCH_COLUMN));
 
         $stmtUpdPeca = $pdo->prepare("
-            UPDATE produto_pecas SET nome = :nome, quantidade = :qtd, foto = :foto
+            UPDATE produto_pecas SET nome = :nome, quantidade = :qtd, peso_gramas = :peso,
+                                    tempo_producao_segundos = :tempo, foto = :foto
             WHERE id = :id AND produto_id = :produto_id
         ");
         $stmtInsPeca = $pdo->prepare("
-            INSERT INTO produto_pecas (produto_id, nome, quantidade, foto)
-            VALUES (:produto_id, :nome, :qtd, :foto)
+            INSERT INTO produto_pecas (produto_id, nome, quantidade, peso_gramas, tempo_producao_segundos, foto)
+            VALUES (:produto_id, :nome, :qtd, :peso, :tempo, :foto)
         ");
 
         // ---- Cores: upsert por id, sempre amarrado à peça (peca_id) ----
-        $stmtCoresAtuais = $pdo->prepare("SELECT id, cor, estoque FROM produto_pecas_cores WHERE peca_id = :peca_id FOR UPDATE");
+        $stmtCoresAtuais = $pdo->prepare("SELECT id, cor, estoque, peso_gramas, tempo_producao_segundos FROM produto_pecas_cores WHERE peca_id = :peca_id FOR UPDATE");
         $stmtUpdCor = $pdo->prepare("
-            UPDATE produto_pecas_cores SET cor = :cor, foto = :foto
+            UPDATE produto_pecas_cores SET cor = :cor, peso_gramas = :peso, tempo_producao_segundos = :tempo, foto = :foto
             WHERE id = :id AND peca_id = :peca_id
         ");
         $stmtInsCor = $pdo->prepare("
-            INSERT INTO produto_pecas_cores (peca_id, cor, estoque, foto)
-            VALUES (:peca_id, :cor, :estoque, :foto)
+            INSERT INTO produto_pecas_cores (peca_id, cor, estoque, peso_gramas, tempo_producao_segundos, foto)
+            VALUES (:peca_id, :cor, :estoque, :peso, :tempo, :foto)
         ");
 
         $pecasMantidas = [];
@@ -218,35 +339,39 @@ if ($method === 'POST') {
         foreach ($pecasLimpas as $p) {
             if ($p['peca_id'] && in_array($p['peca_id'], $idsAtuais, true)) {
                 $stmtUpdPeca->execute([
-                    'nome' => $p['nome'], 'qtd' => $p['quantidade'], 'foto' => $p['foto'],
+                    'nome' => $p['nome'], 'qtd' => $p['quantidade'],
+                    'peso' => $p['peso_gramas'], 'tempo' => $p['tempo_producao_segundos'],
+                    'foto' => $p['foto'],
                     'id' => $p['peca_id'], 'produto_id' => $paiId,
                 ]);
                 $pecaId = $p['peca_id'];
             } else {
                 $stmtInsPeca->execute([
                     'produto_id' => $paiId, 'nome' => $p['nome'],
-                    'qtd' => $p['quantidade'], 'foto' => $p['foto'],
+                    'qtd' => $p['quantidade'],
+                    'peso' => $p['peso_gramas'], 'tempo' => $p['tempo_producao_segundos'],
+                    'foto' => $p['foto'],
                 ]);
                 $pecaId = (int) $pdo->lastInsertId();
             }
             $pecasMantidas[] = $pecaId;
 
             $stmtCoresAtuais->execute(['peca_id' => $pecaId]);
-            $coresAtuais = $stmtCoresAtuais->fetchAll(); // id, cor, estoque
+            $coresAtuais = $stmtCoresAtuais->fetchAll(); // id, cor, estoque, peso_gramas
             $idsCoresAtuais = array_map(fn($c) => (int) $c['id'], $coresAtuais);
 
             $coresMantidas = [];
             foreach ($p['cores'] as $c) {
                 if ($c['cor_id'] && in_array($c['cor_id'], $idsCoresAtuais, true)) {
                     $stmtUpdCor->execute([
-                        'cor' => $c['cor'], 'foto' => $c['foto'],
+                        'cor' => $c['cor'], 'peso' => $c['peso_gramas'], 'tempo' => $c['tempo_producao_segundos'], 'foto' => $c['foto'],
                         'id' => $c['cor_id'], 'peca_id' => $pecaId,
                     ]);
                     $coresMantidas[] = $c['cor_id'];
                 } else {
                     $stmtInsCor->execute([
                         'peca_id' => $pecaId, 'cor' => $c['cor'],
-                        'estoque' => $c['estoque_inicial'], 'foto' => $c['foto'],
+                        'estoque' => $c['estoque_inicial'], 'peso' => $c['peso_gramas'], 'tempo' => $c['tempo_producao_segundos'], 'foto' => $c['foto'],
                     ]);
                 }
                 $totalCores++;
@@ -302,10 +427,27 @@ if ($method === 'POST') {
                 ->execute(array_merge([$paiId], array_values($pecasRemovidas)));
         }
 
-        if (!empty($pecasLimpas)) {
-            $pdo->prepare("UPDATE produtos SET tipo = 'composto' WHERE id = :id AND tipo <> 'composto'")
-                ->execute(['id' => $paiId]);
-        }
+        // Consolida o peso e tempo total no produto pai e atualiza para tipo 'composto' se tiver peças
+        $stmtTotais = $pdo->prepare("
+            SELECT COALESCE(SUM(peso_gramas), 0) AS total_peso,
+                   COALESCE(SUM(tempo_producao_segundos), 0) AS total_tempo
+            FROM produto_pecas WHERE produto_id = :id
+        ");
+        $stmtTotais->execute(['id' => $paiId]);
+        $totais = $stmtTotais->fetch();
+
+        $pdo->prepare("
+            UPDATE produtos
+            SET tipo = CASE WHEN :tem_pecas > 0 THEN 'composto' ELSE tipo END,
+                peso_gramas = :peso,
+                tempo_producao_segundos = :tempo
+            WHERE id = :id
+        ")->execute([
+            'tem_pecas' => count($pecasLimpas),
+            'peso' => $totais['total_peso'],
+            'tempo' => $totais['total_tempo'],
+            'id' => $paiId,
+        ]);
 
         $pdo->commit();
 

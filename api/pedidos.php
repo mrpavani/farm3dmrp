@@ -106,6 +106,7 @@ if ($method === 'GET') {
         ");
         $itensStmt->execute(['id' => $_GET['id']]);
         $pedido['itens'] = $itensStmt->fetchAll();
+        enriquecerPedidoComConsumo($pdo, $pedido);
 
         jsonResponse($pedido);
     }
@@ -162,6 +163,7 @@ if ($method === 'GET') {
         }
         foreach ($pedidos as &$p) {
             $p['itens'] = $itensPorPedido[$p['id']] ?? [];
+            enriquecerPedidoComConsumo($pdo, $p);
         }
         unset($p);
     }

@@ -90,6 +90,12 @@ require __DIR__ . '/includes/header.php';
                 <button type="button" role="tab" class="aba" data-aba="fabricar" aria-selected="false">
                     A fabricar <span class="contador" id="contaFabricar" hidden></span>
                 </button>
+                <button type="button" role="tab" class="aba" data-aba="filamento" aria-selected="false">
+                    Estoque Filamento <span class="contador" id="contaAlertaFilamento" hidden></span>
+                </button>
+                <button type="button" role="tab" class="aba" data-aba="planejador" aria-selected="false">
+                    🎪 Planejar Evento / Grande Lote
+                </button>
                 <button type="button" role="tab" class="aba" data-aba="pedidos" aria-selected="false">Por pedido</button>
                 <button type="button" role="tab" class="aba" data-aba="produtos" aria-selected="false">Por produto</button>
                 <button type="button" role="tab" class="aba" data-aba="clientes" aria-selected="false">Por cliente</button>
@@ -107,6 +113,53 @@ require __DIR__ . '/includes/header.php';
             <h2>O que falta fabricar</h2>
             <p class="vazio">Por produto, o que os pedidos em aberto ainda esperam — com o quanto dá para montar agora.</p>
             <div class="tabela-rolagem" id="painelFabricar"></div>
+        </section>
+
+        <!-- SEÇÃO: Estoque de Filamento & Demanda dos Pedidos -->
+        <section class="card secao-rel" data-painel="filamento" hidden>
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom: 12px;">
+                <div>
+                    <h2>Controle de Filamento &amp; Demanda da Carteira</h2>
+                    <p class="vazio">Comparativo entre o filamento necessário para os pedidos em aberto e o estoque disponível em carretéis.</p>
+                </div>
+                <a href="filamentos.php" class="botao secundario pequeno" style="text-decoration:none;">Ir para Gestão de Filamentos &rarr;</a>
+            </div>
+
+            <div id="alertaGeralFilamentoCarteira" style="display:none; margin-bottom: 14px;"></div>
+
+            <h3 class="sub-secao">Necessidade de Filamento para Atender os Pedidos em Aberto</h3>
+            <div class="tabela-rolagem" id="painelDemandaFilamento" style="margin-bottom: 24px;"></div>
+
+            <h3 class="sub-secao">Inventário Consolidado de Filamento em Estoque</h3>
+            <div class="tabela-rolagem" id="painelInventarioFilamento"></div>
+        </section>
+
+        <!-- SEÇÃO: Planejador para Eventos Grandes & Pedidos Grandes -->
+        <section class="card secao-rel" data-painel="planejador" hidden>
+            <h2>🎪 Planejamento de Eventos Grandes &amp; Pedidos em Lote</h2>
+            <p class="vazio">Simule a produção de grandes quantidades para feiras, eventos corporativos ou pedidos volumosos. O sistema calcula o filamento necessário por cor, custos, tempo total e avisa caso falte material no estoque.</p>
+
+            <div style="background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; margin: 14px 0;">
+                <strong style="font-size: 14px;">1. Adicionar Itens para o Evento:</strong>
+                <div id="listaItensSimuladorEvento" style="margin-top: 10px; display: flex; flex-direction: column; gap: 8px;"></div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 12px; flex-wrap: wrap; gap: 10px;">
+                    <button type="button" class="secundario pequeno" id="btnAdicionarItemEvento">+ Adicionar Produto</button>
+                    <button type="button" class="primario" id="btnCalcularEvento" style="min-height: 38px;">
+                        ⚙️ Calcular Planejamento do Evento
+                    </button>
+                </div>
+            </div>
+
+            <!-- Resultado do Planejamento -->
+            <div id="resultadoPlanejamentoEvento" style="display: none;">
+                <div class="resumo-grid" id="kpisEvento" style="margin-bottom: 16px;"></div>
+
+                <div id="alertaGeralEvento" style="margin-bottom: 14px;"></div>
+
+                <h3 class="sub-secao">Diagnóstico de Filamento por Cor para o Evento</h3>
+                <div class="tabela-rolagem" id="tabelaCoresEvento" style="margin-bottom: 16px;"></div>
+            </div>
         </section>
 
         <section class="card secao-rel" data-painel="pedidos" hidden>

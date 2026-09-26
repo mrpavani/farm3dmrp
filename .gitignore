@@ -3,6 +3,10 @@ vendor/
 
 # Banco de Dados e Scripts SQL (não enviados para produção via repositório)
 *.sql
+!atualizar_banco_producao.sql
+!schema_producao_limpo.sql
+!limpar_banco_producao.sql
+
 
 # Scripts de desenvolvimento local e temporários (não utilizados em produção)
 config_producao.php
