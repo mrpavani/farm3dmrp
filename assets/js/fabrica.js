@@ -538,13 +538,13 @@ async function carregarPecasFabrica() {
 
 // Recalcula no cliente tudo o que depende do saldo das peças, para a tela
 // responder na hora ao [+] sem precisar recarregar o servidor.
-//   estoque  = soma do saldo de todas as cores da peça (qualquer uma monta)
+//   estoque  = saldo da própria peça física (produto_pecas.estoque)
 //   rende    = quantos produtos esta peça sozinha permite montar
 //   montavel = o menor rendimento entre as peças (o gargalo manda)
 function recalcularProduto(p) {
     let montavel = Infinity;
     p.pecas.forEach(peca => {
-        peca.estoque = peca.cores.reduce((s, c) => s + Math.max(0, c.estoque), 0);
+        peca.estoque = Math.max(0, Number(peca.estoque) || 0);
         peca.rende = Math.floor(peca.estoque / Math.max(1, peca.por_unidade));
         peca.necessario_pedidos = p.demanda_liquida * peca.por_unidade;
         peca.a_imprimir = Math.max(0, peca.necessario_pedidos - peca.estoque);
@@ -659,32 +659,6 @@ function atualizarCardProduto(p) {
     atualizarLinhaProduto(p);
 }
 
-// ---------- Linha de cor dentro do modal de peças ----------
-function linhaCor(p, peca, cor) {
-    const foto = cor.foto
-        ? `<img src="${esc(cor.foto)}" alt="${esc(cor.cor || peca.nome)}" loading="lazy">`
-        : `<div class="peca-foto-placeholder min">Sem foto</div>`;
-    const rotuloCor = cor.cor || 'Qualquer cor';
-
-    return `
-        <div class="linha-cor-produto" data-cor="${cor.cor_id}">
-            <div class="foto-miniatura" onclick="abrirUploadFotoCor(${cor.cor_id})" title="Clique para trocar a foto desta cor">${foto}</div>
-            <div class="info-cor">
-                <span class="badge-cor-min" style="background:${corHex(cor.cor)};"></span> ${esc(rotuloCor)}
-            </div>
-            <div class="stepper-peca">
-                <button type="button" class="btn-step" onclick="ajustarCor(${cor.cor_id}, -1)" title="Tirar 1 do saldo">−</button>
-                <input type="number" class="saldo-peca" min="0" value="${cor.estoque}"
-                       onchange="definirSaldoCor(${cor.cor_id}, this.value)"
-                       title="Saldo em estoque — edite para corrigir a contagem">
-                <button type="button" class="btn-step mais" onclick="ajustarCor(${cor.cor_id}, 1)" title="Imprimiu mais 1">+</button>
-            </div>
-            <div class="acoes-peca">
-                <button type="button" class="pequeno secundario btn-lote" onclick="abrirModalProduzirPeca(${cor.cor_id}, ${p.id})" title="Registrar um lote maior">+ Lote</button>
-            </div>
-        </div>`;
-}
-
 // ---------- Modal: Gerenciar / Atualizar Peças Fabricadas ----------
 function abrirModalGerenciarPecas(prodId) {
     produtoAtualGerenciarPecasId = prodId;
@@ -715,21 +689,61 @@ function renderizarModalGerenciarPecas(p) {
 
     $('modalGerenciarPecasLista').innerHTML = p.pecas.map(peca => {
         const situacao = peca.a_imprimir > 0
-            ? `<span class="alerta">Faltam ${fmtInt.format(peca.a_imprimir)} un</span>`
-            : `<span class="ok">✓ Estoque OK</span>`;
+            ? `<span class="tag-peca-situacao alerta">Faltam ${fmtInt.format(peca.a_imprimir)} un</span>`
+            : `<span class="tag-peca-situacao ok">✓ Estoque OK</span>`;
+
+        const fotoPeca = peca.foto
+            ? `<img src="${esc(peca.foto)}" alt="${esc(peca.nome)}" loading="lazy">`
+            : `<span style="font-size: 15px;">🧩</span>`;
+
+        const chipsCores = peca.cores && peca.cores.length
+            ? peca.cores.map(cor => `
+                <div class="chip-cor-peca" data-cor="${cor.cor_id}">
+                    <span class="badge-cor-min" style="background:${corHex(cor.cor)};"></span>
+                    <span class="nome-cor-chip">${esc(cor.cor || 'Padrão')}</span>
+                    <span class="peso-cor-chip">${cor.peso_gramas > 0 ? (App.num ? App.num(cor.peso_gramas, 1) : Number(cor.peso_gramas).toFixed(1)) + 'g' : '—'}</span>
+                    ${cor.tempo_formatado ? `<span class="tempo-cor-chip">⏱️ ${cor.tempo_formatado}</span>` : ''}
+                    <button type="button" class="btn-excluir-cor-peca" onclick="removerCorDaPeca(${cor.cor_id}, ${peca.peca_id}, ${p.id})" title="Remover cor">×</button>
+                </div>
+            `).join('')
+            : `<span style="color:var(--text-3);font-size:11.5px;font-style:italic;">Sem cores cadastradas. Clique em <b>+ Cor</b>.</span>`;
 
         return `
         <div class="modal-peca-card" data-peca="${peca.peca_id}">
-            <div class="modal-peca-card-topo">
-                <strong>${esc(peca.nome)}</strong>
-                <span class="qtd-un">${peca.por_unidade} un/produto · rende ${fmtInt.format(peca.rende)} prod.${peca.tempo_producao_formatado ? ` · ⏱️ ${peca.tempo_producao_formatado}` : ''}${peca.peso_gramas > 0 ? ` · ⚖️ ${(App.num ? App.num(peca.peso_gramas, 1) : Number(peca.peso_gramas).toFixed(1))}g` : ''}</span>
-                ${situacao}
-                <button type="button" class="pequeno secundario btn-nova-cor" onclick="abrirModalNovaCor(${peca.peca_id}, ${p.id})" title="Cadastrar outra cor desta peça">+ Cor</button>
+            <div class="peca-card-topo">
+                <div class="peca-card-info">
+                    <div class="peca-card-foto" onclick="abrirUploadFotoPecaDirect(${peca.peca_id})" title="Trocar foto desta peça">${fotoPeca}</div>
+                    <div class="peca-card-textos">
+                        <div class="peca-card-nome-linha">
+                            <strong>${esc(peca.nome)}</strong>
+                            ${situacao}
+                        </div>
+                        <div class="peca-card-meta">
+                            <span><b>${peca.por_unidade}</b> un/prod</span>
+                            <span class="sep">·</span>
+                            <span class="destaque-rende">rende <b>${fmtInt.format(peca.rende)}</b> prod</span>
+                            ${peca.tempo_producao_formatado ? `<span class="sep">·</span><span>⏱️ ${peca.tempo_producao_formatado}</span>` : ''}
+                            ${peca.peso_gramas > 0 ? `<span class="sep">·</span><span>⚖️ ${(App.num ? App.num(peca.peso_gramas, 1) : Number(peca.peso_gramas).toFixed(1))}g total</span>` : ''}
+                        </div>
+                    </div>
+                </div>
+                <div class="peca-card-acoes">
+                    <div class="stepper-peca-compacto">
+                        <button type="button" class="btn-step" onclick="ajustarPeca(${peca.peca_id}, -1)" title="Tirar 1">−</button>
+                        <input type="number" class="saldo-peca" min="0" value="${peca.estoque}"
+                               onchange="definirSaldoPeca(${peca.peca_id}, this.value)"
+                               title="Estoque físico da peça">
+                        <button type="button" class="btn-step mais" onclick="ajustarPeca(${peca.peca_id}, 1)" title="Adicionar 1">+</button>
+                    </div>
+                    <button type="button" class="btn-peca-acao" onclick="abrirModalProduzirPeca(${peca.peca_id}, ${p.id})" title="Registrar lote maior">+ Lote</button>
+                    <button type="button" class="btn-peca-acao" onclick="abrirModalNovaCor(${peca.peca_id}, ${p.id})" title="Adicionar cor/filamento">+ Cor</button>
+                </div>
             </div>
-            <div class="modal-peca-cores-lista">
-                ${peca.cores && peca.cores.length
-                    ? peca.cores.map(cor => linhaCor(p, peca, cor)).join('')
-                    : `<p class="vazio" style="padding: 8px 12px; margin: 0; font-size: 13px;">Nenhuma cor cadastrada. Clique no botão <b>+ Cor</b> acima para adicionar.</p>`}
+            <div class="peca-card-cores-linha">
+                <span class="rotulo-cores-inline">Cores:</span>
+                <div class="modal-peca-cores-chips">
+                    ${chipsCores}
+                </div>
             </div>
         </div>`;
     }).join('');
@@ -743,36 +757,41 @@ function atualizarMetricasModalPecas(p) {
         + (p.gargalos.length > 2 ? ` +${p.gargalos.length - 2}` : '');
 
     resumoEl.innerHTML = `
-        <div class="modal-resumo-card ${p.montavel > 0 ? 'destaque-montavel' : ''}">
-            <span class="lbl">Montável Agora</span>
-            <span class="val">${fmtInt.format(p.montavel)}</span>
+        <div class="modal-kpi-pill ${p.montavel > 0 ? 'pill-sucesso' : ''}" title="Unidades que podem ser montadas agora">
+            <span class="kpi-pill-rotulo">🚀 Montável:</span>
+            <span class="kpi-pill-valor">${fmtInt.format(p.montavel)}</span>
         </div>
-        <div class="modal-resumo-card">
-            <span class="lbl">Demanda Aberta</span>
-            <span class="val">${fmtInt.format(p.em_producao)}</span>
+        <div class="modal-kpi-pill" title="Demanda total em ordens abertas">
+            <span class="kpi-pill-rotulo">📋 Pedidos:</span>
+            <span class="kpi-pill-valor">${fmtInt.format(p.em_producao)}</span>
         </div>
-        <div class="modal-resumo-card">
-            <span class="lbl">Estoque Acabado</span>
-            <span class="val">${fmtInt.format(p.estoque)}</span>
+        <div class="modal-kpi-pill" title="Unidades acabadas em estoque">
+            <span class="kpi-pill-rotulo">📦 Estoque:</span>
+            <span class="kpi-pill-valor">${fmtInt.format(p.estoque)}</span>
         </div>
-        <div class="modal-resumo-card" title="${nomesGargalo || 'Equilibrado'}">
-            <span class="lbl">Principal Gargalo</span>
-            <span class="val" style="font-size: 13px; font-weight: 700; color: ${p.gargalos.length ? 'var(--warning)' : 'var(--success)'};">${nomesGargalo || 'Equilibrado'}</span>
+        <div class="modal-kpi-pill ${p.gargalos.length ? 'pill-alerta' : 'pill-sucesso'}" title="${nomesGargalo || 'Equilibrado'}">
+            <span class="kpi-pill-rotulo">⚠️ Gargalo:</span>
+            <span class="kpi-pill-valor">${nomesGargalo || 'Equilibrado'}</span>
         </div>
     `;
 
     p.pecas.forEach(peca => {
         const cardPeca = document.querySelector(`.modal-peca-card[data-peca="${peca.peca_id}"]`);
         if (cardPeca) {
-            const qtdUn = cardPeca.querySelector('.qtd-un');
-            if (qtdUn) qtdUn.textContent = `${peca.por_unidade} un/produto · rende ${fmtInt.format(peca.rende)} prod.`;
-            const badge = cardPeca.querySelector('.alerta, .ok');
+            const metaEl = cardPeca.querySelector('.peca-card-meta');
+            if (metaEl) {
+                metaEl.innerHTML = `<span><b>${peca.por_unidade}</b> un/prod</span><span class="sep">·</span><span class="destaque-rende">rende <b>${fmtInt.format(peca.rende)}</b> prod</span>${peca.tempo_producao_formatado ? `<span class="sep">·</span><span>⏱️ ${peca.tempo_producao_formatado}</span>` : ''}${peca.peso_gramas > 0 ? `<span class="sep">·</span><span>⚖️ ${(App.num ? App.num(peca.peso_gramas, 1) : Number(peca.peso_gramas).toFixed(1))}g total</span>` : ''}`;
+            }
+            const inputSaldo = cardPeca.querySelector('.saldo-peca');
+            if (inputSaldo) inputSaldo.value = peca.estoque;
+
+            const badge = cardPeca.querySelector('.tag-peca-situacao');
             if (badge) {
                 if (peca.a_imprimir > 0) {
-                    badge.className = 'alerta';
+                    badge.className = 'tag-peca-situacao alerta';
                     badge.textContent = `Faltam ${fmtInt.format(peca.a_imprimir)} un`;
                 } else {
-                    badge.className = 'ok';
+                    badge.className = 'tag-peca-situacao ok';
                     badge.textContent = '✓ Estoque OK';
                 }
             }
@@ -947,89 +966,83 @@ function renderizarPecasFabrica() {
     }
 }
 
-// ---------- Ações de saldo (o saldo vive na cor, não na peça) ----------
-function produtoDaCor(corId) {
-    return (dadosPecasCarregados.produtos || []).find(p =>
-        p.pecas.some(peca => peca.cores.some(c => c.cor_id === corId)));
-}
-function pecaDaCor(p, corId) {
-    return p.pecas.find(peca => peca.cores.some(c => c.cor_id === corId));
+// ---------- Ações de saldo (o saldo vive na peça física; as cores definem o filamento consumido) ----------
+function pecaPorId(pecaId) {
+    for (const p of (dadosPecasCarregados.produtos || [])) {
+        const peca = p.pecas.find(x => x.peca_id === pecaId);
+        if (peca) return { produto: p, peca };
+    }
+    return null;
 }
 
-function aplicarNovoSaldoCor(corId, novoEstoque) {
-    // Se ainda há cliques não enviados, o valor local já está à frente do
-    // servidor: deixa como está, o próximo envio reconcilia.
-    if (pendentesCor.has(corId)) return;
-    const p = produtoDaCor(corId);
-    if (!p) return;
-    const peca = pecaDaCor(p, corId);
-    peca.cores.find(c => c.cor_id === corId).estoque = Number(novoEstoque);
-    recalcularProduto(p);
-    atualizarLinhaProduto(p);
+function aplicarNovoSaldoPeca(pecaId, novoEstoque) {
+    if (pendentesPeca.has(pecaId)) return;
+    const info = pecaPorId(pecaId);
+    if (!info) return;
+    info.peca.estoque = Number(novoEstoque);
+    recalcularProduto(info.produto);
+    atualizarLinhaProduto(info.produto);
     atualizarResumoPecas();
     agendarContador();
-    const inputSaldo = document.querySelector(`.linha-cor-produto[data-cor="${corId}"] .saldo-peca`);
+    const inputSaldo = document.querySelector(`.modal-peca-card[data-peca="${pecaId}"] .saldo-peca`);
     if (inputSaldo) inputSaldo.value = novoEstoque;
 }
 
-// Contadores das abas: agrupa, para clicar [+] dez vezes não virar 20 requisições.
+// Contadores das abas: agrupa requisições
 let timerContador = null;
 function agendarContador() {
     clearTimeout(timerContador);
     timerContador = setTimeout(atualizarContador, 700);
 }
 
-// Cliques rápidos no [+] somam na tela na hora e vão ao servidor agrupados,
-// para nenhum clique ser perdido enquanto uma gravação está em andamento.
-const pendentesCor = new Map();   // cor_id -> { delta, timer }
+// Cliques rápidos no [+] somam na tela na hora e vão ao servidor agrupados
+const pendentesPeca = new Map(); // peca_id -> { delta, timer }
 
-function ajustarCor(corId, delta) {
-    const p = produtoDaCor(corId);
-    if (!p) return;
-    const peca = pecaDaCor(p, corId);
-    const cor = peca.cores.find(c => c.cor_id === corId);
-    if (cor.estoque + delta < 0) return;      // não deixa negativar
+function ajustarPeca(pecaId, delta) {
+    const info = pecaPorId(pecaId);
+    if (!info) return;
+    if (info.peca.estoque + delta < 0) return; // não deixa negativar
 
-    cor.estoque += delta;                      // resposta imediata na tela
-    recalcularProduto(p);
-    atualizarLinhaProduto(p);
+    info.peca.estoque += delta;
+    recalcularProduto(info.produto);
+    atualizarLinhaProduto(info.produto);
     atualizarResumoPecas();
 
-    const inputSaldo = document.querySelector(`.linha-cor-produto[data-cor="${corId}"] .saldo-peca`);
-    if (inputSaldo) inputSaldo.value = cor.estoque;
+    const inputSaldo = document.querySelector(`.modal-peca-card[data-peca="${pecaId}"] .saldo-peca`);
+    if (inputSaldo) inputSaldo.value = info.peca.estoque;
 
-    const pend = pendentesCor.get(corId) || { delta: 0, timer: null };
+    const pend = pendentesPeca.get(pecaId) || { delta: 0, timer: null };
     pend.delta += delta;
     clearTimeout(pend.timer);
-    pend.timer = setTimeout(() => enviarPendenteCor(corId), 500);
-    pendentesCor.set(corId, pend);
+    pend.timer = setTimeout(() => enviarPendentePeca(pecaId), 500);
+    pendentesPeca.set(pecaId, pend);
 }
 
-// [+] entra no histórico como "peça produzida"; [−] como ajuste de contagem.
-async function enviarPendenteCor(corId) {
-    const pend = pendentesCor.get(corId);
-    if (!pend || !pend.delta) { pendentesCor.delete(corId); return; }
+// [+] entra no histórico como "peça produzida"; [−] como ajuste de saldo
+async function enviarPendentePeca(pecaId) {
+    const pend = pendentesPeca.get(pecaId);
+    if (!pend || !pend.delta) { pendentesPeca.delete(pecaId); return; }
 
     const delta = pend.delta;
-    pendentesCor.delete(corId);
+    pendentesPeca.delete(pecaId);
     try {
         const r = delta > 0
             ? await App.api('api/fabrica_pecas.php?acao=registrar_producao_peca', 'POST',
-                { cor_id: corId, quantidade: delta })
+                { peca_id: pecaId, quantidade: delta })
             : await App.api('api/fabrica_pecas.php?acao=ajustar_saldo_peca', 'POST',
-                { cor_id: corId, delta });
-        aplicarNovoSaldoCor(corId, r.novo_estoque);
+                { peca_id: pecaId, delta });
+        aplicarNovoSaldoPeca(pecaId, r.novo_estoque);
     } catch (e) {
         App.toast(e.message, 'erro');
         carregarPecasFabrica();
     }
 }
 
-// Garante que nada pendente se perca ao trocar de aba ou sair da página.
+// Garante que nada pendente se perca ao trocar de aba ou sair da página
 function enviarTodosPendentes() {
-    [...pendentesCor.keys()].forEach(id => {
-        clearTimeout(pendentesCor.get(id).timer);
-        enviarPendenteCor(id);
+    [...pendentesPeca.keys()].forEach(id => {
+        clearTimeout(pendentesPeca.get(id).timer);
+        enviarPendentePeca(id);
     });
 }
 window.addEventListener('beforeunload', enviarTodosPendentes);
@@ -1037,14 +1050,14 @@ document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') enviarTodosPendentes();
 });
 
-async function definirSaldoCor(corId, valor) {
+async function definirSaldoPeca(pecaId, valor) {
     const novo = Math.max(0, parseInt(valor, 10) || 0);
-    clearTimeout(pendentesCor.get(corId)?.timer);
-    pendentesCor.delete(corId);   // digitar o saldo exato manda nos cliques pendentes
+    clearTimeout(pendentesPeca.get(pecaId)?.timer);
+    pendentesPeca.delete(pecaId);
     try {
         const r = await App.api('api/fabrica_pecas.php?acao=ajustar_saldo_peca', 'POST',
-            { cor_id: corId, estoque: novo });
-        aplicarNovoSaldoCor(corId, r.novo_estoque);
+            { peca_id: pecaId, estoque: novo });
+        aplicarNovoSaldoPeca(pecaId, r.novo_estoque);
         App.toast('Saldo corrigido.');
     } catch (e) {
         App.toast(e.message, 'erro');
@@ -1052,8 +1065,7 @@ async function definirSaldoCor(corId, valor) {
     }
 }
 
-// Montagem: baixa as peças da ficha técnica (de qualquer cor disponível) e
-// gera produto pronto no estoque.
+// Montagem: baixa as peças da ficha técnica e gera produto pronto no estoque
 async function montarAgora(prodId) {
     const p = produtosVisiveis.find(x => x.id === prodId);
     if (!p) return;
@@ -1062,7 +1074,7 @@ async function montarAgora(prodId) {
     if (qtd > p.montavel) return App.toast(`Só dá para montar ${p.montavel} agora.`, 'erro');
 
     const ok = await App.confirmar(
-        `Montar ${qtd} un. de "${p.nome}"? As peças saem do estoque (de qualquer cor disponível) e viram produto pronto.`,
+        `Montar ${qtd} un. de "${p.nome}"? As peças saem do estoque e viram produto pronto.`,
         { titulo: 'Montar produto', botao: `Montar ${qtd}` });
     if (!ok) return;
 
@@ -1070,16 +1082,27 @@ async function montarAgora(prodId) {
         const r = await App.api('api/fabrica_pecas.php?acao=montar', 'POST',
             { produto_id: prodId, quantidade: qtd });
         App.toast(r.mensagem);
-        await carregarPecasFabrica();   // a montagem mexe em várias peças/cores de uma vez
+        await carregarPecasFabrica();
         atualizarContador();
     } catch (e) {
         App.toast(e.message, 'erro');
     }
 }
 
-// Upload de foto de uma variante de cor
+// Upload de fotos
+let pecaUploadFotoAtualId = null;
+
 function abrirUploadFotoCor(corId) {
     corUploadFotoAtualId = corId;
+    pecaUploadFotoAtualId = null;
+    const input = $('inputUploadFotoPeca');
+    input.value = '';
+    input.click();
+}
+
+function abrirUploadFotoPecaDirect(pecaId) {
+    pecaUploadFotoAtualId = pecaId;
+    corUploadFotoAtualId = null;
     const input = $('inputUploadFotoPeca');
     input.value = '';
     input.click();
@@ -1087,11 +1110,12 @@ function abrirUploadFotoCor(corId) {
 
 $('inputUploadFotoPeca').addEventListener('change', async function(e) {
     const file = e.target.files && e.target.files[0];
-    if (!file || !corUploadFotoAtualId) return;
+    if (!file || (!corUploadFotoAtualId && !pecaUploadFotoAtualId)) return;
 
     const formData = new FormData();
     formData.append('foto', file);
-    formData.append('cor_id', corUploadFotoAtualId);
+    if (corUploadFotoAtualId) formData.append('cor_id', corUploadFotoAtualId);
+    if (pecaUploadFotoAtualId) formData.append('peca_id', pecaUploadFotoAtualId);
 
     try {
         App.toast('Enviando foto...');
@@ -1108,19 +1132,21 @@ $('inputUploadFotoPeca').addEventListener('change', async function(e) {
     }
 });
 
-// Modal de Produção Rápida de Peças (lote maior, para uma cor específica)
-function abrirModalProduzirPeca(corId, prodId) {
-    corProduzirAtualId = corId;
+// Modal de Produção Rápida de Peças (lote maior da peça física)
+let pecaProduzirAtualId = null;
+
+function abrirModalProduzirPeca(pecaId, prodId) {
+    pecaProduzirAtualId = pecaId;
     const p = (dadosPecasCarregados.produtos || []).find(x => x.id === prodId);
     if (!p) return;
-    const peca = pecaDaCor(p, corId);
+    const peca = p.pecas.find(x => x.peca_id === pecaId);
     if (!peca) return;
-    const cor = peca.cores.find(c => c.cor_id === corId);
-    if (!cor) return;
-    const rotuloCor = cor.cor || 'qualquer cor';
 
-    $('modalPecaTitulo').textContent = `Registrar Impressão: ${peca.nome}`;
-    $('modalPecaSub').textContent = `Cor: ${rotuloCor} · Produto: ${p.nome} · Faltam imprimir (da peça): ${peca.a_imprimir} un`;
+    $('modalPecaTitulo').textContent = `Registrar Produção: ${peca.nome}`;
+    const descCores = peca.cores && peca.cores.length
+        ? `Cores: ${peca.cores.map(c => esc(c.cor) + (c.peso_gramas > 0 ? ' (' + (App.num ? App.num(c.peso_gramas, 1) : Number(c.peso_gramas).toFixed(1)) + 'g)' : '')).join(', ')}`
+        : 'Sem cores cadastradas';
+    $('modalPecaSub').textContent = `${descCores} · Produto: ${p.nome} · Faltam imprimir: ${peca.a_imprimir} un`;
     $('modalPecaQtd').value = peca.a_imprimir > 0 ? peca.a_imprimir : 1;
 
     // Atalhos rápidos (+1, +2, +4, +8, e o total que falta)
@@ -1140,7 +1166,7 @@ function abrirModalProduzirPeca(corId, prodId) {
 }
 
 async function confirmarProducaoPeca() {
-    if (!corProduzirAtualId) return;
+    if (!pecaProduzirAtualId) return;
     const qtd = parseInt($('modalPecaQtd').value) || 0;
     if (qtd <= 0) {
         App.toast('Informe uma quantidade válida maior que zero.', 'erro');
@@ -1152,7 +1178,7 @@ async function confirmarProducaoPeca() {
     btn.disabled = true;
     try {
         const res = await App.api('api/fabrica_pecas.php?acao=registrar_producao_peca', 'POST', {
-            cor_id: corProduzirAtualId,
+            peca_id: pecaProduzirAtualId,
             quantidade: qtd
         });
         App.toast(res.mensagem || `+${qtd} peças adicionadas ao estoque!`);
@@ -1166,16 +1192,14 @@ async function confirmarProducaoPeca() {
     }
 }
 
-// Modal: nova cor de uma peça já cadastrada, direto da bancada — ex.: a
-// fábrica passou a imprimir a Chave de Fenda também em Laranja, e só tinha
-// o Cinza cadastrado.
+// Modal: adicionar cor à peça (com gramas de filamento por cor)
 function abrirModalNovaCor(pecaId, prodId) {
     pecaNovaCorAtualId = pecaId;
     const p = (dadosPecasCarregados.produtos || []).find(x => x.id === prodId);
     const peca = p ? p.pecas.find(x => x.peca_id === pecaId) : null;
     $('modalNovaCorSub').textContent = peca ? `Peça: ${peca.nome}` : '';
     $('modalNovaCorNome').value = '';
-    $('modalNovaCorQtd').value = 0;
+    if ($('modalNovaCorPeso')) $('modalNovaCorPeso').value = '';
     App.modal.abrir('modalNovaCor', '#modalNovaCorNome');
 }
 
@@ -1187,7 +1211,7 @@ async function confirmarNovaCor() {
         $('modalNovaCorNome').focus();
         return;
     }
-    const qtd = Math.max(0, parseInt($('modalNovaCorQtd').value) || 0);
+    const peso = parseFloat($('modalNovaCorPeso')?.value) || 0;
 
     const btn = $('btnConfirmarNovaCor');
     btn.disabled = true;
@@ -1195,7 +1219,7 @@ async function confirmarNovaCor() {
         const r = await App.api('api/fabrica_pecas.php?acao=adicionar_cor', 'POST', {
             peca_id: pecaNovaCorAtualId,
             cor,
-            quantidade: qtd,
+            peso_gramas: peso,
         });
         App.toast(r.mensagem);
         App.modal.fechar('modalNovaCor');
@@ -1205,6 +1229,21 @@ async function confirmarNovaCor() {
         App.toast(e.message, 'erro');
     } finally {
         btn.disabled = false;
+    }
+}
+
+async function removerCorDaPeca(corId, pecaId, prodId) {
+    if (!await App.confirmar('Remover esta cor/filamento desta peça?', { titulo: 'Remover cor', botao: 'Remover', perigo: true })) return;
+    try {
+        const r = await App.api('api/fabrica_pecas.php?acao=remover_cor', 'POST', {
+            cor_id: corId,
+            peca_id: pecaId
+        });
+        App.toast(r.mensagem || 'Cor removida com sucesso.');
+        await carregarPecasFabrica();
+        atualizarContador();
+    } catch (e) {
+        App.toast(e.message, 'erro');
     }
 }
 
@@ -1257,7 +1296,9 @@ $('btnConfirmarProducaoPeca').addEventListener('click', confirmarProducaoPeca);
 $('modalPecaQtd').addEventListener('keydown', e => { if (e.key === 'Enter') confirmarProducaoPeca(); });
 $('btnConfirmarNovaCor').addEventListener('click', confirmarNovaCor);
 $('modalNovaCorNome').addEventListener('keydown', e => { if (e.key === 'Enter') confirmarNovaCor(); });
-$('modalNovaCorQtd').addEventListener('keydown', e => { if (e.key === 'Enter') confirmarNovaCor(); });
+if ($('modalNovaCorPeso')) {
+    $('modalNovaCorPeso').addEventListener('keydown', e => { if (e.key === 'Enter') confirmarNovaCor(); });
+}
 
 if ($('btnConfirmarMontarModal')) {
     $('btnConfirmarMontarModal').addEventListener('click', confirmarMontarModal);
@@ -1278,13 +1319,15 @@ if ($('modalMontarProduto')) {
 
 // Tornar funções globais para onclick nos botões da tabela e modais
 window.abrirUploadFotoCor = abrirUploadFotoCor;
+window.abrirUploadFotoPecaDirect = abrirUploadFotoPecaDirect;
 window.abrirModalProduzirPeca = abrirModalProduzirPeca;
 window.abrirModalNovaCor = abrirModalNovaCor;
+window.removerCorDaPeca = removerCorDaPeca;
 window.abrirModalGerenciarPecas = abrirModalGerenciarPecas;
 window.abrirModalMontarProduto = abrirModalMontarProduto;
 window.confirmarMontarModal = confirmarMontarModal;
-window.ajustarCor = ajustarCor;
-window.definirSaldoCor = definirSaldoCor;
+window.ajustarPeca = ajustarPeca;
+window.definirSaldoPeca = definirSaldoPeca;
 window.montarAgora = montarAgora;
 window.filtrarBancada = filtrarBancada;
 

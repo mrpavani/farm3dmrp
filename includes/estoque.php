@@ -49,17 +49,13 @@ function registrarMovimento(PDO $pdo, string $tipo, array $d): void {
 // (ex.: "pi.produto_id" ou "prod.id").
 function sqlProdutoMontavel(string $colunaProdutoId): string {
     return "(
-        SELECT MIN(FLOOR(soma.total / GREATEST(pp.quantidade, 1)))
+        SELECT MIN(FLOOR(COALESCE(pp.estoque, 0) / GREATEST(pp.quantidade, 1)))
         FROM produto_pecas pp
-        JOIN (
-            SELECT peca_id, COALESCE(SUM(estoque), 0) AS total
-            FROM produto_pecas_cores GROUP BY peca_id
-        ) soma ON soma.peca_id = pp.id
         WHERE pp.produto_id = $colunaProdutoId
     )";
 }
 
-// Rótulo legível de uma peça ("Hélice (Azul)") ou, sem cor ("Suporte").
+// Rótulo legível de uma peça ("Circulos") ou com cor se aplicável.
 function rotuloPeca(array $peca, ?string $cor = null): string {
     $cor = trim((string) ($cor ?? $peca['cor'] ?? ''));
     return $peca['nome'] . ($cor !== '' ? " ($cor)" : '');
@@ -72,12 +68,10 @@ function rotuloCor(?string $cor): string {
 }
 
 // Quantas unidades do produto dá para montar agora com as peças em estoque.
-// Cada peça pode ter várias cores; o estoque que conta para a montagem é a
-// soma de todas. Retorna capacidade, gargalo (peças) e, por peça, a lista
-// de variantes de cor com seus saldos (para a UI decidir de qual descontar).
-// Use $lock = true dentro de transação que vá alterar os saldos.
+// O saldo de estoque pertence à PEÇA (produto_pecas.estoque).
+// Cada peça pode ser composta por uma ou mais cores de filamento.
 function capacidadeMontagem(PDO $pdo, int $produtoId, bool $lock = false): array {
-    $sqlPecas = "SELECT id, nome, quantidade, foto FROM produto_pecas WHERE produto_id = :id ORDER BY id";
+    $sqlPecas = "SELECT id, nome, quantidade, estoque, peso_gramas, tempo_producao_segundos, foto FROM produto_pecas WHERE produto_id = :id ORDER BY id";
     if ($lock) $sqlPecas .= " FOR UPDATE";
     $stmt = $pdo->prepare($sqlPecas);
     $stmt->execute(['id' => $produtoId]);
@@ -89,7 +83,7 @@ function capacidadeMontagem(PDO $pdo, int $produtoId, bool $lock = false): array
 
     $pecaIds = array_column($pecas, 'id');
     $in = implode(',', array_fill(0, count($pecaIds), '?'));
-    $sqlCores = "SELECT id, peca_id, cor, estoque, foto FROM produto_pecas_cores WHERE peca_id IN ($in) ORDER BY id";
+    $sqlCores = "SELECT id, peca_id, cor, estoque, peso_gramas, tempo_producao_segundos, foto FROM produto_pecas_cores WHERE peca_id IN ($in) ORDER BY id";
     if ($lock) $sqlCores .= " FOR UPDATE";
     $stmtC = $pdo->prepare($sqlCores);
     $stmtC->execute($pecaIds);
@@ -102,10 +96,9 @@ function capacidadeMontagem(PDO $pdo, int $produtoId, bool $lock = false): array
     foreach ($pecas as &$p) {
         $porUnidade = max(1, (int) $p['quantidade']);
         $cores = $coresPorPeca[(int) $p['id']] ?? [];
-        $estoqueTotal = array_sum(array_map(fn($c) => (int) $c['estoque'], $cores));
+        $estoquePeca = (int) ($p['estoque'] ?? 0);
         $p['cores'] = $cores;
-        $p['estoque'] = $estoqueTotal;
-        $capacidade = min($capacidade, intdiv(max(0, $estoqueTotal), $porUnidade));
+        $capacidade = min($capacidade, intdiv(max(0, $estoquePeca), $porUnidade));
     }
     unset($p);
     if ($capacidade === PHP_INT_MAX) $capacidade = 0;
@@ -113,7 +106,7 @@ function capacidadeMontagem(PDO $pdo, int $produtoId, bool $lock = false): array
     $gargalos = [];
     foreach ($pecas as $p) {
         $porUnidade = max(1, (int) $p['quantidade']);
-        if (intdiv(max(0, (int) $p['estoque']), $porUnidade) === $capacidade) {
+        if (intdiv(max(0, (int) ($p['estoque'] ?? 0)), $porUnidade) === $capacidade) {
             $gargalos[] = rotuloPeca($p);
         }
     }
@@ -121,28 +114,8 @@ function capacidadeMontagem(PDO $pdo, int $produtoId, bool $lock = false): array
     return ['capacidade' => $capacidade, 'gargalos' => $gargalos, 'pecas' => $pecas, 'tem_ficha' => true];
 }
 
-// Decide de quais variantes de cor tirar $consumo unidades de uma peça,
-// consumindo primeiro a cor com mais saldo (minimiza quantas variantes
-// mexe; como as cores são intercambiáveis para montagem, a ordem não
-// afeta o resultado). Retorna [[cor_id, estoque_antes, tirado], ...].
-function planoDeConsumo(array $cores, int $consumo): array {
-    usort($cores, fn($a, $b) => (int) $b['estoque'] <=> (int) $a['estoque']);
-    $plano = [];
-    foreach ($cores as $c) {
-        if ($consumo <= 0) break;
-        $disponivel = (int) $c['estoque'];
-        if ($disponivel <= 0) continue;
-        $tirar = min($disponivel, $consumo);
-        $plano[] = ['cor_id' => (int) $c['id'], 'cor' => $c['cor'], 'estoque_antes' => $disponivel, 'tirado' => $tirar];
-        $consumo -= $tirar;
-    }
-    return $plano;
-}
-
-// Monta $qtd unidades: baixa as peças da ficha técnica (de qualquer cor
-// disponível) e soma no produto pronto. Lança Exception nomeando o
-// gargalo se não houver peças suficientes. Retorna o novo saldo de
-// produto pronto.
+// Monta $qtd unidades: baixa as peças da ficha técnica direto do estoque da peça
+// e soma no produto pronto. Lança Exception nomeando o gargalo se não houver peças suficientes.
 function montarProduto(PDO $pdo, int $produtoId, int $qtd, ?int $usuarioId, ?string $obs = null): int {
     if ($qtd <= 0) throw new Exception('A quantidade a montar deve ser no mínimo 1.');
 
@@ -151,11 +124,10 @@ function montarProduto(PDO $pdo, int $produtoId, int $qtd, ?int $usuarioId, ?str
         throw new Exception('Este produto não tem peças cadastradas na ficha técnica, então não dá para montar.');
     }
     if ($info['capacidade'] < $qtd) {
-        // Aponta a peça que trava e quantas faltam, para a mensagem ser acionável.
         $faltas = [];
         foreach ($info['pecas'] as $p) {
             $necessario = max(1, (int) $p['quantidade']) * $qtd;
-            $falta = $necessario - (int) $p['estoque'];
+            $falta = $necessario - (int) ($p['estoque'] ?? 0);
             if ($falta > 0) $faltas[] = rotuloPeca($p) . ": faltam $falta";
         }
         throw new Exception(sprintf(
@@ -164,20 +136,21 @@ function montarProduto(PDO $pdo, int $produtoId, int $qtd, ?int $usuarioId, ?str
         ));
     }
 
-    $baixa = $pdo->prepare("UPDATE produto_pecas_cores SET estoque = estoque - :c WHERE id = :id");
+    $baixa = $pdo->prepare("UPDATE produto_pecas SET estoque = estoque - :consumo WHERE id = :id");
     foreach ($info['pecas'] as $p) {
         $consumo = max(1, (int) $p['quantidade']) * $qtd;
-        foreach (planoDeConsumo($p['cores'], $consumo) as $mov) {
-            $baixa->execute(['c' => $mov['tirado'], 'id' => $mov['cor_id']]);
-            registrarMovimento($pdo, 'peca_consumida', [
-                'produto_id'   => $produtoId,
-                'peca_id'      => (int) $p['id'],
-                'quantidade'   => -$mov['tirado'],
-                'saldo_depois' => $mov['estoque_antes'] - $mov['tirado'],
-                'usuario_id'   => $usuarioId,
-                'observacoes'  => ($obs ?? "Montagem de $qtd un.") . ' · cor: ' . rotuloCor($mov['cor']),
-            ]);
-        }
+        $saldoAntes = (int) ($p['estoque'] ?? 0);
+        $saldoDepois = $saldoAntes - $consumo;
+        $baixa->execute(['consumo' => $consumo, 'id' => (int) $p['id']]);
+
+        registrarMovimento($pdo, 'peca_consumida', [
+            'produto_id'   => $produtoId,
+            'peca_id'      => (int) $p['id'],
+            'quantidade'   => -$consumo,
+            'saldo_depois' => $saldoDepois,
+            'usuario_id'   => $usuarioId,
+            'observacoes'  => ($obs ?? "Montagem de $qtd un."),
+        ]);
     }
 
     $pdo->prepare("UPDATE produtos SET estoque = estoque + :q WHERE id = :id")
@@ -198,7 +171,7 @@ function montarProduto(PDO $pdo, int $produtoId, int $qtd, ?int $usuarioId, ?str
 
 // Gera $qtd de produto pronto. Se o produto tem ficha técnica, monta a partir
 // das peças; se não tem (produto simples, impresso inteiro), entra direto no
-// estoque. Retorna o novo saldo de produto pronto.
+// estoque e consome filamento de todas as cores cadastradas em produto_cores.
 function produzirProdutoPronto(PDO $pdo, int $produtoId, int $qtd, ?int $usuarioId, ?string $obs = null): int {
     if ($qtd <= 0) throw new Exception('A quantidade deve ser no mínimo 1.');
 
@@ -223,7 +196,23 @@ function produzirProdutoPronto(PDO $pdo, int $produtoId, int $qtd, ?int $usuario
         'observacoes'  => $obs ?? 'Produto simples, sem ficha técnica de peças.',
     ]);
 
-    if ($prodSimples && (float)$prodSimples['peso_gramas'] > 0) {
+    // Baixa automática de filamento: se o produto possui variantes em produto_cores (multicor), baixa CADA cor proporcionalmente
+    $stmtCores = $pdo->prepare("SELECT cor, peso_gramas FROM produto_cores WHERE produto_id = :id AND peso_gramas > 0");
+    $stmtCores->execute(['id' => $produtoId]);
+    $coresProd = $stmtCores->fetchAll();
+
+    if ($coresProd && count($coresProd) > 0) {
+        foreach ($coresProd as $cp) {
+            $gastasCor = round((float)$cp['peso_gramas'] * $qtd, 2);
+            if ($gastasCor > 0) {
+                darBaixaFilamentoConsumo($pdo, (string)$cp['cor'], $gastasCor, [
+                    'produto_id' => $produtoId,
+                    'usuario_id' => $usuarioId,
+                    'observacoes' => "Produção de {$qtd} un. do produto {$prodSimples['nome']} (Cor: {$cp['cor']})",
+                ]);
+            }
+        }
+    } elseif ($prodSimples && (float)$prodSimples['peso_gramas'] > 0) {
         $gastas = round((float)$prodSimples['peso_gramas'] * $qtd, 2);
         darBaixaFilamentoConsumo($pdo, 'Padrão / Única', $gastas, [
             'produto_id' => $produtoId,

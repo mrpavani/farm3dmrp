@@ -49,7 +49,7 @@ require __DIR__ . '/includes/header.php';
 </main>
 
 <div id="modalUsuario" class="modal" hidden>
-    <div class="card modal-caixa" role="dialog" aria-modal="true" aria-labelledby="usuTituloModal">
+    <div class="card modal-caixa modal-pequeno" role="dialog" aria-modal="true" aria-labelledby="usuTituloModal">
         <form id="formUsuario" autocomplete="off" novalidate>
             <div class="modal-cabecalho">
                 <div>
@@ -61,20 +61,22 @@ require __DIR__ . '/includes/header.php';
                 </button>
             </div>
 
-            <label for="usuNome">Nome <span class="obrigatorio">*</span></label>
-            <input type="text" id="usuNome" maxlength="100" required placeholder="Nome completo">
+            <div class="modal-corpo">
+                <label for="usuNome">Nome <span class="obrigatorio">*</span></label>
+                <input type="text" id="usuNome" maxlength="100" required placeholder="Nome completo">
 
-            <label for="usuLogin">Login (usuário ou e-mail) <span class="obrigatorio">*</span></label>
-            <input type="text" id="usuLogin" maxlength="150" required pattern="[a-z0-9._@+\-]{3,150}" autocomplete="off"
-                   title="3 a 150 caracteres, sem espaços: letras minúsculas, números, ponto, hífen, sublinhado ou @" placeholder="ex.: joao@empresa.com">
+                <label for="usuLogin">Login (usuário ou e-mail) <span class="obrigatorio">*</span></label>
+                <input type="text" id="usuLogin" maxlength="150" required pattern="[a-z0-9._@+\-]{3,150}" autocomplete="off"
+                       title="3 a 150 caracteres, sem espaços: letras minúsculas, números, ponto, hífen, sublinhado ou @" placeholder="ex.: joao@empresa.com">
 
-            <label for="usuSenha" id="rotuloSenha">Senha <span class="obrigatorio">*</span></label>
-            <input type="password" id="usuSenha" minlength="6" autocomplete="new-password" placeholder="Mínimo 6 caracteres">
+                <label for="usuSenha" id="rotuloSenha">Senha <span class="obrigatorio">*</span></label>
+                <input type="password" id="usuSenha" minlength="6" autocomplete="new-password" placeholder="Mínimo 6 caracteres">
 
-            <label class="check">
-                <input type="checkbox" id="usuAdmin">
-                <span>Administrador <span class="vazio">— pode gerenciar usuários</span></span>
-            </label>
+                <label class="check">
+                    <input type="checkbox" id="usuAdmin">
+                    <span>Administrador <span class="vazio">— pode gerenciar usuários</span></span>
+                </label>
+            </div>
 
             <div class="modal-rodape">
                 <button type="button" class="secundario" data-fechar-modal>Cancelar</button>

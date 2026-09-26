@@ -5,12 +5,37 @@ $usuario = exigirLoginApi();
 $pdo = getDB();
 $method = $_SERVER['REQUEST_METHOD'];
 
-// Busca uma variante de cor com os dados da peça pai (para mensagens e para
-// recalcular a capacidade de montagem do produto depois de mexer no saldo).
+// Busca uma peça com seus dados e cores associadas
+function buscarPecaCompleta(PDO $pdo, int $pecaId): ?array {
+    $stmt = $pdo->prepare("
+        SELECT pp.id AS peca_id, pp.produto_id, pp.nome AS peca_nome, pp.quantidade AS peca_qtd,
+               pp.estoque AS peca_estoque, pp.peso_gramas AS peca_peso,
+               pp.tempo_producao_segundos AS peca_tempo, pp.foto AS peca_foto,
+               prod.nome AS produto_nome
+        FROM produto_pecas pp
+        JOIN produtos prod ON prod.id = pp.produto_id
+        WHERE pp.id = :id FOR UPDATE
+    ");
+    $stmt->execute(['id' => $pecaId]);
+    $p = $stmt->fetch();
+    if (!$p) return null;
+
+    $stmtCores = $pdo->prepare("
+        SELECT id AS cor_id, peca_id, cor, estoque, foto, peso_gramas, tempo_producao_segundos
+        FROM produto_pecas_cores
+        WHERE peca_id = :peca_id ORDER BY id ASC
+    ");
+    $stmtCores->execute(['peca_id' => $pecaId]);
+    $p['cores'] = $stmtCores->fetchAll();
+    return $p;
+}
+
+// Busca uma variante de cor com os dados da peça pai (fallback de compatibilidade)
 function buscarCor(PDO $pdo, int $corId): ?array {
     $stmt = $pdo->prepare("
         SELECT pc.id AS cor_id, pc.cor, pc.estoque, pc.peso_gramas AS cor_peso, pc.peca_id,
-               pp.nome AS peca_nome, pp.produto_id, pp.peso_gramas AS peca_peso, pp.quantidade AS peca_qtd
+               pp.nome AS peca_nome, pp.produto_id, pp.peso_gramas AS peca_peso, pp.quantidade AS peca_qtd,
+               pp.estoque AS peca_estoque
         FROM produto_pecas_cores pc
         JOIN produto_pecas pp ON pp.id = pc.peca_id
         WHERE pc.id = :id FOR UPDATE
@@ -22,78 +47,105 @@ function buscarCor(PDO $pdo, int $corId): ?array {
 
 // ------------------------------------------------------------
 // POST — ações da bancada da fábrica.
-// Toda alteração de saldo passa por aqui e fica registrada em
-// movimentos_estoque (ver includes/estoque.php). O saldo vive na
-// variante de cor (produto_pecas_cores) — uma peça pode ter várias.
+// O saldo de estoque pertence à PEÇA (produto_pecas.estoque).
+// Se a peça tiver mais de uma cor, consome filamento de todas as cores proporcionalmente.
 // ------------------------------------------------------------
 if ($method === 'POST') {
     $acao = $_GET['acao'] ?? '';
 
-    // 1. Imprimiu peça: soma ao saldo de uma cor. É o botão [+] da bancada.
-    // Baixa automaticamente o filamento gasto daquela cor pelo PEPS.
+    // 1. Imprimiu peça: soma ao saldo da peça e baixa filamento de cada cor.
     if ($acao === 'registrar_producao_peca') {
         $b = readJsonBody();
+        $pecaId = (int) ($b['peca_id'] ?? 0);
         $corId = (int) ($b['cor_id'] ?? 0);
         $qtd = (int) ($b['quantidade'] ?? 0);
 
-        if (!$corId || $qtd <= 0) {
-            jsonError('Informe a peça (cor) e a quantidade produzida (mínimo 1).');
+        if ((!$pecaId && !$corId) || $qtd <= 0) {
+            jsonError('Informe a peça e a quantidade produzida (mínimo 1).');
         }
 
         $pdo->beginTransaction();
         try {
-            $cor = buscarCor($pdo, $corId);
-            if (!$cor) throw new Exception('Peça não encontrada.');
+            if (!$pecaId && $corId > 0) {
+                $c = buscarCor($pdo, $corId);
+                if ($c) $pecaId = (int) $c['peca_id'];
+            }
 
-            $novoSaldo = (int) $cor['estoque'] + $qtd;
-            $pdo->prepare("UPDATE produto_pecas_cores SET estoque = :e WHERE id = :id")
-                ->execute(['e' => $novoSaldo, 'id' => $corId]);
+            $peca = buscarPecaCompleta($pdo, $pecaId);
+            if (!$peca) throw new Exception('Peça não encontrada.');
+
+            $novoSaldo = (int) $peca['peca_estoque'] + $qtd;
+            $pdo->prepare("UPDATE produto_pecas SET estoque = :e WHERE id = :id")
+                ->execute(['e' => $novoSaldo, 'id' => $pecaId]);
+
+            // Se ainda existirem registros em produto_pecas_cores, atualiza também para manter compatibilidade
+            $pdo->prepare("UPDATE produto_pecas_cores SET estoque = :e WHERE peca_id = :id")
+                ->execute(['e' => $novoSaldo, 'id' => $pecaId]);
 
             registrarMovimento($pdo, 'peca_produzida', [
-                'produto_id'   => (int) $cor['produto_id'],
-                'peca_id'      => (int) $cor['peca_id'],
+                'produto_id'   => (int) $peca['produto_id'],
+                'peca_id'      => $pecaId,
                 'quantidade'   => $qtd,
                 'saldo_depois' => $novoSaldo,
                 'usuario_id'   => $usuario['id'],
-                'observacoes'  => 'cor: ' . rotuloCor($cor['cor']),
+                'observacoes'  => "Impressão de {$qtd} un. da peça {$peca['peca_nome']}",
             ]);
 
-            // Baixa automática de filamento em gramas pelo PEPS
-            $pesoUnidadePeca = 0.0;
-            if ($cor['cor_peso'] !== null && (float)$cor['cor_peso'] > 0) {
-                $pesoUnidadePeca = (float) $cor['cor_peso'];
-            } elseif ($cor['peca_peso'] !== null && (float)$cor['peca_peso'] > 0) {
-                $pecaQtdPai = max(1, (int)($cor['peca_qtd'] ?? 1));
-                $pesoUnidadePeca = (float)$cor['peca_peso'] / $pecaQtdPai;
+            // Baixa automática de filamento: se a peça é multicor, baixa de CADA cor!
+            $coresComPeso = array_filter($peca['cores'] ?? [], fn($c) => $c['peso_gramas'] !== null && (float)$c['peso_gramas'] > 0);
+            $totalBaixado = 0.0;
+            $detalhesCoresBaixa = [];
+
+            if ($coresComPeso && count($coresComPeso) > 0) {
+                foreach ($coresComPeso as $c) {
+                    $pesoCor = (float) $c['peso_gramas'];
+                    $gastoCor = round($pesoCor * $qtd, 2);
+                    if ($gastoCor > 0) {
+                        darBaixaFilamentoConsumo($pdo, (string)$c['cor'], $gastoCor, [
+                            'peca_id' => $pecaId,
+                            'produto_id' => (int) $peca['produto_id'],
+                            'usuario_id' => $usuario['id'],
+                            'observacoes' => "Impressão de {$qtd} un. da peça {$peca['peca_nome']} (Cor: " . rotuloCor($c['cor']) . ")",
+                        ]);
+                        $totalBaixado += $gastoCor;
+                        $detalhesCoresBaixa[] = sprintf('%.1fg (%s)', $gastoCor, rotuloCor($c['cor']));
+                    }
+                }
+            } elseif ($peca['peca_peso'] !== null && (float)$peca['peca_peso'] > 0) {
+                // Peça sem especificação por cor mas com peso total na peça
+                $porUn = max(1, (int)$peca['peca_qtd']);
+                $pesoUn = (float)$peca['peca_peso'] / $porUn;
+                $gastoTotal = round($pesoUn * $qtd, 2);
+                if ($gastoTotal > 0) {
+                    $corPadrao = (!empty($peca['cores']) && !empty($peca['cores'][0]['cor'])) ? (string)$peca['cores'][0]['cor'] : 'Padrão / Única';
+                    darBaixaFilamentoConsumo($pdo, $corPadrao, $gastoTotal, [
+                        'peca_id' => $pecaId,
+                        'produto_id' => (int) $peca['produto_id'],
+                        'usuario_id' => $usuario['id'],
+                        'observacoes' => "Impressão de {$qtd} un. da peça {$peca['peca_nome']} ($corPadrao)",
+                    ]);
+                    $totalBaixado += $gastoTotal;
+                    $detalhesCoresBaixa[] = sprintf('%.1fg (%s)', $gastoTotal, $corPadrao);
+                }
             }
 
-            $gramasTotalGastas = round($pesoUnidadePeca * $qtd, 2);
-            $infoFilamento = null;
-            if ($gramasTotalGastas > 0) {
-                $infoFilamento = darBaixaFilamentoConsumo($pdo, (string)$cor['cor'], $gramasTotalGastas, [
-                    'peca_id' => (int) $cor['peca_id'],
-                    'produto_id' => (int) $cor['produto_id'],
-                    'usuario_id' => $usuario['id'],
-                    'observacoes' => "Impressão de {$qtd} un. da peça {$cor['peca_nome']} (" . rotuloCor($cor['cor']) . ")",
-                ]);
-            }
-
-            $capacidade = capacidadeMontagem($pdo, (int) $cor['produto_id']);
+            $capacidade = capacidadeMontagem($pdo, (int) $peca['produto_id']);
             $pdo->commit();
 
-            $msg = sprintf('+%d de "%s". Saldo: %d.', $qtd, rotuloPeca(['nome' => $cor['peca_nome']], $cor['cor']), $novoSaldo);
-            if ($gramasTotalGastas > 0) {
-                $msg .= sprintf(' Baixado %.1fg de filamento (%s).', $gramasTotalGastas, rotuloCor($cor['cor']));
+            $msg = sprintf('+%d de "%s". Saldo: %d.', $qtd, $peca['peca_nome'], $novoSaldo);
+            if ($detalhesCoresBaixa) {
+                $msg .= ' Filamento baixado: ' . implode(', ', $detalhesCoresBaixa) . '.';
             }
 
             jsonResponse([
                 'ok' => true,
                 'mensagem' => $msg,
+                'peca_id' => $pecaId,
                 'novo_estoque' => $novoSaldo,
-                'produto_id' => (int) $cor['produto_id'],
+                'produto_id' => (int) $peca['produto_id'],
                 'montavel' => $capacidade['capacidade'],
                 'gargalos' => $capacidade['gargalos'],
-                'filamento_baixado_gramas' => $gramasTotalGastas,
+                'filamento_baixado_gramas' => round($totalBaixado, 2),
             ]);
         } catch (Exception $e) {
             $pdo->rollBack();
@@ -101,99 +153,54 @@ if ($method === 'POST') {
         }
     }
 
-    // 2. Correção manual do saldo de uma cor (contagem física).
+    // 2. Correção manual do saldo de uma peça (contagem física).
     if ($acao === 'ajustar_saldo_peca') {
         $b = readJsonBody();
+        $pecaId = (int) ($b['peca_id'] ?? 0);
         $corId = (int) ($b['cor_id'] ?? 0);
-        if (!$corId) jsonError('Informe a peça (cor).');
+
+        if (!$pecaId && $corId > 0) {
+            $c = buscarCor($pdo, $corId);
+            if ($c) $pecaId = (int) $c['peca_id'];
+        }
+
+        if (!$pecaId) jsonError('Informe a peça.');
         if (!isset($b['estoque']) && !isset($b['delta'])) {
             jsonError('Informe o novo saldo (estoque) ou a variação (delta).');
         }
 
         $pdo->beginTransaction();
         try {
-            $cor = buscarCor($pdo, $corId);
-            if (!$cor) throw new Exception('Peça não encontrada.');
+            $peca = buscarPecaCompleta($pdo, $pecaId);
+            if (!$peca) throw new Exception('Peça não encontrada.');
 
-            $saldoAntes = (int) $cor['estoque'];
+            $saldoAntes = (int) $peca['peca_estoque'];
             $novoSaldo = isset($b['delta'])
                 ? max(0, $saldoAntes + (int) $b['delta'])
                 : max(0, (int) $b['estoque']);
 
-            $pdo->prepare("UPDATE produto_pecas_cores SET estoque = :e WHERE id = :id")
-                ->execute(['e' => $novoSaldo, 'id' => $corId]);
+            $pdo->prepare("UPDATE produto_pecas SET estoque = :e WHERE id = :id")
+                ->execute(['e' => $novoSaldo, 'id' => $pecaId]);
+
+            $pdo->prepare("UPDATE produto_pecas_cores SET estoque = :e WHERE peca_id = :id")
+                ->execute(['e' => $novoSaldo, 'id' => $pecaId]);
 
             registrarMovimento($pdo, 'peca_ajuste', [
-                'produto_id'   => (int) $cor['produto_id'],
-                'peca_id'      => (int) $cor['peca_id'],
+                'produto_id'   => (int) $peca['produto_id'],
+                'peca_id'      => $pecaId,
                 'quantidade'   => $novoSaldo - $saldoAntes,
                 'saldo_depois' => $novoSaldo,
                 'usuario_id'   => $usuario['id'],
-                'observacoes'  => 'Ajuste manual (cor: ' . rotuloCor($cor['cor']) . '), de ' . $saldoAntes . ' para ' . $novoSaldo . '.',
+                'observacoes'  => "Ajuste manual de saldo da peça {$peca['peca_nome']}, de {$saldoAntes} para {$novoSaldo}.",
             ]);
-
-            $capacidade = capacidadeMontagem($pdo, (int) $cor['produto_id']);
-            $pdo->commit();
-
-            jsonResponse([
-                'ok' => true,
-                'novo_estoque' => $novoSaldo,
-                'produto_id' => (int) $cor['produto_id'],
-                'montavel' => $capacidade['capacidade'],
-                'gargalos' => $capacidade['gargalos'],
-            ]);
-        } catch (Exception $e) {
-            $pdo->rollBack();
-            jsonError($e->getMessage());
-        }
-    }
-
-    // 3. Nova cor de uma peça já cadastrada, direto da bancada — ex.: a
-    // fábrica passou a imprimir a Chave de Fenda também em Laranja, e só
-    // tinha o Cinza cadastrado. Evita ter que ir até Produtos.
-    if ($acao === 'adicionar_cor') {
-        $b = readJsonBody();
-        $pecaId = (int) ($b['peca_id'] ?? 0);
-        $corNome = trim((string) ($b['cor'] ?? ''));
-        $qtd = max(0, (int) ($b['quantidade'] ?? 0));
-        if (!$pecaId) jsonError('Informe a peça.');
-        if ($corNome === '') jsonError('Informe o nome da cor.');
-
-        $pdo->beginTransaction();
-        try {
-            $stmtP = $pdo->prepare("SELECT id, produto_id, nome FROM produto_pecas WHERE id = :id FOR UPDATE");
-            $stmtP->execute(['id' => $pecaId]);
-            $peca = $stmtP->fetch();
-            if (!$peca) throw new Exception('Peça não encontrada.');
-
-            $existe = $pdo->prepare("SELECT id FROM produto_pecas_cores WHERE peca_id = :peca_id AND cor = :cor");
-            $existe->execute(['peca_id' => $pecaId, 'cor' => $corNome]);
-            if ($existe->fetch()) throw new Exception("A cor \"$corNome\" já está cadastrada para esta peça.");
-
-            $pdo->prepare("INSERT INTO produto_pecas_cores (peca_id, cor, estoque) VALUES (:peca_id, :cor, :estoque)")
-                ->execute(['peca_id' => $pecaId, 'cor' => $corNome, 'estoque' => $qtd]);
-            $corId = (int) $pdo->lastInsertId();
-
-            if ($qtd > 0) {
-                registrarMovimento($pdo, 'peca_produzida', [
-                    'produto_id'   => (int) $peca['produto_id'],
-                    'peca_id'      => $pecaId,
-                    'quantidade'   => $qtd,
-                    'saldo_depois' => $qtd,
-                    'usuario_id'   => $usuario['id'],
-                    'observacoes'  => "Nova cor cadastrada na bancada: $corNome",
-                ]);
-            }
 
             $capacidade = capacidadeMontagem($pdo, (int) $peca['produto_id']);
             $pdo->commit();
 
             jsonResponse([
                 'ok' => true,
-                'mensagem' => "Cor \"$corNome\" adicionada a \"{$peca['nome']}\".",
-                'cor_id' => $corId,
-                'cor' => $corNome,
-                'estoque' => $qtd,
+                'peca_id' => $pecaId,
+                'novo_estoque' => $novoSaldo,
                 'produto_id' => (int) $peca['produto_id'],
                 'montavel' => $capacidade['capacidade'],
                 'gargalos' => $capacidade['gargalos'],
@@ -204,7 +211,99 @@ if ($method === 'POST') {
         }
     }
 
-    // 4. Montar: baixa as peças (de qualquer cor disponível) e gera produto pronto.
+    // 3. Nova cor / insumo de cor para uma peça já cadastrada
+    if ($acao === 'adicionar_cor') {
+        $b = readJsonBody();
+        $pecaId = (int) ($b['peca_id'] ?? 0);
+        $corNome = trim((string) ($b['cor'] ?? ''));
+        $pesoGramas = isset($b['peso_gramas']) && $b['peso_gramas'] !== '' ? max(0.0, (float)$b['peso_gramas']) : null;
+        $tempoSegs = isset($b['tempo_producao_segundos']) && $b['tempo_producao_segundos'] !== '' ? max(0, (int)$b['tempo_producao_segundos']) : null;
+
+        if (!$pecaId) jsonError('Informe a peça.');
+        if ($corNome === '') jsonError('Informe o nome da cor.');
+
+        $pdo->beginTransaction();
+        try {
+            $stmtP = $pdo->prepare("SELECT id, produto_id, nome, estoque FROM produto_pecas WHERE id = :id FOR UPDATE");
+            $stmtP->execute(['id' => $pecaId]);
+            $peca = $stmtP->fetch();
+            if (!$peca) throw new Exception('Peça não encontrada.');
+
+            $existe = $pdo->prepare("SELECT id FROM produto_pecas_cores WHERE peca_id = :peca_id AND cor = :cor");
+            $existe->execute(['peca_id' => $pecaId, 'cor' => $corNome]);
+            if ($existe->fetch()) throw new Exception("A cor \"$corNome\" já está cadastrada para esta peça.");
+
+            $pdo->prepare("
+                INSERT INTO produto_pecas_cores (peca_id, cor, estoque, peso_gramas, tempo_producao_segundos)
+                VALUES (:peca_id, :cor, :estoque, :peso_gramas, :tempo_producao_segundos)
+            ")->execute([
+                'peca_id' => $pecaId,
+                'cor' => $corNome,
+                'estoque' => (int) $peca['estoque'],
+                'peso_gramas' => $pesoGramas,
+                'tempo_producao_segundos' => $tempoSegs,
+            ]);
+            $corId = (int) $pdo->lastInsertId();
+
+            // Atualiza peso_gramas da peça somando as cores
+            $stmtSoma = $pdo->prepare("SELECT SUM(peso_gramas) FROM produto_pecas_cores WHERE peca_id = :id AND peso_gramas > 0");
+            $stmtSoma->execute(['id' => $pecaId]);
+            $somaPeso = (float) $stmtSoma->fetchColumn();
+            if ($somaPeso > 0) {
+                $pdo->prepare("UPDATE produto_pecas SET peso_gramas = :p WHERE id = :id")->execute(['p' => $somaPeso, 'id' => $pecaId]);
+            }
+
+            $capacidade = capacidadeMontagem($pdo, (int) $peca['produto_id']);
+            $pdo->commit();
+
+            jsonResponse([
+                'ok' => true,
+                'mensagem' => "Cor \"$corNome\" adicionada à peça \"{$peca['nome']}\".",
+                'cor_id' => $corId,
+                'peca_id' => $pecaId,
+                'cor' => $corNome,
+                'peso_gramas' => $pesoGramas,
+                'estoque' => (int) $peca['estoque'],
+                'produto_id' => (int) $peca['produto_id'],
+                'montavel' => $capacidade['capacidade'],
+                'gargalos' => $capacidade['gargalos'],
+            ]);
+        } catch (Exception $e) {
+            $pdo->rollBack();
+            jsonError($e->getMessage());
+        }
+    }
+
+    // 4. Remover cor de uma peça
+    if ($acao === 'remover_cor') {
+        $b = readJsonBody();
+        $corId = (int) ($b['cor_id'] ?? 0);
+        $pecaId = (int) ($b['peca_id'] ?? 0);
+
+        if (!$corId) jsonError('Informe a cor a remover.');
+
+        $pdo->beginTransaction();
+        try {
+            $pdo->prepare("DELETE FROM produto_pecas_cores WHERE id = :id")->execute(['id' => $corId]);
+
+            if ($pecaId > 0) {
+                $stmtSoma = $pdo->prepare("SELECT SUM(peso_gramas) FROM produto_pecas_cores WHERE peca_id = :id AND peso_gramas > 0");
+                $stmtSoma->execute(['id' => $pecaId]);
+                $somaPeso = (float) $stmtSoma->fetchColumn();
+                if ($somaPeso > 0) {
+                    $pdo->prepare("UPDATE produto_pecas SET peso_gramas = :p WHERE id = :id")->execute(['p' => $somaPeso, 'id' => $pecaId]);
+                }
+            }
+
+            $pdo->commit();
+            jsonResponse(['ok' => true, 'mensagem' => 'Cor removida com sucesso.']);
+        } catch (Exception $e) {
+            $pdo->rollBack();
+            jsonError($e->getMessage());
+        }
+    }
+
+    // 5. Montar: baixa as peças direto de produto_pecas e gera produto pronto.
     if ($acao === 'montar') {
         $b = readJsonBody();
         $produtoId = (int) ($b['produto_id'] ?? 0);
@@ -240,11 +339,10 @@ if ($method === 'POST') {
 
 // ------------------------------------------------------------
 // GET /api/fabrica_pecas.php
-// A bancada inteira: por produto, as peças (cada uma com suas cores e
-// saldo) e fila de impressão, quanto dá para montar agora e o que trava.
+// A bancada inteira: por produto, as peças (com saldo da peça e cores/gramas)
+// e fila de impressão, quanto dá para montar agora e o que trava.
 // ------------------------------------------------------------
 if ($method === 'GET') {
-    // 1. Demanda pendente de cada produto, vinda dos pedidos abertos/em produção.
     $sqlPedidos = "
         SELECT
             pi.produto_id,
@@ -262,12 +360,10 @@ if ($method === 'GET') {
         $demanda[(int) $row['produto_id']] = $row;
     }
 
-    // 2. Todas as peças com o produto pai, e as cores de cada peça numa
-    // segunda consulta (evita repetir a linha da peça por cor no join).
     $pecasLinhas = $pdo->query("
         SELECT
             pp.id AS peca_id, pp.produto_id, pp.nome AS peca_nome,
-            pp.quantidade AS por_unidade, pp.foto AS peca_foto,
+            pp.quantidade AS por_unidade, pp.estoque AS peca_estoque, pp.foto AS peca_foto,
             pp.peso_gramas AS peca_peso, pp.tempo_producao_segundos AS peca_tempo,
             prod.nome AS produto_nome, prod.estoque AS estoque_produto_pronto,
             prod.ativo AS produto_ativo, prod.foto AS produto_foto
@@ -281,7 +377,7 @@ if ($method === 'GET') {
         $pecaIds = array_column($pecasLinhas, 'peca_id');
         $in = implode(',', array_fill(0, count($pecaIds), '?'));
         $stmtCores = $pdo->prepare("
-            SELECT id AS cor_id, peca_id, cor, estoque, foto, peso_gramas
+            SELECT id AS cor_id, peca_id, cor, estoque, foto, peso_gramas, tempo_producao_segundos
             FROM produto_pecas_cores WHERE peca_id IN ($in) ORDER BY id ASC
         ");
         $stmtCores->execute($pecaIds);
@@ -309,10 +405,7 @@ if ($method === 'GET') {
                 'foto' => $l['produto_foto'],
                 'ativo' => (int) $l['produto_ativo'],
                 'estoque' => $estoquePronto,
-                // A fabricar = o que os pedidos ainda esperam.
                 'em_producao' => $demandaBruta,
-                // Líquida = o que ainda precisa ser montado, já descontado o
-                // estoque pronto (que é consumido de verdade ao atender o pedido).
                 'demanda_liquida' => max(0, $demandaBruta - $estoquePronto),
                 'qtd_pedidos' => $d ? (int) $d['qtd_pedidos'] : 0,
                 'proxima_entrega' => $d['proxima_entrega'] ?? null,
@@ -324,7 +417,7 @@ if ($method === 'GET') {
 
         $porUnidade = max(1, (int) $l['por_unidade']);
         $cores = $coresPorPeca[(int) $l['peca_id']] ?? [];
-        $estoquePeca = array_sum(array_map(fn($c) => (int) $c['estoque'], $cores));
+        $estoquePeca = (int) ($l['peca_estoque'] ?? 0);
         $demandaLiquida = $produtos[$pid]['demanda_liquida'];
 
         $produtos[$pid]['montavel'] = min($produtos[$pid]['montavel'], intdiv(max(0, $estoquePeca), $porUnidade));
@@ -361,7 +454,6 @@ if ($method === 'GET') {
             'peso_gramas' => $pesoPeca1un,
             'peso_fila_gramas' => $pesoFilaGramas,
             'estoque' => $estoquePeca,
-            // Quantos produtos esta peça (somando todas as cores) permite montar.
             'rende' => intdiv(max(0, $estoquePeca), $porUnidade),
             'necessario_pedidos' => $necessario,
             'a_imprimir' => $aImprimir,
@@ -371,13 +463,14 @@ if ($method === 'GET') {
                 'cor_id' => (int) $c['cor_id'],
                 'cor' => trim((string) $c['cor']) === '' ? null : $c['cor'],
                 'foto' => $c['foto'],
-                'estoque' => (int) $c['estoque'],
+                'estoque' => $estoquePeca,
                 'peso_gramas' => $c['peso_gramas'] !== null ? (float) $c['peso_gramas'] : null,
+                'tempo_producao_segundos' => $c['tempo_producao_segundos'] !== null ? (int) $c['tempo_producao_segundos'] : null,
+                'tempo_formatado' => $c['tempo_producao_segundos'] !== null ? formatarTempoHHMMSS((int)$c['tempo_producao_segundos']) : null,
             ], $cores),
         ];
     }
 
-    // 3. Fecha os agregados por produto: quem é o gargalo da montagem e tempo futuro total.
     $lista = [];
     $totalMontavel = 0;
     foreach ($produtos as $p) {
@@ -398,7 +491,6 @@ if ($method === 'GET') {
         $lista[] = $p;
     }
 
-    // Quem tem fila de impressão primeiro; depois quem dá para montar; depois alfabético.
     usort($lista, function ($a, $b) {
         if (($a['total_a_imprimir'] > 0) !== ($b['total_a_imprimir'] > 0)) {
             return $a['total_a_imprimir'] > 0 ? -1 : 1;
@@ -419,12 +511,10 @@ if ($method === 'GET') {
             'total_a_imprimir' => $totalAImprimir,
             'total_estoque' => $totalEstoquePecas,
             'total_montavel' => $totalMontavel,
-            'tempo_futuro_segundos' => $totalTempoFilaGeral,
-            'tempo_futuro_formatado' => formatarTempoHHMMSS($totalTempoFilaGeral),
-            'peso_futuro_gramas' => $totalPesoFilaGeral,
+            'total_tempo_fila_segundos' => $totalTempoFilaGeral,
+            'total_tempo_fila_formatado' => formatarTempoHHMMSS($totalTempoFilaGeral),
+            'total_peso_fila_gramas' => $totalPesoFilaGeral,
         ],
         'produtos' => $lista,
     ]);
 }
-
-jsonError('Método não suportado.', 405);

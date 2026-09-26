@@ -41,7 +41,7 @@ require __DIR__ . '/includes/header.php';
 </main>
 
 <div id="modalProduto" class="modal" hidden>
-    <div class="card modal-caixa" role="dialog" aria-modal="true" aria-labelledby="prodTituloModal">
+    <div class="card modal-caixa modal-largo" role="dialog" aria-modal="true" aria-labelledby="prodTituloModal">
         <form id="formProduto" autocomplete="off" novalidate>
             <div class="modal-cabecalho">
                 <div>
@@ -53,8 +53,9 @@ require __DIR__ . '/includes/header.php';
                 </button>
             </div>
 
-            <div class="linha">
-                <div style="flex: 2;">
+            <div class="modal-corpo">
+                <div class="linha">
+                    <div style="flex: 2;">
                     <label for="prodNome">Nome <span class="obrigatorio">*</span></label>
                     <input type="text" id="prodNome" maxlength="150" required placeholder="Ex.: Helicóptero ou Hélice">
                 </div>
@@ -188,11 +189,12 @@ require __DIR__ . '/includes/header.php';
                 </div>
             </div>
             <label for="prodDescricao">Descrição</label>
-            <textarea id="prodDescricao" rows="3" placeholder="Material, cor, dimensões, acabamento..."></textarea>
+            <textarea id="prodDescricao" rows="2" placeholder="Material, cor, dimensões, acabamento..."></textarea>
+            </div>
 
             <div class="modal-rodape">
                 <button type="button" class="secundario" data-fechar-modal>Cancelar</button>
-                <button type="submit" id="btnSalvarProduto">Cadastrar produto</button>
+                <button type="submit" id="btnSalvarProduto">Salvar produto</button>
             </div>
         </form>
     </div>
@@ -200,7 +202,7 @@ require __DIR__ . '/includes/header.php';
 
 <!-- Modal de Ficha Técnica (BOM) & Diagnóstico de Montagem -->
 <div id="modalComposicao" class="modal" hidden>
-    <div class="card modal-caixa modal-largo" role="dialog" aria-modal="true" aria-labelledby="bomTituloModal">
+    <div class="card modal-caixa modal-extra-largo" role="dialog" aria-modal="true" aria-labelledby="bomTituloModal">
         <div class="modal-cabecalho">
             <div>
                 <h2 id="bomTituloModal">Ficha Técnica & Montagem</h2>
@@ -211,109 +213,99 @@ require __DIR__ . '/includes/header.php';
             </button>
         </div>
 
-        <!-- KPI e Diagnóstico Rápido -->
-        <div class="bloco-kpi-bom" style="margin-top: 10px; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px;">
-            <div class="card-kpi-bom" id="kpiCapacidadeBox">
-                <span class="kpi-rotulo">Capacidade Imediata</span>
-                <div class="kpi-valor" id="kpiCapacidadeQtd">0</div>
-                <span class="kpi-sub" id="kpiCapacidadeGargalo">Estoque de peças</span>
+        <!-- Faixa de KPIs em Linha Compacta -->
+        <div class="bom-kpi-strip" id="bomKpiStrip">
+            <div class="bom-kpi-item destaque-verde" id="kpiCapacidadeBox">
+                <span class="lbl">Capacidade Imediata</span>
+                <div class="val" id="kpiCapacidadeQtd">0</div>
+                <span id="kpiCapacidadeGargalo" style="font-size:11px;color:var(--text-3);">Estoque de peças</span>
             </div>
-            <div class="card-kpi-bom">
-                <span class="kpi-rotulo">Estoque Pronto</span>
-                <div class="kpi-valor" id="kpiEstoquePronto">0</div>
-                <span class="kpi-sub">Unidades finalizadas</span>
+            <div class="bom-kpi-item">
+                <span class="lbl">Estoque Pronto</span>
+                <div class="val" id="kpiEstoquePronto">0</div>
+                <span style="font-size:11px;color:var(--text-3);">Unidades finalizadas</span>
             </div>
-            <div class="card-kpi-bom">
-                <span class="kpi-rotulo">Filamento / un</span>
-                <div class="kpi-valor" id="kpiPeso1un">0 g</div>
-                <span class="kpi-sub" id="kpiCores1un">Soma das peças</span>
+            <div class="bom-kpi-item">
+                <span class="lbl">Filamento / un</span>
+                <div class="val" id="kpiPeso1un">0 g</div>
+                <span id="kpiCores1un" style="font-size:11px;color:var(--text-3);">Soma das peças</span>
             </div>
-            <div class="card-kpi-bom">
-                <span class="kpi-rotulo">Tempo / un</span>
-                <div class="kpi-valor" id="kpiTempo1un">00:00:00</div>
-                <span class="kpi-sub">Produção de 1 produto</span>
-            </div>
-        </div>
-
-        <!-- Seção de Ação de Montagem -->
-        <div style="background: var(--surface-3); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 16px; margin-bottom: 14px; margin-top: 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
-            <div style="display: flex; align-items: center; gap: 10px;">
-                <label for="qtdMontagemExecutar" style="margin: 0; font-weight: 600; white-space: nowrap;">Montar agora:</label>
-                <input type="number" id="qtdMontagemExecutar" min="1" value="1" style="width: 80px; margin: 0; text-align: center;">
-                <span style="color: var(--text-3); font-size: 13px;">unidade(s)</span>
-            </div>
-            <button type="button" id="btnExecutarMontagem" class="primario" style="margin: 0;">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width: 16px; height: 16px;"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
-                Realizar Montagem (Baixar Peças)
-            </button>
-        </div>
-
-        <!-- Simulação de Meta de Produção -->
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
-            <strong style="font-size: 14px;">Diagnóstico de Peças & Gargalos</strong>
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <label for="metaSimulacao" style="margin: 0; font-size: 13px; color: var(--text-2);">Simular Meta:</label>
-                <input type="number" id="metaSimulacao" min="1" value="1" style="width: 70px; margin: 0; padding: 4px 8px; height: 32px; text-align: center;">
-                <button type="button" id="btnRecalcularMeta" class="secundario" style="min-height: 32px; padding: 0 10px; font-size: 13px;">Recalcular</button>
+            <div class="bom-kpi-item">
+                <span class="lbl">Tempo / un</span>
+                <div class="val" id="kpiTempo1un">00:00:00</div>
+                <span style="font-size:11px;color:var(--text-3);">Produção de 1 un</span>
             </div>
         </div>
 
-        <!-- Painel de Previsão Futura da Meta (Tempo HH:mm:ss e Filamento por Cor) -->
-        <div id="painelPrevisaoMeta" style="background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; margin-bottom: 12px; font-size: 13px; display: flex; flex-direction: column; gap: 6px;"></div>
-
-        <!-- Tabela de Diagnóstico / Peças -->
-        <div class="tabela-rolagem" style="margin-bottom: 18px; max-height: 240px; overflow-y: auto;">
-            <table>
-                <thead>
-                    <tr>
-                        <th style="width: 44px; text-align: center;">Foto</th>
-                        <th>Peça / Componente</th>
-                        <th>Cores (estoque)</th>
-                        <th class="num">Qtd / un</th>
-                        <th class="num">Filamento (1 un)</th>
-                        <th class="num">Tempo (1 un)</th>
-                        <th class="num">Estoque total</th>
-                        <th class="num">Para a Meta</th>
-                        <th>Situação / Balanço</th>
-                    </tr>
-                </thead>
-                <tbody id="tabelaDiagnosticoBOM"></tbody>
-            </table>
-        </div>
-
-        <!-- Editor da Ficha Técnica: cada peça pode ter uma ou mais cores, -->
-        <!-- cada cor com seu próprio saldo (ex.: Chave de Fenda em Cinza e Laranja). -->
-        <details style="border-top: 1px solid var(--border); padding-top: 14px; margin-top: 8px;" open>
-            <summary style="font-weight: 600; cursor: pointer; color: var(--primary); padding: 4px 0;">
-                ⚙️ Configurar Peças do Produto (Nome, Quantidade, Cores, Gramas e Tempo)
-            </summary>
-            <div style="margin-top: 12px;">
-                <p style="font-size: 13px; color: var(--text-3); margin-bottom: 8px;">
-                    Cadastre cada peça necessária para produzir 1 produto. Insira a <b>quantidade</b>, o <b>tempo de produção</b> (HH:mm:ss) e o <b>peso em gramas</b> para 1 produto pronto. Se a peça tiver cores diferentes, adicione as cores e ajuste as gramas por cor se variar.
-                </p>
-
-                <!-- Barra com o Totalizador em Tempo Real da Produção de 1 Produto -->
-                <div id="editorBOMResumoInstantaneo" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:var(--surface-3);border:1px solid var(--border);padding:8px 14px;border-radius:var(--radius-sm);margin-bottom:10px;font-size:13px;">
-                    <div>⏱️ <b>Tempo Total (1 produto):</b> <span id="editorTempoTotal" style="font-weight:600;color:var(--primary);">00:00:00</span></div>
-                    <div>⚖️ <b>Filamento Total (1 produto):</b> <span id="editorPesoTotal" style="font-weight:600;color:var(--primary);">0 g</span></div>
-                    <div id="editorCoresBadges" style="display:flex;gap:4px;flex-wrap:wrap;"></div>
-                </div>
-
-                <div class="lista-editor-bom" id="listaEditorBOM"></div>
-
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
-                    <button type="button" id="btnAdicionarLinhaBOM" class="secundario" style="font-size: 13px;">
-                        + Adicionar Peça
-                    </button>
-                    <button type="button" id="btnSalvarBOM" class="primario" style="font-size: 13px;">
-                        Salvar Peças
+        <div class="modal-corpo">
+            <!-- Ações Rápidas: Montagem e Simulação em Linha Única -->
+            <div class="bom-acoes-linha">
+                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                    <strong>Montar agora:</strong>
+                    <input type="number" id="qtdMontagemExecutar" min="1" value="1" style="width: 70px; height: 30px; text-align: center; margin: 0;">
+                    <span style="color: var(--text-3); font-size: 12px;">un.</span>
+                    <button type="button" id="btnExecutarMontagem" class="sucesso pequeno" style="min-height: 30px; padding: 0 12px; font-size: 12px;">
+                        ⚒️ Montar e Baixar Peças
                     </button>
                 </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="color: var(--text-2); font-size: 12.5px;">Simular meta:</span>
+                    <input type="number" id="metaSimulacao" min="1" value="1" style="width: 64px; height: 30px; padding: 0 6px; text-align: center; margin: 0;">
+                    <button type="button" id="btnRecalcularMeta" class="secundario pequeno" style="min-height: 30px; padding: 0 10px; font-size: 12px;">Simular</button>
+                </div>
             </div>
-        </details>
 
+            <!-- Painel de Previsão Futura da Meta -->
+            <div id="painelPrevisaoMeta" style="background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 12px; margin-bottom: 10px; font-size: 12.5px; display: flex; flex-direction: column; gap: 4px;"></div>
 
-        <div class="modal-rodape" style="margin-top: 18px;">
+            <!-- Tabela de Diagnóstico / Peças -->
+            <div class="tabela-rolagem" style="margin-bottom: 14px; max-height: 200px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius-sm);">
+                <table>
+                    <thead style="position: sticky; top: 0; z-index: 2;">
+                        <tr>
+                            <th style="width: 36px; text-align: center;">Foto</th>
+                            <th>Peça / Componente</th>
+                            <th>Cores e Filamento</th>
+                            <th class="num">Qtd / un</th>
+                            <th class="num">Peso (1 un)</th>
+                            <th class="num">Tempo (1 un)</th>
+                            <th class="num">Estoque</th>
+                            <th class="num">Meta</th>
+                            <th>Situação</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabelaDiagnosticoBOM"></tbody>
+                </table>
+            </div>
+
+            <!-- Editor da Ficha Técnica -->
+            <details style="border-top: 1px solid var(--border); padding-top: 10px; margin-top: 6px;" open>
+                <summary style="font-weight: 700; cursor: pointer; color: var(--primary); padding: 4px 0; font-size: 13px;">
+                    ⚙️ Configurar Peças e Ficha Técnica
+                </summary>
+                <div style="margin-top: 8px;">
+                    <!-- Barra com o Totalizador em Tempo Real -->
+                    <div id="editorBOMResumoInstantaneo" style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;background:var(--surface-3);border:1px solid var(--border);padding:6px 12px;border-radius:var(--radius-sm);margin-bottom:8px;font-size:12px;">
+                        <div>⏱️ <b>Tempo Total (1 un):</b> <span id="editorTempoTotal" style="font-weight:700;color:var(--primary);">00:00:00</span></div>
+                        <div>⚖️ <b>Filamento Total (1 un):</b> <span id="editorPesoTotal" style="font-weight:700;color:var(--primary);">0 g</span></div>
+                        <div id="editorCoresBadges" style="display:flex;gap:4px;flex-wrap:wrap;"></div>
+                    </div>
+
+                    <div class="lista-editor-bom" id="listaEditorBOM"></div>
+
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+                        <button type="button" id="btnAdicionarLinhaBOM" class="secundario pequeno">
+                            + Adicionar Peça
+                        </button>
+                        <button type="button" id="btnSalvarBOM" class="primario pequeno">
+                            Salvar Ficha Técnica
+                        </button>
+                    </div>
+                </div>
+            </details>
+        </div>
+
+        <div class="modal-rodape">
             <button type="button" class="secundario" data-fechar-modal>Fechar</button>
         </div>
     </div>

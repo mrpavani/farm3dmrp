@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS `produto_pecas` (
     `produto_id` INT NOT NULL,
     `nome` VARCHAR(150) NOT NULL,
     `quantidade` INT NOT NULL DEFAULT 1,
+    `estoque` INT NOT NULL DEFAULT 0,
     `peso_gramas` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     `tempo_producao_segundos` INT NOT NULL DEFAULT 0,
     `foto` VARCHAR(255) DEFAULT NULL,

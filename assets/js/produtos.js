@@ -603,15 +603,15 @@ async function abrirFicha(id) {
             peca_id: p.peca_id,
             nome: p.nome,
             quantidade: p.por_unidade,
+            estoque: Number(p.estoque_atual || p.estoque) || 0,
             tempo_producao_segundos: Number(p.tempo_producao_segundos) || 0,
             tempo_formatado: p.tempo_formatado || formatarSegundosHHMMSS(p.tempo_producao_segundos),
             peso_gramas: Number(p.peso_gramas) || 0,
             foto: p.foto || '',
-            cores: (p.cores && p.cores.length ? p.cores : [{ cor_id: 0, cor: null, estoque: 0, peso_gramas: null, tempo_producao_segundos: null, foto: null }])
+            cores: (p.cores && p.cores.length ? p.cores : [{ cor_id: 0, cor: null, peso_gramas: null, tempo_producao_segundos: null, foto: null }])
                 .map(c => ({
                     cor_id: c.cor_id || 0,
                     cor: c.cor || '',
-                    estoque: c.estoque || 0,
                     peso_gramas: (c.peso_gramas !== null && c.peso_gramas !== undefined) ? Number(c.peso_gramas) : null,
                     tempo_producao_segundos: (c.tempo_producao_segundos !== null && c.tempo_producao_segundos !== undefined) ? Number(c.tempo_producao_segundos) : null,
                     tempo_formatado: c.tempo_formatado || (c.tempo_producao_segundos ? formatarSegundosHHMMSS(c.tempo_producao_segundos) : '')
@@ -630,11 +630,11 @@ async function abrirFicha(id) {
 }
 
 const novaLinhaPeca = () => ({
-    peca_id: 0, nome: '', quantidade: 1,
+    peca_id: 0, nome: '', quantidade: 1, estoque: 0,
     tempo_producao_segundos: 0, tempo_formatado: '00:00:00',
     peso_gramas: 0, foto: '', cores: [novaLinhaCor()]
 });
-const novaLinhaCor = () => ({ cor_id: 0, cor: '', estoque: 0, peso_gramas: null, tempo_producao_segundos: null, tempo_formatado: '' });
+const novaLinhaCor = () => ({ cor_id: 0, cor: '', peso_gramas: null, tempo_producao_segundos: null, tempo_formatado: '' });
 
 function renderizarDiagnosticoBOM(data) {
     const kpiBox = $('kpiCapacidadeBox');
@@ -712,10 +712,10 @@ function renderizarDiagnosticoBOM(data) {
             ? `<img src="${esc(p.foto)}" alt="${esc(p.nome)}" style="width:34px;height:34px;border-radius:4px;object-fit:cover;display:block;margin:auto;">`
             : `<span style="font-size:16px;">🧩</span>`;
 
-        // Cores da peça, com o saldo de cada uma
+        // Cores da peça, com as gramas de filamento por cor
         const cores = (p.cores || []);
         const coresHtml = cores.length
-            ? cores.map(c => `<span class="chip-cor-diag">${esc(c.cor || 'qualquer cor')}: <strong>${App.fmtInt.format(c.estoque)}</strong></span>`).join(' ')
+            ? cores.map(c => `<span class="chip-cor-diag">${esc(c.cor || 'qualquer cor')}: <strong>${(c.peso_gramas !== null && c.peso_gramas !== undefined && Number(c.peso_gramas) > 0) ? (Number(c.peso_gramas).toFixed(1) + 'g') : '—'}</strong></span>`).join(' ')
             : '<span class="vazio">—</span>';
 
         return `
@@ -842,7 +842,7 @@ function renderizarEditorBOM() {
 
         const coresHtml = linha.cores.map((cor, cidx) => `
             <div class="linha-cor-editor">
-                <input type="text" placeholder="Nome da cor (deixe em branco se não importar)"
+                <input type="text" placeholder="Nome da cor (ex.: Branco, Cinza...)"
                        value="${esc(cor.cor || '')}"
                        oninput="atualizarCorBOM(${idx}, ${cidx}, 'cor', this.value)">
                 <input type="text" placeholder="HH:mm:ss"
@@ -851,19 +851,11 @@ function renderizarEditorBOM() {
                        title="Tempo específico desta cor (se vazio, usa o da peça)."
                        class="tempo-cor-editor">
                 <input type="number" min="0" step="0.1"
-                       placeholder="${linha.peso_gramas ? (linha.peso_gramas + 'g') : 'g (opc)'}"
+                       placeholder="${linha.peso_gramas ? (linha.peso_gramas + 'g') : 'g desta cor'}"
                        value="${cor.peso_gramas !== null && cor.peso_gramas !== undefined ? cor.peso_gramas : ''}"
                        oninput="atualizarCorBOM(${idx}, ${cidx}, 'peso', this.value)"
-                       title="Gramas específicas desta cor (se vazio, usa o peso da peça)."
+                       title="Filamento em gramas desta cor para esta peça."
                        class="peso-cor-editor">
-                ${cor.cor_id
-                    ? `<input type="number" value="${cor.estoque || 0}" readonly tabindex="-1"
-                              title="O saldo é atualizado na Bancada da Fábrica, a cada peça impressa."
-                              class="saldo-cor-editor saldo-cor-editor-travado">`
-                    : `<input type="number" min="0" value="${cor.estoque || 0}"
-                              oninput="atualizarCorBOM(${idx}, ${cidx}, 'estoque', this.value)"
-                              title="Saldo inicial desta cor nova."
-                              class="saldo-cor-editor">`}
                 <button type="button" class="btn-icone perigo" onclick="removerCorBOM(${idx}, ${cidx})"
                         title="Remover esta cor" ${linha.cores.length <= 1 ? 'disabled' : ''}>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
@@ -895,12 +887,18 @@ function renderizarEditorBOM() {
                            oninput="atualizarLinhaBOM(${idx}, 'peso', this.value)"
                            class="peso-peca-editor" title="Consumo em gramas desta peça para 1 produto">
                 </label>
+                <label class="rotulo-inline">Estoque
+                    <input type="number" min="0" value="${linha.estoque || 0}"
+                           ${linha.peca_id ? 'readonly tabindex="-1" class="saldo-cor-editor-travado"' : ''}
+                           oninput="atualizarLinhaBOM(${idx}, 'estoque', this.value)"
+                           class="qtd-peca-editor" title="${linha.peca_id ? 'O saldo desta peça é gerido na Fábrica.' : 'Estoque inicial da peça'}">
+                </label>
                 <button type="button" class="btn-icone perigo" onclick="removerLinhaBOM(${idx})" title="Remover peça">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
                 </button>
             </div>
             <div class="lista-cores-editor">
-                <span class="rotulo-cores-editor">Cores desta peça (defina o nome da cor e, opcionalmente, gramas específicas):</span>
+                <span class="rotulo-cores-editor">Cores desta peça (defina as cores e gramas de filamento por cor):</span>
                 ${coresHtml}
                 <button type="button" class="secundario pequeno" onclick="adicionarCorBOM(${idx})">+ Adicionar cor</button>
             </div>
@@ -959,6 +957,8 @@ function atualizarLinhaBOM(idx, campo, valor) {
     if (!bomLinhasEditor[idx]) return;
     if (campo === 'quantidade') {
         bomLinhasEditor[idx][campo] = Math.max(1, parseInt(valor) || 1);
+    } else if (campo === 'estoque') {
+        bomLinhasEditor[idx].estoque = Math.max(0, parseInt(valor) || 0);
     } else if (campo === 'tempo') {
         const segs = parseTempoParaSegundos(valor);
         bomLinhasEditor[idx].tempo_producao_segundos = segs;
@@ -992,9 +992,7 @@ function removerCorBOM(idx, cidx) {
 function atualizarCorBOM(idx, cidx, campo, valor) {
     const cor = bomLinhasEditor[idx]?.cores[cidx];
     if (!cor) return;
-    if (campo === 'estoque') {
-        cor[campo] = Math.max(0, parseInt(valor) || 0);
-    } else if (campo === 'peso') {
+    if (campo === 'peso') {
         cor.peso_gramas = (valor === '' || valor === null) ? null : Math.max(0, parseFloat(valor) || 0);
     } else if (campo === 'tempo') {
         const segs = parseTempoParaSegundos(valor);
@@ -1010,7 +1008,7 @@ async function salvarBOM() {
     if (!bomProdutoAtualId) return;
 
     // Filtra peças com nome preenchido. peca_id e cor_id vão junto para o
-    // servidor casar as linhas por id: peça/cor que já existe mantém o
+    // servidor casar as linhas por id: peça que já existe mantém o
     // saldo impresso (quem manda nele é a Bancada da Fábrica).
     const itensValidos = bomLinhasEditor
         .filter(l => (l.nome || '').trim() !== '')
@@ -1018,13 +1016,13 @@ async function salvarBOM() {
             peca_id: parseInt(l.peca_id) || 0,
             nome: l.nome.trim(),
             quantidade: Math.max(1, parseInt(l.quantidade) || 1),
+            estoque: Math.max(0, parseInt(l.estoque) || 0),
             peso_gramas: Math.max(0, parseFloat(l.peso_gramas) || 0),
             tempo_producao_segundos: parseInt(l.tempo_producao_segundos) || 0,
             foto: (l.foto || '').trim(),
             cores: l.cores.map(c => ({
                 cor_id: parseInt(c.cor_id) || 0,
                 cor: (c.cor || '').trim(),
-                estoque: Math.max(0, parseInt(c.estoque) || 0), // só usado em cor nova
                 peso_gramas: (c.peso_gramas !== null && c.peso_gramas !== undefined && c.peso_gramas !== '')
                     ? Math.max(0, parseFloat(c.peso_gramas) || 0)
                     : null,

@@ -10,7 +10,7 @@ $method = $_SERVER['REQUEST_METHOD'];
 // e os cálculos consolidados de peso em gramas (filamento) e tempo futuro HH:mm:ss.
 function diagnosticoPecas(PDO $pdo, int $paiId, int $meta): array {
     $stmtPecas = $pdo->prepare("
-        SELECT id AS peca_id, nome, quantidade AS por_unidade, foto,
+        SELECT id AS peca_id, nome, quantidade AS por_unidade, estoque, foto,
                peso_gramas, tempo_producao_segundos
         FROM produto_pecas WHERE produto_id = :pai_id ORDER BY id ASC
     ");
@@ -51,7 +51,7 @@ function diagnosticoPecas(PDO $pdo, int $paiId, int $meta): array {
     foreach ($pecas as &$p) {
         $cores = $coresPorPeca[(int) $p['peca_id']] ?? [];
         $p['cores'] = $cores;
-        $p['estoque_atual'] = array_sum(array_map(fn($c) => (int) $c['estoque'], $cores));
+        $p['estoque_atual'] = (int) ($p['estoque'] ?? 0);
         $porUnidade = max(1, (int) $p['por_unidade']);
         $p['capacidade_individual'] = intdiv(max(0, $p['estoque_atual']), $porUnidade);
         $capacidadeMaxima = min($capacidadeMaxima, $p['capacidade_individual']);
@@ -299,6 +299,7 @@ if ($method === 'POST') {
             'peca_id' => (int) ($item['peca_id'] ?? 0),
             'nome' => $nome,
             'quantidade' => max(1, (int) ($item['quantidade'] ?? 1)),
+            'estoque' => max(0, (int) ($item['estoque'] ?? 0)),
             'peso_gramas' => $pesoPeca,
             'tempo_producao_segundos' => $tempoPeca,
             'foto' => $foto === '' ? null : $foto,
@@ -319,8 +320,8 @@ if ($method === 'POST') {
             WHERE id = :id AND produto_id = :produto_id
         ");
         $stmtInsPeca = $pdo->prepare("
-            INSERT INTO produto_pecas (produto_id, nome, quantidade, peso_gramas, tempo_producao_segundos, foto)
-            VALUES (:produto_id, :nome, :qtd, :peso, :tempo, :foto)
+            INSERT INTO produto_pecas (produto_id, nome, quantidade, estoque, peso_gramas, tempo_producao_segundos, foto)
+            VALUES (:produto_id, :nome, :qtd, :estoque, :peso, :tempo, :foto)
         ");
 
         // ---- Cores: upsert por id, sempre amarrado à peça (peca_id) ----
@@ -349,6 +350,7 @@ if ($method === 'POST') {
                 $stmtInsPeca->execute([
                     'produto_id' => $paiId, 'nome' => $p['nome'],
                     'qtd' => $p['quantidade'],
+                    'estoque' => $p['estoque'],
                     'peso' => $p['peso_gramas'], 'tempo' => $p['tempo_producao_segundos'],
                     'foto' => $p['foto'],
                 ]);
@@ -406,9 +408,9 @@ if ($method === 'POST') {
             // registra a baixa antes do DELETE (a cascade tira as cores junto).
             $in = implode(',', array_fill(0, count($pecasRemovidas), '?'));
             $stmtSaldoRemovido = $pdo->prepare("
-                SELECT pp.id, pp.nome, COALESCE(SUM(pc.estoque), 0) AS total
-                FROM produto_pecas pp LEFT JOIN produto_pecas_cores pc ON pc.peca_id = pp.id
-                WHERE pp.id IN ($in) GROUP BY pp.id, pp.nome
+                SELECT pp.id, pp.nome, COALESCE(pp.estoque, 0) AS total
+                FROM produto_pecas pp
+                WHERE pp.id IN ($in)
             ");
             $stmtSaldoRemovido->execute(array_values($pecasRemovidas));
             foreach ($stmtSaldoRemovido->fetchAll() as $r) {

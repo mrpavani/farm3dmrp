@@ -134,8 +134,9 @@ execSafe($pdo, "
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 ", "Tabela <b>produto_pecas</b> verificada/criada.");
 
-execSafe($pdo, "ALTER TABLE produto_pecas ADD COLUMN foto VARCHAR(255) DEFAULT NULL AFTER quantidade", "Coluna <b>foto</b> em <i>produto_pecas</i> adicionada.", "Coluna <b>foto</b> já existe em <i>produto_pecas</i>.");
-execSafe($pdo, "ALTER TABLE produto_pecas ADD COLUMN peso_gramas DECIMAL(10,2) NOT NULL DEFAULT 0.00 AFTER quantidade", "Coluna <b>peso_gramas</b> em <i>produto_pecas</i> adicionada.", "Coluna <b>peso_gramas</b> já existe em <i>produto_pecas</i>.");
+execSafe($pdo, "ALTER TABLE produto_pecas ADD COLUMN estoque INT NOT NULL DEFAULT 0 AFTER quantidade", "Coluna <b>estoque</b> em <i>produto_pecas</i> adicionada.", "Coluna <b>estoque</b> já existe em <i>produto_pecas</i>.");
+execSafe($pdo, "ALTER TABLE produto_pecas ADD COLUMN foto VARCHAR(255) DEFAULT NULL AFTER estoque", "Coluna <b>foto</b> em <i>produto_pecas</i> adicionada.", "Coluna <b>foto</b> já existe em <i>produto_pecas</i>.");
+execSafe($pdo, "ALTER TABLE produto_pecas ADD COLUMN peso_gramas DECIMAL(10,2) NOT NULL DEFAULT 0.00 AFTER foto", "Coluna <b>peso_gramas</b> em <i>produto_pecas</i> adicionada.", "Coluna <b>peso_gramas</b> já existe em <i>produto_pecas</i>.");
 execSafe($pdo, "ALTER TABLE produto_pecas ADD COLUMN tempo_producao_segundos INT NOT NULL DEFAULT 0 AFTER peso_gramas", "Coluna <b>tempo_producao_segundos</b> em <i>produto_pecas</i> adicionada.", "Coluna <b>tempo_producao_segundos</b> já existe em <i>produto_pecas</i>.");
 
 // 5. Tabela produto_pecas_cores
@@ -157,23 +158,22 @@ execSafe($pdo, "ALTER TABLE produto_pecas_cores ADD COLUMN peso_gramas DECIMAL(1
 execSafe($pdo, "ALTER TABLE produto_pecas_cores ADD COLUMN tempo_producao_segundos INT DEFAULT NULL AFTER peso_gramas", "Coluna <b>tempo_producao_segundos</b> em <i>produto_pecas_cores</i> adicionada.", "Coluna <b>tempo_producao_segundos</b> já existe em <i>produto_pecas_cores</i>.");
 execSafe($pdo, "ALTER TABLE produto_pecas_cores ADD COLUMN foto VARCHAR(255) DEFAULT NULL AFTER tempo_producao_segundos", "Coluna <b>foto</b> em <i>produto_pecas_cores</i> adicionada.", "Coluna <b>foto</b> já existe em <i>produto_pecas_cores</i>.");
 
-// Migração das colunas antigas cor/estoque de produto_pecas para produto_pecas_cores
+// Migração 014: Unificação do saldo físico na peça (produto_pecas.estoque)
 try {
-    $temColunaCor = $pdo->query("SHOW COLUMNS FROM produto_pecas LIKE 'cor'")->fetch();
-    if ($temColunaCor) {
-        $n = $pdo->exec("
-            INSERT INTO produto_pecas_cores (peca_id, cor, estoque, foto, criado_em)
-            SELECT pp.id, pp.cor, pp.estoque, pp.foto, pp.criado_em
-            FROM produto_pecas pp
-            WHERE NOT EXISTS (SELECT 1 FROM produto_pecas_cores WHERE peca_id = pp.id)
-        ");
-        echo "<div class='msg ok'>↳ {$n} peça(s) migrada(s) para <b>produto_pecas_cores</b> com saldo e cor preservados.</div>";
-        $pdo->exec("ALTER TABLE produto_pecas DROP COLUMN cor");
-        $pdo->exec("ALTER TABLE produto_pecas DROP COLUMN estoque");
+    $n = $pdo->exec("
+        UPDATE produto_pecas pp
+        SET pp.estoque = (
+            SELECT COALESCE(MAX(pc.estoque), 0)
+            FROM produto_pecas_cores pc
+            WHERE pc.peca_id = pp.id
+        )
+        WHERE pp.estoque = 0
+          AND EXISTS (SELECT 1 FROM produto_pecas_cores pc WHERE pc.peca_id = pp.id AND pc.estoque > 0)
+    ");
+    if ($n > 0) {
+        echo "<div class='msg ok'>↳ {$n} peça(s) tiveram o estoque físico unificado na peça.</div>";
     }
-} catch (PDOException $e) {
-    // Silencia se já migrado
-}
+} catch (PDOException $e) {}
 
 // 6. Tabela produto_cores (Multicor para produtos simples)
 execSafe($pdo, "

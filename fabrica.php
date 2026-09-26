@@ -162,7 +162,7 @@ require __DIR__ . '/includes/header.php';
 
 <!-- Modal: registrar produção de pedido tradicional -->
 <div id="modalProducao" class="modal" hidden>
-    <div class="card modal-caixa" role="dialog" aria-modal="true" aria-labelledby="modalTitulo">
+    <div class="card modal-caixa modal-medio" role="dialog" aria-modal="true" aria-labelledby="modalTitulo">
         <div class="modal-cabecalho">
             <div>
                 <h2 id="modalTitulo">Registrar produção</h2>
@@ -172,24 +172,26 @@ require __DIR__ . '/includes/header.php';
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
             </button>
         </div>
-        <p class="disponibilidade-modal" id="modalDisponibilidade"></p>
-        <div class="linha">
-            <div>
-                <label for="modalQuantidade">Quantidade produzida</label>
-                <input type="number" id="modalQuantidade" min="1" inputmode="numeric">
+        <div class="modal-corpo">
+            <p class="disponibilidade-modal" id="modalDisponibilidade"></p>
+            <div class="linha">
+                <div>
+                    <label for="modalQuantidade">Quantidade produzida</label>
+                    <input type="number" id="modalQuantidade" min="1" inputmode="numeric">
+                </div>
+                <div>
+                    <label for="modalData">Data da produção</label>
+                    <input type="date" id="modalData">
+                </div>
             </div>
-            <div>
-                <label for="modalData">Data da produção</label>
-                <input type="date" id="modalData">
-            </div>
+            <label class="linha-montar" id="modalLinhaMontar" hidden>
+                <input type="checkbox" id="modalMontarSeFaltar">
+                <span id="modalMontarTexto"></span>
+            </label>
+            <label for="modalObs">Observações</label>
+            <textarea id="modalObs" rows="2" placeholder="Opcional"></textarea>
+            <p class="vazio" style="margin:10px 0 0; font-size:12px;">Será registrado por <strong><?= e($usuario['nome']) ?></strong>.</p>
         </div>
-        <label class="linha-montar" id="modalLinhaMontar" hidden>
-            <input type="checkbox" id="modalMontarSeFaltar">
-            <span id="modalMontarTexto"></span>
-        </label>
-        <label for="modalObs">Observações</label>
-        <textarea id="modalObs" rows="2" placeholder="Opcional"></textarea>
-        <p class="vazio" style="margin:12px 0 0;">Será registrado por <strong><?= e($usuario['nome']) ?></strong>.</p>
         <div class="modal-rodape">
             <button type="button" class="secundario" data-fechar-modal>Cancelar</button>
             <button type="button" id="btnConfirmarProducao">Registrar</button>
@@ -199,7 +201,7 @@ require __DIR__ . '/includes/header.php';
 
 <!-- Modal: registrar produção rápida de peça solta impressa -->
 <div id="modalProduzirPeca" class="modal" hidden>
-    <div class="card modal-caixa" role="dialog" aria-modal="true" aria-labelledby="modalPecaTitulo">
+    <div class="card modal-caixa modal-pequeno" role="dialog" aria-modal="true" aria-labelledby="modalPecaTitulo">
         <div class="modal-cabecalho">
             <div>
                 <h2 id="modalPecaTitulo">Registrar Impressão de Peça</h2>
@@ -209,10 +211,12 @@ require __DIR__ . '/includes/header.php';
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
             </button>
         </div>
-        <div style="margin-top: 10px;">
-            <label for="modalPecaQtd">Quantidade de peças impressas</label>
-            <input type="number" id="modalPecaQtd" min="1" value="1" style="font-size: 18px; font-weight: 700; text-align: center;">
-            <div class="atalhos" id="atalhosQtdPeca" style="margin-top: 8px; justify-content: center;"></div>
+        <div class="modal-corpo">
+            <div>
+                <label for="modalPecaQtd" style="text-align: center; margin-top: 4px;">Quantidade de peças impressas</label>
+                <input type="number" id="modalPecaQtd" min="1" value="1" style="font-size: 22px; font-weight: 700; text-align: center; height: 48px;">
+                <div class="atalhos" id="atalhosQtdPeca" style="margin-top: 10px; justify-content: center;"></div>
+            </div>
         </div>
         <div class="modal-rodape">
             <button type="button" class="secundario" data-fechar-modal>Cancelar</button>
@@ -223,20 +227,22 @@ require __DIR__ . '/includes/header.php';
 
 <!-- Modal: cadastrar uma nova cor de uma peça já existente, direto da bancada -->
 <div id="modalNovaCor" class="modal" hidden>
-    <div class="card modal-caixa" role="dialog" aria-modal="true" aria-labelledby="modalNovaCorTitulo">
+    <div class="card modal-caixa modal-pequeno" role="dialog" aria-modal="true" aria-labelledby="modalNovaCorTitulo">
         <div class="modal-cabecalho">
             <div>
-                <h2 id="modalNovaCorTitulo">Nova cor da peça</h2>
+                <h2 id="modalNovaCorTitulo">Adicionar Cor à Peça</h2>
                 <p id="modalNovaCorSub" class="modal-sub"></p>
             </div>
             <button type="button" class="btn-icone" data-fechar-modal aria-label="Fechar">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
             </button>
         </div>
-        <label for="modalNovaCorNome">Nome da cor</label>
-        <input type="text" id="modalNovaCorNome" placeholder="Ex.: Laranja" maxlength="50">
-        <label for="modalNovaCorQtd">Quantidade já impressa (opcional)</label>
-        <input type="number" id="modalNovaCorQtd" min="0" value="0" inputmode="numeric">
+        <div class="modal-corpo">
+            <label for="modalNovaCorNome">Nome da cor / filamento</label>
+            <input type="text" id="modalNovaCorNome" placeholder="Ex.: Branco, Cinza..." maxlength="50">
+            <label for="modalNovaCorPeso">Filamento gasto desta cor por peça (g)</label>
+            <input type="number" id="modalNovaCorPeso" min="0" step="0.1" placeholder="0.0 g">
+        </div>
         <div class="modal-rodape">
             <button type="button" class="secundario" data-fechar-modal>Cancelar</button>
             <button type="button" id="btnConfirmarNovaCor">Adicionar cor</button>
@@ -275,7 +281,7 @@ require __DIR__ . '/includes/header.php';
 
 <!-- Modal: Montar unidades de um produto -->
 <div id="modalMontarProduto" class="modal" hidden>
-    <div class="card modal-caixa" role="dialog" aria-modal="true" aria-labelledby="modalMontarTitulo">
+    <div class="card modal-caixa modal-medio" role="dialog" aria-modal="true" aria-labelledby="modalMontarTitulo">
         <div class="modal-cabecalho">
             <div>
                 <h2 id="modalMontarTitulo">Montar Produto</h2>
@@ -285,15 +291,17 @@ require __DIR__ . '/includes/header.php';
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
             </button>
         </div>
-        <div class="modal-montar-resumo" id="modalMontarResumo"></div>
-        <div style="margin-top: 14px;">
-            <label for="modalMontarQtd">Quantidade a montar</label>
-            <input type="number" id="modalMontarQtd" min="1" value="1" style="font-size: 20px; font-weight: 700; text-align: center;">
-            <div class="atalhos" id="atalhosMontarQtd" style="margin-top: 8px; justify-content: center;"></div>
+        <div class="modal-corpo">
+            <div class="modal-montar-resumo" id="modalMontarResumo"></div>
+            <div style="margin-top: 12px;">
+                <label for="modalMontarQtd" style="text-align: center;">Quantidade a montar</label>
+                <input type="number" id="modalMontarQtd" min="1" value="1" style="font-size: 22px; font-weight: 700; text-align: center; height: 48px;">
+                <div class="atalhos" id="atalhosMontarQtd" style="margin-top: 8px; justify-content: center;"></div>
+            </div>
+            <p class="vazio" style="margin: 12px 0 0; font-size: 12px; line-height: 1.4;">
+                ℹ️ Ao confirmar, as peças necessárias serão deduzidas do estoque e as unidades montadas serão adicionadas ao estoque do produto acabado.
+            </p>
         </div>
-        <p class="vazio" style="margin: 12px 0 0; font-size: 13px;">
-            ℹ️ Ao confirmar, as peças necessárias serão deduzidas do estoque e as unidades montadas serão adicionadas ao estoque do produto acabado.
-        </p>
         <div class="modal-rodape">
             <button type="button" class="secundario" data-fechar-modal>Cancelar</button>
             <button type="button" id="btnConfirmarMontarModal" class="sucesso">Confirmar Montagem</button>

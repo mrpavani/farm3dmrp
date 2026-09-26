@@ -3,7 +3,7 @@
 // Incluir com require_once. Script: assets/js/form-cliente.js (FormCliente.abrir()).
 ?>
 <div id="modalCliente" class="modal" hidden>
-    <div class="card modal-caixa" role="dialog" aria-modal="true" aria-labelledby="cliTituloModal">
+    <div class="card modal-caixa modal-medio" role="dialog" aria-modal="true" aria-labelledby="cliTituloModal">
         <form id="formCliente" autocomplete="off" novalidate>
             <div class="modal-cabecalho">
                 <div>
@@ -15,31 +15,33 @@
                 </button>
             </div>
 
-            <label for="cliNome">Nome <span class="obrigatorio">*</span></label>
-            <input type="text" id="cliNome" maxlength="150" required placeholder="Nome ou razão social">
+            <div class="modal-corpo">
+                <label for="cliNome">Nome <span class="obrigatorio">*</span></label>
+                <input type="text" id="cliNome" maxlength="150" required placeholder="Nome ou razão social">
 
-            <div class="linha">
-                <div>
-                    <label for="cliTelefone">Telefone</label>
-                    <input type="tel" id="cliTelefone" maxlength="30" placeholder="(11) 90000-0000">
+                <div class="linha">
+                    <div>
+                        <label for="cliTelefone">Telefone</label>
+                        <input type="tel" id="cliTelefone" maxlength="30" placeholder="(11) 90000-0000">
+                    </div>
+                    <div>
+                        <label for="cliEmail">E-mail</label>
+                        <input type="email" id="cliEmail" maxlength="150" placeholder="cliente@exemplo.com">
+                    </div>
                 </div>
-                <div>
-                    <label for="cliEmail">E-mail</label>
-                    <input type="email" id="cliEmail" maxlength="150" placeholder="cliente@exemplo.com">
+                <div class="linha">
+                    <div style="flex:3">
+                        <label for="cliCidade">Cidade</label>
+                        <input type="text" id="cliCidade" maxlength="100" placeholder="Ex.: Campinas">
+                    </div>
+                    <div style="flex:1; min-width:80px">
+                        <label for="cliEstado">UF</label>
+                        <input type="text" id="cliEstado" maxlength="2" placeholder="SP">
+                    </div>
                 </div>
+                <label for="cliDescricao">Descrição</label>
+                <textarea id="cliDescricao" rows="2" placeholder="Tipo de cliente, preferências, condições combinadas..."></textarea>
             </div>
-            <div class="linha">
-                <div style="flex:3">
-                    <label for="cliCidade">Cidade</label>
-                    <input type="text" id="cliCidade" maxlength="100" placeholder="Ex.: Campinas">
-                </div>
-                <div style="flex:1; min-width:80px">
-                    <label for="cliEstado">UF</label>
-                    <input type="text" id="cliEstado" maxlength="2" placeholder="SP">
-                </div>
-            </div>
-            <label for="cliDescricao">Descrição</label>
-            <textarea id="cliDescricao" rows="3" placeholder="Tipo de cliente, preferências, condições combinadas..."></textarea>
 
             <div class="modal-rodape">
                 <button type="button" class="secundario" data-fechar-modal>Cancelar</button>

@@ -439,9 +439,20 @@ PREPARE stmt FROM @s1; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 SET @s2 = (SELECT IF(@tem_cor > 0, 'ALTER TABLE `produto_pecas` DROP COLUMN `cor`', 'SELECT 1'));
 PREPARE stmt FROM @s2; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
+-- 1. Assegurar coluna estoque em produto_pecas (peça física com estoque unificado)
 SET @tem_est = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'produto_pecas' AND COLUMN_NAME = 'estoque');
-SET @s3 = (SELECT IF(@tem_est > 0, 'ALTER TABLE `produto_pecas` DROP COLUMN `estoque`', 'SELECT 1'));
+SET @s3 = (SELECT IF(@tem_est = 0, 'ALTER TABLE `produto_pecas` ADD COLUMN `estoque` INT NOT NULL DEFAULT 0 AFTER `quantidade`', 'SELECT 1'));
 PREPARE stmt FROM @s3; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- Backfill: unifica saldo físico na peça a partir do estoque das cores (migração 014)
+UPDATE `produto_pecas` pp
+SET pp.estoque = (
+    SELECT COALESCE(MAX(pc.estoque), 0)
+    FROM `produto_pecas_cores` pc
+    WHERE pc.peca_id = pp.id
+)
+WHERE pp.estoque = 0
+  AND EXISTS (SELECT 1 FROM `produto_pecas_cores` pc WHERE pc.peca_id = pp.id AND pc.estoque > 0);
 
 -- 2. Preenchimento de preco_unitario em itens antigos que estejam zerados
 UPDATE `pedido_itens` pi
