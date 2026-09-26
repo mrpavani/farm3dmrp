@@ -207,8 +207,8 @@ if ($method === 'POST') {
         $pedidoId = $pdo->lastInsertId();
 
         $itemStmt = $pdo->prepare("
-            INSERT INTO pedido_itens (pedido_id, produto_id, preco_unitario, quantidade, quantidade_estoque, quantidade_produzida)
-            VALUES (:pedido_id, :produto_id, :preco_unitario, :quantidade, :quantidade_estoque, :quantidade_produzida)
+            INSERT INTO pedido_itens (pedido_id, produto_id, preco_unitario, cor_variacao, variacoes_json, quantidade, quantidade_estoque, quantidade_produzida)
+            VALUES (:pedido_id, :produto_id, :preco_unitario, :cor_variacao, :variacoes_json, :quantidade, :quantidade_estoque, :quantidade_produzida)
         ");
         $updEstoque = $pdo->prepare("UPDATE produtos SET estoque = estoque - :qtd WHERE id = :id");
 
@@ -216,6 +216,8 @@ if ($method === 'POST') {
             $qtd = (int) $item['quantidade'];
             $qtdEstoque = 0;
             $preco = precoAtualProduto($pdo, (int) $item['produto_id']);
+            $corVariacao = !empty($item['cor_variacao']) ? trim((string)$item['cor_variacao']) : null;
+            $variacoesJson = !empty($item['variacoes_json']) ? (is_string($item['variacoes_json']) ? $item['variacoes_json'] : json_encode($item['variacoes_json'], JSON_UNESCAPED_UNICODE)) : null;
 
             if ($tipo === 'venda') {
                 // Alocação automática desativada: o estoque não será puxado automaticamente
@@ -226,6 +228,8 @@ if ($method === 'POST') {
                 'pedido_id' => $pedidoId,
                 'produto_id' => $item['produto_id'],
                 'preco_unitario' => $preco,
+                'cor_variacao' => $corVariacao,
+                'variacoes_json' => $variacoesJson,
                 'quantidade' => $qtd,
                 'quantidade_estoque' => $qtdEstoque,
                 'quantidade_produzida' => $qtdEstoque,
@@ -290,10 +294,10 @@ if ($method === 'PUT') {
             $atuais[(int) $row['id']] = $row;
         }
 
-        $insStmt = $pdo->prepare("INSERT INTO pedido_itens (pedido_id, produto_id, preco_unitario, quantidade, quantidade_estoque, quantidade_produzida) VALUES (:pedido_id, :produto_id, :preco_unitario, :quantidade, :quantidade_estoque, :quantidade_produzida)");
+        $insStmt = $pdo->prepare("INSERT INTO pedido_itens (pedido_id, produto_id, preco_unitario, cor_variacao, variacoes_json, quantidade, quantidade_estoque, quantidade_produzida) VALUES (:pedido_id, :produto_id, :preco_unitario, :cor_variacao, :variacoes_json, :quantidade, :quantidade_estoque, :quantidade_produzida)");
         // Item que continua com o mesmo produto mantém o preço praticado.
-        $updStmt = $pdo->prepare("UPDATE pedido_itens SET produto_id = :produto_id, quantidade = :quantidade WHERE id = :id");
-        $updComPreco = $pdo->prepare("UPDATE pedido_itens SET produto_id = :produto_id, preco_unitario = :preco_unitario, quantidade = :quantidade WHERE id = :id");
+        $updStmt = $pdo->prepare("UPDATE pedido_itens SET produto_id = :produto_id, cor_variacao = :cor_variacao, variacoes_json = :variacoes_json, quantidade = :quantidade WHERE id = :id");
+        $updComPreco = $pdo->prepare("UPDATE pedido_itens SET produto_id = :produto_id, preco_unitario = :preco_unitario, cor_variacao = :cor_variacao, variacoes_json = :variacoes_json, quantidade = :quantidade WHERE id = :id");
         $delStmt = $pdo->prepare("DELETE FROM pedido_itens WHERE id = :id");
 
         $mantidos = [];
@@ -301,6 +305,8 @@ if ($method === 'PUT') {
             $produtoId = (int) $item['produto_id'];
             $qtd = (int) $item['quantidade'];
             $itemId = (int) ($item['id'] ?? 0);
+            $corVariacao = !empty($item['cor_variacao']) ? trim((string)$item['cor_variacao']) : null;
+            $variacoesJson = !empty($item['variacoes_json']) ? (is_string($item['variacoes_json']) ? $item['variacoes_json'] : json_encode($item['variacoes_json'], JSON_UNESCAPED_UNICODE)) : null;
 
             if (!$itemId) {
                 $qtdEstoque = 0;
@@ -312,6 +318,8 @@ if ($method === 'PUT') {
                     'pedido_id' => $id,
                     'produto_id' => $produtoId,
                     'preco_unitario' => precoAtualProduto($pdo, $produtoId),
+                    'cor_variacao' => $corVariacao,
+                    'variacoes_json' => $variacoesJson,
                     'quantidade' => $qtd,
                     'quantidade_estoque' => $qtdEstoque,
                     'quantidade_produzida' => $qtdEstoque
@@ -356,11 +364,19 @@ if ($method === 'PUT') {
                 $updComPreco->execute([
                     'produto_id' => $produtoId,
                     'preco_unitario' => precoAtualProduto($pdo, $produtoId),
+                    'cor_variacao' => $corVariacao,
+                    'variacoes_json' => $variacoesJson,
                     'quantidade' => $qtd,
                     'id' => $itemId,
                 ]);
             } else {
-                $updStmt->execute(['produto_id' => $produtoId, 'quantidade' => $qtd, 'id' => $itemId]);
+                $updStmt->execute([
+                    'produto_id' => $produtoId,
+                    'cor_variacao' => $corVariacao,
+                    'variacoes_json' => $variacoesJson,
+                    'quantidade' => $qtd,
+                    'id' => $itemId,
+                ]);
             }
             $mantidos[$itemId] = true;
         }

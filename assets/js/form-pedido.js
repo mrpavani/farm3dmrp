@@ -7,15 +7,38 @@ window.FormPedido = (() => {
     const $ = id => document.getElementById(id);
     let produtos = [];
     let clientes = [];
+    let filamentos = [];
     let carregado = false;
     let editandoId = null;
     let tipo = 'venda';
     let callback = null;
 
     async function carregarListas() {
-        [produtos, clientes] = await Promise.all([App.api('api/produtos.php'), App.api('api/clientes.php')]);
+        [produtos, clientes, filamentos] = await Promise.all([
+            App.api('api/produtos.php'),
+            App.api('api/clientes.php'),
+            App.api('api/filamentos.php').catch(() => [])
+        ]);
         carregado = true;
         preencherClientes();
+    }
+
+    function obterCoresDisponiveis() {
+        const cores = [];
+        const nomes = new Set();
+        (filamentos || []).forEach(f => {
+            const c = (f.cor || '').trim();
+            if (c && !nomes.has(c.toLowerCase())) {
+                nomes.add(c.toLowerCase());
+                cores.push({ nome: c, hex: f.cor_hex || '#6366f1' });
+            }
+        });
+        if (!cores.length) {
+            ['Azul', 'Branco', 'Verde', 'Vermelho', 'Preto', 'Amarelo', 'Cinza', 'Laranja'].forEach(c => {
+                cores.push({ nome: c, hex: '#6366f1' });
+            });
+        }
+        return cores;
     }
 
     function preencherClientes(selecionar = null) {
@@ -48,7 +71,7 @@ window.FormPedido = (() => {
         const prodFabrica = produzido - qtdEstoque;
         
         const div = document.createElement('div');
-        div.className = 'item-linha';
+        div.className = 'item-linha item-linha-com-variacao';
         if (item && item.id) div.dataset.itemId = item.id;
 
         const lista = [...produtos];
@@ -66,20 +89,32 @@ window.FormPedido = (() => {
         if (prodFabrica > 0) badges.push(`🔨 ${prodFabrica} feito${prodFabrica === 1 ? '' : 's'}`);
 
         div.innerHTML = `
-            <select data-role="produto" aria-label="Produto" ${produzido > 0 ? 'disabled' : ''}>${opcoes}</select>
-            <span class="preco-item" data-role="preco">—</span>
-            <input type="number" data-role="quantidade" aria-label="Quantidade" inputmode="numeric"
-                   min="${Math.max(1, prodFabrica)}" value="${item ? item.quantidade : 1}">
-            ${badges.length ? `<span class="info-produzido" title="Já atendido">${badges.join(' e ')}</span>` : ''}
-            ${prodFabrica === 0 ? App.botaoIcone('excluir', 'Remover produto', '', 'perigo') : ''}`;
+            <div class="item-linha-topo">
+                <select data-role="produto" aria-label="Produto" ${produzido > 0 ? 'disabled' : ''}>${opcoes}</select>
+                <span class="preco-item" data-role="preco" style="text-align:right;font-weight:600;">—</span>
+                <input type="number" data-role="quantidade" aria-label="Quantidade" inputmode="numeric"
+                       min="${Math.max(1, prodFabrica)}" value="${item ? item.quantidade : 1}">
+                <div style="display:flex;align-items:center;gap:6px;">
+                    ${badges.length ? `<span class="info-produzido" title="Já atendido">${badges.join(' e ')}</span>` : ''}
+                    ${prodFabrica === 0 ? App.botaoIcone('excluir', 'Remover produto', '', 'perigo') : ''}
+                </div>
+            </div>
+            <div class="item-variacao-box" data-role="variacao-box"></div>`;
 
         const sel = div.querySelector('[data-role="produto"]');
         const atualizar = () => {
             const p = produtos.find(x => String(x.id) === sel.value);
             div.querySelector('[data-role="preco"]').textContent = p ? App.fmtMoeda.format(p.preco) : '—';
+            renderizarVariacaoItem(div, p, item);
             atualizarResumo();
         };
-        sel.addEventListener('change', atualizar);
+
+        sel.addEventListener('change', () => {
+            // Se trocou de produto, limpa a referência do item anterior para recarregar limpo
+            item = null;
+            atualizar();
+        });
+
         div.querySelector('[data-role="quantidade"]').addEventListener('input', atualizarResumo);
         const remover = div.querySelector('.btn-icone');
         if (remover) {
@@ -95,6 +130,119 @@ window.FormPedido = (() => {
         return div;
     }
 
+    function renderizarVariacaoItem(div, p, itemSalvo = null) {
+        const box = div.querySelector('[data-role="variacao-box"]');
+        if (!box) return;
+        if (!p) {
+            box.innerHTML = '';
+            box.style.display = 'none';
+            return;
+        }
+
+        const coresList = obterCoresDisponiveis();
+        box.style.display = 'block';
+
+        // 1. Produto Composto com Peças
+        if (p.tipo === 'composto' && p.pecas && p.pecas.length > 0) {
+            let salvas = {};
+            if (itemSalvo && itemSalvo.variacoes_json) {
+                try {
+                    const parsed = typeof itemSalvo.variacoes_json === 'string' ? JSON.parse(itemSalvo.variacoes_json) : itemSalvo.variacoes_json;
+                    if (parsed && Array.isArray(parsed.pecas)) {
+                        parsed.pecas.forEach(pc => {
+                            if (pc.peca_id) salvas[pc.peca_id] = pc.cor;
+                            if (pc.peca_nome) salvas[pc.peca_nome] = pc.cor;
+                        });
+                    }
+                } catch(e) {}
+            }
+
+            const pecasHtml = p.pecas.map(peca => {
+                const corAtual = salvas[peca.id] || salvas[peca.nome] || '';
+                const corExiste = coresList.some(c => c.nome.toLowerCase() === corAtual.toLowerCase());
+                const isCustom = corAtual && !corExiste;
+                const opts = `<option value="">— Cor padrão —</option>` + coresList.map(c => {
+                    const sel = (c.nome.toLowerCase() === corAtual.toLowerCase()) ? 'selected' : '';
+                    return `<option value="${App.esc(c.nome)}" ${sel}>${App.esc(c.nome)}</option>`;
+                }).join('') + `<option value="_custom_" ${isCustom ? 'selected' : ''}>+ Outra cor...</option>`;
+
+                return `
+                <div class="campo-peca-cor" data-peca-id="${peca.id}" data-peca-nome="${App.esc(peca.nome)}" data-peca-peso="${peca.peso_gramas || 0}" data-peca-qtd="${peca.quantidade || 1}">
+                    <label>
+                        🧩 ${App.esc(peca.nome)}
+                        <span style="font-weight:normal;color:var(--text-3);font-size:11px;">(${peca.quantidade} un · ${peca.peso_gramas}g)</span>
+                    </label>
+                    <select data-role="cor-peca" style="width:100%;font-size:12px;padding:4px 6px;">
+                        ${opts}
+                    </select>
+                    <input type="text" data-role="cor-peca-custom" placeholder="Digitar cor" style="width:100%;font-size:12px;padding:3px 6px;margin-top:3px;${isCustom ? '' : 'display:none;'}" value="${isCustom ? App.esc(corAtual) : ''}">
+                </div>`;
+            }).join('');
+
+            box.innerHTML = `
+                <div class="bloco-pecas-cores">
+                    <div style="font-size:12px;font-weight:600;color:var(--text-1);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+                        <span>🧩 Variação de Cores das Peças:</span>
+                        <span style="font-weight:normal;font-size:11.5px;color:var(--text-3);">O estoque de filamento será baixado por cor.</span>
+                    </div>
+                    <div class="grade-pecas-cores">${pecasHtml}</div>
+                </div>`;
+
+            box.querySelectorAll('.campo-peca-cor').forEach(cp => {
+                const s = cp.querySelector('[data-role="cor-peca"]');
+                const inp = cp.querySelector('[data-role="cor-peca-custom"]');
+                s.addEventListener('change', () => {
+                    inp.style.display = (s.value === '_custom_') ? 'block' : 'none';
+                    if (s.value === '_custom_') inp.focus();
+                    atualizarResumo();
+                });
+                inp.addEventListener('input', atualizarResumo);
+            });
+            return;
+        }
+
+        // 2. Produto Simples
+        // Verifica se é multicor AMS (mais de 1 cor fixa configurada no cadastro)
+        const multicorAMS = p.consumo_cores && p.consumo_cores.length > 1;
+        if (multicorAMS) {
+            box.innerHTML = `
+                <div style="font-size:12px;color:var(--text-2);margin-top:4px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                    <span>🎨 Multicor (AMS):</span>
+                    ${p.consumo_cores.map(c => `<span class="chip-cor-diag" style="font-size:11px;">${App.esc(c.cor)}: <b>${c.gramas_1un}g</b></span>`).join(' ')}
+                </div>`;
+            return;
+        }
+
+        // Produto Simples Monocor (permite selecionar a cor do filamento)
+        const corSalva = (itemSalvo && itemSalvo.cor_variacao) ? itemSalvo.cor_variacao.trim() : '';
+        const corExiste = coresList.some(c => c.nome.toLowerCase() === corSalva.toLowerCase());
+        const isCustom = corSalva && !corExiste;
+
+        const opts = `<option value="">— Cor padrão / qualquer —</option>` + coresList.map(c => {
+            const sel = (c.nome.toLowerCase() === corSalva.toLowerCase()) ? 'selected' : '';
+            return `<option value="${App.esc(c.nome)}" ${sel}>${App.esc(c.nome)}</option>`;
+        }).join('') + `<option value="_custom_" ${isCustom ? 'selected' : ''}>+ Digitar outra cor...</option>`;
+
+        box.innerHTML = `
+            <div style="display:flex;align-items:center;gap:8px;margin-top:4px;font-size:12px;flex-wrap:wrap;">
+                <span style="font-weight:600;color:var(--text-2);">🎨 Cor da Peça:</span>
+                <select data-role="cor-simples" style="font-size:12px;padding:4px 8px;max-width:220px;">
+                    ${opts}
+                </select>
+                <input type="text" data-role="cor-simples-custom" placeholder="Nome da cor" style="font-size:12px;padding:4px 8px;max-width:140px;${isCustom ? '' : 'display:none;'}" value="${isCustom ? App.esc(corSalva) : ''}">
+                <span style="color:var(--text-3);font-size:11.5px;">(baixa do carretel da cor selecionada)</span>
+            </div>`;
+
+        const s = box.querySelector('[data-role="cor-simples"]');
+        const inp = box.querySelector('[data-role="cor-simples-custom"]');
+        s.addEventListener('change', () => {
+            inp.style.display = (s.value === '_custom_') ? 'block' : 'none';
+            if (s.value === '_custom_') inp.focus();
+            atualizarResumo();
+        });
+        inp.addEventListener('input', atualizarResumo);
+    }
+
     function atualizarResumo() {
         let itens = 0, unidades = 0, valor = 0;
         let tempoSegundos = 0, pesoGramas = 0;
@@ -103,7 +251,7 @@ window.FormPedido = (() => {
         $('pedItens').querySelectorAll('.item-linha').forEach(div => {
             const p = produtos.find(x => String(x.id) === div.querySelector('[data-role="produto"]').value);
             const q = parseInt(div.querySelector('[data-role="quantidade"]').value, 10) || 0;
-            if (!p) return;
+            if (!p || q <= 0) return;
             itens++;
             unidades += q;
             valor += q * Number(p.preco);
@@ -113,17 +261,42 @@ window.FormPedido = (() => {
             tempoSegundos += t1 * q;
             pesoGramas += w1 * q;
 
-            const coresArr = p.consumo_cores || [];
-            if (coresArr.length) {
-                coresArr.forEach(c => {
-                    const cNome = c.cor || 'qualquer cor';
-                    const g = (Number(c.gramas_1un) || 0) * q;
-                    coresTotais[cNome] = (coresTotais[cNome] || 0) + g;
+            // Se for composto com peças:
+            if (p.tipo === 'composto' && p.pecas && p.pecas.length > 0) {
+                div.querySelectorAll('.campo-peca-cor').forEach(cp => {
+                    const selCor = cp.querySelector('[data-role="cor-peca"]');
+                    const inpCustom = cp.querySelector('[data-role="cor-peca-custom"]');
+                    let cor = selCor ? selCor.value : '';
+                    if (cor === '_custom_') cor = inpCustom ? inpCustom.value.trim() : '';
+                    if (!cor) cor = 'Cor Padrão';
+                    const pesoPeca = Number(cp.dataset.pecaPeso) || 0;
+                    const g = pesoPeca * q;
+                    if (g > 0) coresTotais[cor] = (coresTotais[cor] || 0) + g;
                 });
-            } else if (w1 > 0) {
-                coresTotais['qualquer cor'] = (coresTotais['qualquer cor'] || 0) + (w1 * q);
+            } else {
+                // Se for simples:
+                const selCor = div.querySelector('[data-role="cor-simples"]');
+                const inpCustom = div.querySelector('[data-role="cor-simples-custom"]');
+                let cor = selCor ? selCor.value : '';
+                if (cor === '_custom_') cor = inpCustom ? inpCustom.value.trim() : '';
+
+                if (cor) {
+                    coresTotais[cor] = (coresTotais[cor] || 0) + (w1 * q);
+                } else {
+                    const coresArr = p.consumo_cores || [];
+                    if (coresArr.length) {
+                        coresArr.forEach(c => {
+                            const cNome = c.cor || 'qualquer cor';
+                            const g = (Number(c.gramas_1un) || 0) * q;
+                            coresTotais[cNome] = (coresTotais[cNome] || 0) + g;
+                        });
+                    } else if (w1 > 0) {
+                        coresTotais['qualquer cor'] = (coresTotais['qualquer cor'] || 0) + (w1 * q);
+                    }
+                }
             }
         });
+
         $('pedResumoItens').textContent = itens;
         $('pedResumoItensRot').textContent = itens === 1 ? 'item' : 'itens';
         $('pedResumoUnidadesRot').textContent = unidades === 1 ? 'unidade' : 'unidades';
@@ -145,8 +318,8 @@ window.FormPedido = (() => {
         if ($('pedCoresDistribuicao')) {
             const entries = Object.entries(coresTotais).filter(([, g]) => g > 0);
             if (entries.length) {
-                $('pedCoresDistribuicao').innerHTML = '<span>🎨 Cores:</span>' + entries.map(([c, g]) =>
-                    `<span class="chip-cor-diag" style="font-size:11px;">${App.esc(c)}: <b>${Math.round(g * 10) / 10}g</b></span>`
+                $('pedCoresDistribuicao').innerHTML = '<span>🎨 Previsão por Cor:</span>' + entries.map(([c, g]) =>
+                    `<span class="chip-cor-diag" style="font-size:11px;background:#e0e7ff;color:#3730a3;border-color:#c7d2fe;">${App.esc(c)}: <b>${Math.round(g * 10) / 10}g</b></span>`
                 ).join(' ');
                 $('pedCoresDistribuicao').hidden = false;
             } else {
@@ -164,7 +337,7 @@ window.FormPedido = (() => {
         $('pedTituloEntrega').textContent = estoque ? 'Prazo' : 'Entrega';
         $('pedRotuloData').textContent = estoque ? 'Criada em' : 'Data do pedido';
         $('pedRotuloEntrega').textContent = estoque ? 'Concluir até' : 'Entrega prometida';
-        $('pedObs').placeholder = estoque ? 'Ex.: reposição para feira, cor azul...' : 'Cores, acabamento, forma de entrega...';
+        $('pedObs').placeholder = estoque ? 'Ex.: reposição para estoque, lote especial...' : 'Cores, acabamento, forma de entrega...';
     }
 
     async function abrir({ id = null, tipo: tipoNovo = 'venda', clienteId = null, aoSalvar = null } = {}) {
@@ -242,11 +415,39 @@ window.FormPedido = (() => {
         ev.preventDefault();
         const linhas = [...$('pedItens').querySelectorAll('.item-linha')];
         const itens = linhas.map(div => {
+            const p = produtos.find(x => String(x.id) === div.querySelector('[data-role="produto"]').value);
             const item = {
                 produto_id: parseInt(div.querySelector('[data-role="produto"]').value, 10),
                 quantidade: parseInt(div.querySelector('[data-role="quantidade"]').value, 10),
             };
             if (div.dataset.itemId) item.id = parseInt(div.dataset.itemId, 10);
+
+            if (p && p.tipo === 'composto' && p.pecas && p.pecas.length > 0) {
+                const pecasCores = [];
+                div.querySelectorAll('.campo-peca-cor').forEach(cp => {
+                    const selCor = cp.querySelector('[data-role="cor-peca"]');
+                    const inpCustom = cp.querySelector('[data-role="cor-peca-custom"]');
+                    let cor = selCor ? selCor.value : '';
+                    if (cor === '_custom_') cor = inpCustom ? inpCustom.value.trim() : '';
+                    pecasCores.push({
+                        peca_id: parseInt(cp.dataset.pecaId, 10),
+                        peca_nome: cp.dataset.pecaNome,
+                        peso_gramas: parseFloat(cp.dataset.pecaPeso) || 0,
+                        quantidade: parseInt(cp.dataset.pecaQtd, 10) || 1,
+                        cor: cor || 'Padrão'
+                    });
+                });
+                item.cor_variacao = pecasCores.map(pc => `${pc.peca_nome}: ${pc.cor}`).join(' | ');
+                item.variacoes_json = { tipo: 'composto', pecas: pecasCores };
+            } else if (p) {
+                const selCor = div.querySelector('[data-role="cor-simples"]');
+                const inpCustom = div.querySelector('[data-role="cor-simples-custom"]');
+                let cor = selCor ? selCor.value : '';
+                if (cor === '_custom_') cor = inpCustom ? inpCustom.value.trim() : '';
+                item.cor_variacao = cor || null;
+                item.variacoes_json = cor ? { tipo: 'simples', cor } : null;
+            }
+
             return item;
         });
 
@@ -311,7 +512,6 @@ window.FormPedido = (() => {
 
     return {
         abrir,
-        // força recarregar produtos/clientes na próxima abertura (ex.: após cadastrar produto)
         invalidar: () => { carregado = false; },
     };
 })();

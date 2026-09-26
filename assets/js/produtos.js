@@ -30,8 +30,12 @@ function badgeTipo(tipo) {
 
 function renderizar() {
     const termo = App.normalizar($('busca').value.trim());
-    const lista = produtos.filter(p =>
-        !termo || App.normalizar(`${p.nome} ${p.descricao || ''} ${p.tipo || ''}`).includes(termo));
+    const tipoFiltro = $('filtroTipo') ? $('filtroTipo').value : '';
+    const lista = produtos.filter(p => {
+        if (termo && !App.normalizar(`${p.nome} ${p.descricao || ''} ${p.tipo || ''}`).includes(termo)) return false;
+        if (tipoFiltro && p.tipo !== tipoFiltro) return false;
+        return true;
+    });
 
     const ativos = produtos.filter(p => Number(p.ativo) === 1).length;
     $('rodape').textContent = `${lista.length} de ${produtos.length} produtos · ${ativos} ativos · produtos com pedidos ou peças não podem ser excluídos (desative-os)`;
@@ -153,7 +157,7 @@ function novaPecaModalProd() {
 }
 
 function atualizarModoModalProduto() {
-    const tipo = $('prodTipo') ? $('prodTipo').value : 'simples';
+    const tipo = $('prodTipo') ? $('prodTipo').value : 'composto';
     const temPecas = tipo === 'composto' || (modalProdPecas && modalProdPecas.length > 0);
     const boxPecas = $('boxPecasProduto');
     const boxMulticor = $('boxMulticorProduto');
@@ -163,6 +167,20 @@ function atualizarModoModalProduto() {
     const tagPeso = $('tagOrigemPeso');
     const dicaTempo = $('dicaProdTempo');
     const dicaPeso = $('dicaProdPeso');
+    const dicaTipo = $('prodTipoExplicacao');
+
+    if (dicaTipo) {
+        if (tipo === 'composto') {
+            dicaTipo.innerHTML = `🧩 <b>Produto com Peças:</b> O tempo e filamento total são <b>calculados automaticamente</b> pela soma das peças abaixo.`;
+            dicaTipo.className = 'prod-tipo-dica destaque-composto';
+        } else if (tipo === 'componente') {
+            dicaTipo.innerHTML = `⚙️ <b>Peça Avulsa / Reposição:</b> Item unitário avulso. Se for um produto montado com mais peças, selecione <b>Produto Composto</b>.`;
+            dicaTipo.className = 'prod-tipo-dica';
+        } else {
+            dicaTipo.innerHTML = `🔹 <b>Produto Simples:</b> Impresso em 1 peça só (sem montagem). Se tiver várias peças, selecione <b>Produto Composto</b>.`;
+            dicaTipo.className = 'prod-tipo-dica';
+        }
+    }
 
     if (temPecas) {
         if (boxPecas) boxPecas.style.display = 'block';
@@ -171,25 +189,30 @@ function atualizarModoModalProduto() {
         if (inputTempo) { inputTempo.readOnly = true; inputTempo.classList.add('input-bloqueado-soma'); }
         if (inputPeso) { inputPeso.readOnly = true; inputPeso.classList.add('input-bloqueado-soma'); }
 
-        if (tagTempo) { tagTempo.textContent = '🔒 Soma das peças'; tagTempo.style.display = 'inline-block'; }
-        if (tagPeso) { tagPeso.textContent = '🔒 Soma das peças'; tagPeso.style.display = 'inline-block'; }
-        if (dicaTempo) { dicaTempo.textContent = 'Tempo calculado automaticamente pela soma das peças.'; dicaTempo.style.display = 'block'; }
-        if (dicaPeso) { dicaPeso.textContent = 'Filamento calculado automaticamente pela soma das peças.'; dicaPeso.style.display = 'block'; }
+        if (tagTempo) { tagTempo.textContent = '🔒 Calculado pelas peças'; tagTempo.style.display = 'inline-block'; }
+        if (tagPeso) { tagPeso.textContent = '🔒 Calculado pelas peças'; tagPeso.style.display = 'inline-block'; }
+        if (dicaTempo) { dicaTempo.textContent = 'Tempo total somado das peças necessárias para 1 produto.'; dicaTempo.style.display = 'block'; }
+        if (dicaPeso) { dicaPeso.textContent = 'Filamento total somado das peças necessárias para 1 produto.'; dicaPeso.style.display = 'block'; }
 
         // Recalcula soma das peças para 1 produto
         let somaPeso = 0;
         let somaTempo = 0;
+        let totalPecasQtd = 0;
         modalProdPecas.forEach(pec => {
             const q = Math.max(1, parseInt(pec.quantidade) || 1);
+            totalPecasQtd += q;
             somaPeso += (parseFloat(pec.peso_gramas) || 0) * q;
             somaTempo += (parseInt(pec.tempo_producao_segundos) || 0) * q;
         });
 
-        if (inputPeso) inputPeso.value = somaPeso > 0 ? (Math.round(somaPeso * 10) / 10).toFixed(1) : (modalProdPecas.length ? '0.0' : inputPeso.value);
-        if (inputTempo) inputTempo.value = somaTempo > 0 ? formatarSegundosHHMMSS(somaTempo) : (modalProdPecas.length ? '00:00:00' : inputTempo.value);
+        const pesoFormatado = somaPeso > 0 ? (Math.round(somaPeso * 10) / 10).toFixed(1) : (modalProdPecas.length ? '0.0' : inputPeso.value);
+        const tempoFormatado = somaTempo > 0 ? formatarSegundosHHMMSS(somaTempo) : (modalProdPecas.length ? '00:00:00' : inputTempo.value);
+
+        if (inputPeso) inputPeso.value = pesoFormatado;
+        if (inputTempo) inputTempo.value = tempoFormatado;
 
         if ($('resumoPecasProdBadge')) {
-            $('resumoPecasProdBadge').textContent = `${modalProdPecas.length} peça(s) · ${Math.round(somaPeso * 10) / 10}g · ${formatarSegundosHHMMSS(somaTempo)}`;
+            $('resumoPecasProdBadge').textContent = `${modalProdPecas.length} tipos (${totalPecasQtd} un) · ${pesoFormatado}g · ${tempoFormatado}`;
         }
     } else {
         if (boxPecas) boxPecas.style.display = 'none';
@@ -236,7 +259,7 @@ function atualizarModoModalProduto() {
         }
     }
 
-    recalcularFormacaoPreco(false);
+    recalcularFormacaoPreco(temPecas ? true : false);
 }
 
 function renderizarCoresModalProduto() {
@@ -310,40 +333,74 @@ function renderizarPecasModalProduto() {
     if (!container) return;
 
     if (!modalProdPecas.length) {
-        container.innerHTML = `<p class="vazio" style="padding:6px 0; font-size:12px;">Nenhuma peça cadastrada. Adicione as peças necessárias para montar 1 produto.</p>`;
+        container.innerHTML = `
+            <div class="pecas-vazio-alerta">
+                <span style="font-size:24px;">🧩</span>
+                <div>
+                    <strong>Nenhuma peça adicionada ainda</strong>
+                    <p>Adicione as peças que compõem este produto (ex: Base, Pino, Peças do Empilhar). O tempo e gramas do produto são calculados automaticamente por elas.</p>
+                </div>
+            </div>`;
         atualizarModoModalProduto();
         return;
     }
 
-    container.innerHTML = modalProdPecas.map((pec, idx) => `
-        <div class="bloco-peca-modal-prod">
-            <div class="linha-peca-modal-prod">
-                <input type="text" placeholder="Nome da peça (ex: Base, Hélice...)"
-                       value="${esc(pec.nome || '')}"
-                       oninput="atualizarPecaModalProduto(${idx}, 'nome', this.value)"
-                       style="font-size:12.5px; font-weight:600;">
-                <input type="number" min="1" placeholder="Qtd/un"
-                       value="${pec.quantidade || 1}"
-                       oninput="atualizarPecaModalProduto(${idx}, 'quantidade', this.value)"
-                       title="Quantidade desta peça por unidade de produto"
-                       style="font-size:12.5px; text-align:center;">
-                <input type="text" placeholder="00:00:00"
-                       value="${esc(pec.tempo_formatado || '')}"
-                       onchange="atualizarPecaModalProduto(${idx}, 'tempo', this.value)"
-                       title="Tempo de impressão desta peça (HH:mm:ss)"
-                       style="font-size:12.5px; text-align:center;">
-                <input type="number" min="0" step="0.1" placeholder="Filamento (g)"
-                       value="${pec.peso_gramas !== '' && pec.peso_gramas !== null && pec.peso_gramas !== undefined ? pec.peso_gramas : ''}"
-                       oninput="atualizarPecaModalProduto(${idx}, 'peso', this.value)"
-                       title="Filamento gasto desta peça (em gramas)"
-                       style="font-size:12.5px; text-align:center;">
-                <button type="button" class="btn-icone perigo" onclick="removerPecaModalProduto(${idx})"
-                        title="Remover peça">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
-                </button>
-            </div>
+    container.innerHTML = `
+        <div class="tabela-pecas-cabecalho">
+            <span style="flex:2;">Peça / Componente</span>
+            <span style="width:75px; text-align:center;">Qtd/Prod</span>
+            <span style="width:115px; text-align:center;">Tempo (HH:mm:ss)</span>
+            <span style="width:105px; text-align:center;">Filamento (g)</span>
+            <span style="width:130px; text-align:right;">Subtotal da Peça</span>
+            <span style="width:34px;"></span>
         </div>
-    `).join('');
+        ${modalProdPecas.map((pec, idx) => {
+            const q = Math.max(1, parseInt(pec.quantidade) || 1);
+            const p = parseFloat(pec.peso_gramas) || 0;
+            const subtotalPeso = (p * q).toFixed(1);
+            const t = parseInt(pec.tempo_producao_segundos) || 0;
+            const subtotalTempo = formatarSegundosHHMMSS(t * q);
+            return `
+            <div class="bloco-peca-modal-prod">
+                <div class="linha-peca-modal-prod" style="display:flex; align-items:center; gap:8px;">
+                    <input type="text" placeholder="Ex: Base, Pino, Anel..."
+                           value="${esc(pec.nome || '')}"
+                           oninput="atualizarPecaModalProduto(${idx}, 'nome', this.value)"
+                           style="font-size:13px; font-weight:600; flex:2;">
+                    <div style="width:75px;">
+                        <input type="number" min="1" placeholder="1"
+                               value="${pec.quantidade || 1}"
+                               oninput="atualizarPecaModalProduto(${idx}, 'quantidade', this.value)"
+                               title="Quantidade desta peça necessária para 1 produto"
+                               style="font-size:13px; text-align:center; font-weight:700;">
+                    </div>
+                    <div style="width:115px;">
+                        <input type="text" placeholder="00:00:00"
+                               value="${esc(pec.tempo_formatado || '')}"
+                               oninput="atualizarPecaModalProduto(${idx}, 'tempo', this.value)"
+                               title="Tempo de impressão de 1 unidade desta peça (HH:mm:ss)"
+                               style="font-size:12.5px; text-align:center;">
+                    </div>
+                    <div style="width:105px;" class="input-com-unidade">
+                        <input type="number" min="0" step="0.1" placeholder="0.0"
+                               value="${pec.peso_gramas !== '' && pec.peso_gramas !== null && pec.peso_gramas !== undefined ? pec.peso_gramas : ''}"
+                               oninput="atualizarPecaModalProduto(${idx}, 'peso', this.value)"
+                               title="Filamento gasto por unidade desta peça (em gramas)"
+                               style="font-size:12.5px; text-align:center; padding-right:20px !important;">
+                        <span class="unidade" style="right:6px; font-size:11px;">g</span>
+                    </div>
+                    <div class="peca-subtotal-info" style="width:130px; text-align:right;">
+                        <strong>${subtotalPeso}g</strong>
+                        <small>⏱️ ${subtotalTempo}</small>
+                    </div>
+                    <button type="button" class="btn-icone perigo" onclick="removerPecaModalProduto(${idx})"
+                            title="Remover peça">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                    </button>
+                </div>
+            </div>`;
+        }).join('')}
+    `;
 
     atualizarModoModalProduto();
 }
@@ -383,7 +440,7 @@ async function abrirModal(p = null) {
     editandoId = p ? p.id : null;
     $('formProduto').reset();
     $('prodNome').value = p ? p.nome : '';
-    $('prodTipo').value = p ? (p.tipo || 'simples') : 'simples';
+    $('prodTipo').value = p ? (p.tipo || 'simples') : 'composto';
     $('prodPreco').value = p ? Number(p.preco).toFixed(2) : '';
     $('prodEstoque').value = p ? Number(p.estoque) : '0';
     $('prodPeso').value = p && Number(p.peso_gramas) > 0 ? Number(p.peso_gramas) : '';
@@ -404,6 +461,11 @@ async function abrirModal(p = null) {
 
     modalProdCores = [];
     modalProdPecas = [];
+
+    // Se for novo produto composto, já cria 2 linhas de peças por padrão para facilidade do usuário
+    if (!p && $('prodTipo').value === 'composto') {
+        modalProdPecas = [novaPecaModalProd(), novaPecaModalProd()];
+    }
 
     const btnFichaCompleta = $('btnAbrirFichaCompletaModalProd');
     if (btnFichaCompleta) {
@@ -1058,8 +1120,17 @@ async function salvarBOM() {
 $('btnNovo')?.addEventListener('click', () => abrirModal());
 $('formProduto')?.addEventListener('submit', salvar);
 $('busca')?.addEventListener('input', renderizar);
+$('filtroTipo')?.addEventListener('change', renderizar);
 
-$('prodTipo')?.addEventListener('change', () => atualizarModoModalProduto());
+$('prodTipo')?.addEventListener('change', () => {
+    const tipo = $('prodTipo').value;
+    if (tipo === 'composto' && (!modalProdPecas || !modalProdPecas.length)) {
+        modalProdPecas = [novaPecaModalProd(), novaPecaModalProd()];
+        renderizarPecasModalProduto();
+    } else {
+        atualizarModoModalProduto();
+    }
+});
 $('checkProdMulticor')?.addEventListener('change', () => {
     if ($('checkProdMulticor').checked && (!modalProdCores || !modalProdCores.length)) {
         modalProdCores = [novaCorModalProd(), novaCorModalProd()];

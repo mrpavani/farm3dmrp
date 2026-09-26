@@ -16,6 +16,13 @@ require __DIR__ . '/includes/header.php';
             <input type="search" id="busca" placeholder="Buscar por nome ou descrição…" aria-label="Buscar produtos">
         </label>
 
+        <select id="filtroTipo" aria-label="Filtrar por tipo de produto" style="min-width: 220px;">
+            <option value="">Todos os tipos</option>
+            <option value="simples">🔹 Simples (peça única)</option>
+            <option value="composto">🧩 Composto (montagem de peças)</option>
+            <option value="componente">⚙️ Peça Avulsa / Componente</option>
+        </select>
+
         <button type="button" id="btnNovo">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
             Novo produto
@@ -41,160 +48,231 @@ require __DIR__ . '/includes/header.php';
 </main>
 
 <div id="modalProduto" class="modal" hidden>
-    <div class="card modal-caixa modal-largo" role="dialog" aria-modal="true" aria-labelledby="prodTituloModal">
+    <div class="card modal-caixa modal-produto-eng" role="dialog" aria-modal="true" aria-labelledby="prodTituloModal">
         <form id="formProduto" autocomplete="off" novalidate>
+            <!-- Cabeçalho Fixo -->
             <div class="modal-cabecalho">
-                <div>
-                    <h2 id="prodTituloModal">Novo produto</h2>
-                    <p class="modal-sub" id="prodSubModal">Só produtos ativos aparecem nos pedidos e nas ordens de estoque.</p>
+                <div class="prod-modal-head-info">
+                    <div class="prod-icone-circulo">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.3 7 12 12l8.7-5M12 22V12"/></svg>
+                    </div>
+                    <div>
+                        <h2 id="prodTituloModal">Novo produto</h2>
+                        <p class="modal-sub" id="prodSubModal">Cadastre especificações técnicas, filamento, cores e precificação dinâmica.</p>
+                    </div>
                 </div>
                 <button type="button" class="btn-icone" data-fechar-modal aria-label="Fechar">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
                 </button>
             </div>
 
-            <div class="modal-corpo">
-                <div class="linha">
-                    <div style="flex: 2;">
-                    <label for="prodNome">Nome <span class="obrigatorio">*</span></label>
-                    <input type="text" id="prodNome" maxlength="150" required placeholder="Ex.: Helicóptero ou Hélice">
-                </div>
-                <div style="flex: 1.2;">
-                    <label for="prodTipo">Tipo de item</label>
-                    <select id="prodTipo">
-                        <option value="simples">Produto Simples</option>
-                        <option value="composto">Produto Composto (Final)</option>
-                        <option value="componente">Componente / Peça</option>
-                    </select>
-                </div>
-            </div>
-
-            <div class="linha">
-                <div>
-                    <label for="prodEstoque">Estoque inicial</label>
-                    <input type="number" id="prodEstoque" min="0" step="1" placeholder="0" inputmode="numeric">
-                </div>
-                <div>
-                    <label for="prodAtivo">Situação</label>
-                    <select id="prodAtivo">
-                        <option value="1">Ativo</option>
-                        <option value="0">Inativo</option>
-                    </select>
-                </div>
-                <div>
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <label for="prodTempo" style="margin:0;">Tempo de impressão (1 un)</label>
-                        <span id="tagOrigemTempo" style="display:none; font-size:10.5px; padding:1px 6px; border-radius:10px; background:rgba(99,102,241,0.12); color:var(--primary); font-weight:600;">Soma</span>
+            <!-- Corpo Rolável com Grid Inteligente -->
+            <div class="modal-corpo prod-modal-corpo">
+                <!-- Seção 1: Identificação & Parâmetros Base -->
+                <div class="prod-form-secao">
+                    <div class="prod-secao-titulo">
+                        <span>1</span>
+                        <h3>Identificação do Produto</h3>
                     </div>
-                    <input type="text" id="prodTempo" placeholder="HH:mm:ss (ex.: 01:30:00)" style="margin-top:4px;">
-                    <small id="dicaProdTempo" style="font-size:11px; margin-top:2px; display:none;"></small>
-                </div>
-            </div>
 
-            <!-- Bloco de Cores / Multicor (para produto sem peças) -->
-            <div id="boxMulticorProduto" style="background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; margin: 10px 0;">
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <label style="display:inline-flex; align-items:center; gap:8px; cursor:pointer; font-weight:600; font-size:13px; margin:0; user-select:none;">
-                        <input type="checkbox" id="checkProdMulticor" style="width:16px; height:16px; margin:0;">
-                        <span>🎨 Produto com mais de uma cor (Multicor)</span>
-                    </label>
-                    <span id="resumoCoresProdBadge" style="font-size:11.5px; color:var(--text-3); font-weight:600;"></span>
-                </div>
-                <div id="conteudoMulticorProd" style="display:none; margin-top:10px; border-top:1px dashed var(--border); padding-top:10px;">
-                    <p style="font-size:12px; color:var(--text-3); margin-bottom:8px;">
-                        Cadastre cada cor utilizada na impressão do produto informando as <b>gramas</b> e o <b>tempo</b> de cada uma. O filamento total e o tempo do produto serão calculados automaticamente pela soma das cores.
-                    </p>
-                    <div id="listaCoresProduto" style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;"></div>
-                    <button type="button" id="btnAdicionarCorProd" class="secundario pequeno" style="font-size:12px;">+ Adicionar Cor</button>
-                </div>
-            </div>
-
-            <!-- Bloco de Peças do Produto (quando composto / tem peças) -->
-            <div id="boxPecasProduto" style="display:none; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; margin: 10px 0;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                    <strong style="font-size:13px; color:var(--primary);">🧩 Peças do Produto (Ficha Técnica)</strong>
-                    <span id="resumoPecasProdBadge" style="font-size:11.5px; color:var(--text-3); font-weight:600;">0 peça(s)</span>
-                </div>
-                <p style="font-size:12px; color:var(--text-3); margin-bottom:10px;">
-                    O tempo de impressão e o filamento gasto deste produto são a <b>soma das peças cadastradas</b> abaixo.
-                </p>
-                <div id="listaPecasModalProd" style="display:flex; flex-direction:column; gap:8px; margin-bottom:10px;"></div>
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <button type="button" id="btnAdicionarPecaModalProd" class="secundario pequeno" style="font-size:12px;">+ Adicionar Peça</button>
-                    <button type="button" id="btnAbrirFichaCompletaModalProd" class="secundario pequeno" style="display:none; font-size:12px;" title="Abrir Ficha Técnica completa com gestão de estoque e diagnóstico">Abrir Ficha Completa ↗</button>
-                </div>
-            </div>
-
-            <!-- Bloco de Composição de Custos & Precificação Dinâmica -->
-            <div style="background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; margin: 12px 0;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px;">
-                    <strong style="font-size: 13.5px; color: var(--text);">💰 Composição de Custos &amp; Precificação</strong>
-                    <span style="font-size: 11.5px; color: var(--text-3);" id="tagCustoOrigem">Cálculo dinâmico via PEPS</span>
-                </div>
-
-                <div class="linha" style="margin-bottom: 8px;">
-                    <div>
-                        <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <label for="prodPeso" style="margin:0;">Filamento gasto (g) <span class="obrigatorio">*</span></label>
-                            <span id="tagOrigemPeso" style="display:none; font-size:10.5px; padding:1px 6px; border-radius:10px; background:rgba(99,102,241,0.12); color:var(--primary); font-weight:600;">Soma</span>
+                    <div class="prod-grid-topo">
+                        <div class="campo-nome">
+                            <label for="prodNome">Nome do Produto <span class="obrigatorio">*</span></label>
+                            <input type="text" id="prodNome" maxlength="150" required placeholder="Ex.: Helicóptero, Suporte Articulado, Vaso...">
                         </div>
-                        <input type="number" id="prodPeso" min="0" step="0.1" placeholder="Ex.: 45.0 g" inputmode="decimal" style="margin-top:4px;">
-                        <small id="dicaProdPeso" style="font-size:11px; margin-top:2px; display:none;"></small>
+                        <div class="campo-tipo">
+                            <label for="prodTipo">Estrutura do Produto <span class="obrigatorio">*</span></label>
+                            <select id="prodTipo">
+                                <option value="composto">🧩 Produto Composto (Montagem de Peças / Componentes)</option>
+                                <option value="simples">🔹 Produto Simples (Peça única, monocor ou multicor)</option>
+                                <option value="componente">⚙️ Peça Avulsa / Reposição</option>
+                            </select>
+                            <div id="prodTipoExplicacao" class="prod-tipo-dica"></div>
+                        </div>
                     </div>
-                    <div>
-                        <label for="prodCustoFilamento">Custo Filamento (R$)</label>
-                        <input type="number" id="prodCustoFilamento" step="0.01" min="0" placeholder="0,00" style="background: var(--surface-3);">
+
+                    <div class="prod-grid-status">
+                        <div>
+                            <label for="prodEstoque">Estoque Inicial (un)</label>
+                            <input type="number" id="prodEstoque" min="0" step="1" placeholder="0" inputmode="numeric">
+                        </div>
+                        <div>
+                            <label for="prodAtivo">Status</label>
+                            <select id="prodAtivo">
+                                <option value="1">Ativo (visível para pedidos)</option>
+                                <option value="0">Inativo</option>
+                            </select>
+                        </div>
+                        <div>
+                            <div class="rotulo-com-badge">
+                                <label for="prodTempo">Tempo de Impressão (1 un)</label>
+                                <span id="tagOrigemTempo" class="badge-origem-soma">🔒 Soma</span>
+                            </div>
+                            <input type="text" id="prodTempo" placeholder="HH:mm:ss (ex.: 01:30:00)">
+                            <small id="dicaProdTempo" class="prod-dica-campo"></small>
+                        </div>
                     </div>
                 </div>
 
-                <div class="linha" style="margin-bottom: 8px;">
-                    <div>
-                        <label for="prodTemEmbalagem">Tem embalagem?</label>
-                        <select id="prodTemEmbalagem">
-                            <option value="0">Não</option>
-                            <option value="1">Sim</option>
-                        </select>
+                <!-- Seção 2A: Cores / Multicor (Simples) -->
+                <div id="boxMulticorProduto" class="prod-card-multicor">
+                    <div class="prod-multicor-header">
+                        <label class="prod-toggle-label">
+                            <input type="checkbox" id="checkProdMulticor">
+                            <span class="prod-toggle-texto">
+                                <strong>🎨 Produto Multicor (troca de cor na impressão / AMS)</strong>
+                                <small>Habilite para cadastrar o consumo e tempo por cada cor individualmente.</small>
+                            </span>
+                        </label>
+                        <span id="resumoCoresProdBadge" class="prod-badge-resumo"></span>
                     </div>
-                    <div id="boxValorEmbalagem" style="display:none;">
-                        <label for="prodValorEmbalagem">Valor Embalagem (R$)</label>
-                        <input type="number" id="prodValorEmbalagem" min="0" step="0.01" placeholder="Ex.: 2,50" value="0.00" inputmode="decimal">
-                    </div>
-                    <div>
-                        <label for="prodValorOutros" title="Gastos extras de entrega, fita, adesivos, luz, depreciação, acabamento...">Outros Gastos (R$)</label>
-                        <input type="number" id="prodValorOutros" min="0" step="0.01" placeholder="0,00" value="0.00" inputmode="decimal">
-                    </div>
-                    <div>
-                        <label for="prodMargemLucro">Margem de Lucro (%)</label>
-                        <input type="number" id="prodMargemLucro" min="0" step="1" placeholder="100%" value="100" inputmode="numeric">
+                    <div id="conteudoMulticorProd" class="prod-multicor-corpo" style="display:none;">
+                        <p class="prod-ajuda-texto">
+                            💡 Cadastre cada cor utilizada. O filamento total e o tempo do produto serão calculados automaticamente:
+                        </p>
+                        <div id="listaCoresProduto" class="prod-lista-cores"></div>
+                        <button type="button" id="btnAdicionarCorProd" class="secundario pequeno">+ Adicionar Cor</button>
                     </div>
                 </div>
 
-                <!-- Resumo Instantâneo de Formação de Preço -->
-                <div id="resumoFormacaoPreco" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; background: var(--surface-3); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 12px; font-size: 12px; margin-top: 10px;">
-                    <div><span style="color:var(--text-3);">🧵 Filamento:</span> <b id="resumoCustoFilamento">R$ 0,00</b></div>
-                    <div><span style="color:var(--text-3);">📦 Embalagem:</span> <b id="resumoCustoEmbalagem">R$ 0,00</b></div>
-                    <div><span style="color:var(--text-3);">🚚 Outros:</span> <b id="resumoCustoOutros">R$ 0,00</b></div>
-                    <div><span style="color:var(--text-3);">💼 Custo Total:</span> <b id="resumoCustoTotal" style="color:var(--alerta);">R$ 0,00</b></div>
-                    <div><span style="color:var(--text-3);">📈 Margem:</span> <b id="resumoValorMargem" style="color:var(--sucesso);">+ R$ 0,00</b></div>
+                <!-- Seção 2B: Peças do Produto (Composto) -->
+                <div id="boxPecasProduto" class="prod-card-pecas" style="display:none;">
+                    <div class="prod-pecas-header">
+                        <div>
+                            <strong>🧩 Composição de Peças (Ficha Técnica)</strong>
+                            <span id="resumoPecasProdBadge" class="prod-badge-resumo">0 peça(s)</span>
+                        </div>
+                        <button type="button" id="btnAbrirFichaCompletaModalProd" class="secundario pequeno" style="display:none;" title="Abrir Ficha Técnica completa">Abrir Ficha Completa ↗</button>
+                    </div>
+                    <p class="prod-ajuda-texto">
+                        O tempo de impressão e o filamento gasto deste produto são a <b>soma das peças cadastradas</b> abaixo:
+                    </p>
+                    <div id="listaPecasModalProd" class="prod-lista-pecas"></div>
+                    <button type="button" id="btnAdicionarPecaModalProd" class="secundario pequeno">+ Adicionar Peça</button>
                 </div>
 
-                <div class="linha" style="margin-top: 10px; align-items: flex-end;">
-                    <div style="flex: 2;">
-                        <label for="prodPreco" style="font-weight: 700; color: var(--primary);">Preço Final Sugerido / Venda (R$)</label>
-                        <input type="number" id="prodPreco" min="0" step="0.01" placeholder="0,00" inputmode="decimal" style="font-size: 15px; font-weight: 700; color: var(--primary); background: var(--surface-1);">
+                <!-- Seção 3: Precificação Inteligente & Custos -->
+                <div class="prod-card-precificacao">
+                    <div class="prod-prec-topo">
+                        <div class="prod-secao-titulo" style="margin: 0;">
+                            <span>2</span>
+                            <h3>Custos &amp; Formação de Preço de Venda</h3>
+                        </div>
+                        <span class="prod-tag-peps" id="tagCustoOrigem">Calculadora dinâmica PEPS</span>
                     </div>
-                    <div style="flex: 1;">
-                        <button type="button" id="btnRecalcularPreco" class="secundario pequeno" style="width: 100%; height: 38px;">Recalcular Preço</button>
+
+                    <div class="prod-prec-layout">
+                        <!-- Lado Esquerdo: Parâmetros de Custo -->
+                        <div class="prod-custos-grid">
+                            <div class="campo-custo">
+                                <div class="rotulo-com-badge">
+                                    <label for="prodPeso">Filamento Total (g) <span class="obrigatorio">*</span></label>
+                                    <span id="tagOrigemPeso" class="badge-origem-soma">🔒 Soma</span>
+                                </div>
+                                <div class="input-com-unidade">
+                                    <input type="number" id="prodPeso" min="0" step="0.1" placeholder="45.0" inputmode="decimal">
+                                    <span class="unidade">g</span>
+                                </div>
+                                <small id="dicaProdPeso" class="prod-dica-campo"></small>
+                            </div>
+
+                            <div class="campo-custo">
+                                <label for="prodCustoFilamento">Custo Filamento (R$)</label>
+                                <div class="input-com-unidade">
+                                    <span class="moeda">R$</span>
+                                    <input type="number" id="prodCustoFilamento" class="com-moeda" step="0.01" min="0" placeholder="0,00">
+                                </div>
+                            </div>
+
+                            <div class="campo-custo">
+                                <label for="prodTemEmbalagem">Embalagem?</label>
+                                <div class="grupo-embalagem">
+                                    <select id="prodTemEmbalagem">
+                                        <option value="0">Não</option>
+                                        <option value="1">Sim</option>
+                                    </select>
+                                    <div id="boxValorEmbalagem" style="display:none;" class="input-com-unidade">
+                                        <span class="moeda">R$</span>
+                                        <input type="number" id="prodValorEmbalagem" class="com-moeda" min="0" step="0.01" placeholder="2,50" value="0.00" inputmode="decimal">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="campo-custo">
+                                <label for="prodValorOutros" title="Gastos extras: energia, acabamento, fitas...">Outros Custos (R$)</label>
+                                <div class="input-com-unidade">
+                                    <span class="moeda">R$</span>
+                                    <input type="number" id="prodValorOutros" class="com-moeda" min="0" step="0.01" placeholder="0,00" value="0.00" inputmode="decimal">
+                                </div>
+                            </div>
+
+                            <div class="campo-custo campo-margem-inteira">
+                                <div class="rotulo-margem">
+                                    <label for="prodMargemLucro">Margem de Lucro (%)</label>
+                                    <div class="atalhos-margem">
+                                        <button type="button" onclick="$('prodMargemLucro').value=50; recalcularFormacaoPreco(true);">50%</button>
+                                        <button type="button" onclick="$('prodMargemLucro').value=100; recalcularFormacaoPreco(true);">100%</button>
+                                        <button type="button" onclick="$('prodMargemLucro').value=150; recalcularFormacaoPreco(true);">150%</button>
+                                        <button type="button" onclick="$('prodMargemLucro').value=200; recalcularFormacaoPreco(true);">200%</button>
+                                    </div>
+                                </div>
+                                <div class="input-com-unidade">
+                                    <input type="number" id="prodMargemLucro" min="0" step="1" placeholder="100" value="100" inputmode="numeric">
+                                    <span class="unidade">%</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Lado Direito: Painel Financeiro & Preço de Venda -->
+                        <div class="prod-painel-venda">
+                            <div class="prod-resumo-financeiro" id="resumoFormacaoPreco">
+                                <div class="resumo-linha">
+                                    <span>🧵 Filamento:</span>
+                                    <b id="resumoCustoFilamento">R$ 0,00</b>
+                                </div>
+                                <div class="resumo-linha">
+                                    <span>📦 Embalagem:</span>
+                                    <b id="resumoCustoEmbalagem">R$ 0,00</b>
+                                </div>
+                                <div class="resumo-linha">
+                                    <span>⚡ Outros Custos:</span>
+                                    <b id="resumoCustoOutros">R$ 0,00</b>
+                                </div>
+                                <div class="resumo-linha destaque-custo">
+                                    <span>💼 Custo Total Base:</span>
+                                    <b id="resumoCustoTotal">R$ 0,00</b>
+                                </div>
+                                <div class="resumo-linha destaque-margem">
+                                    <span>📈 Lucro Estimado:</span>
+                                    <b id="resumoValorMargem">+ R$ 0,00</b>
+                                </div>
+                            </div>
+
+                            <div class="prod-bloco-preco-final">
+                                <label for="prodPreco">Preço Final de Venda Sugerido</label>
+                                <div class="input-preco-destaque">
+                                    <span class="moeda-grande">R$</span>
+                                    <input type="number" id="prodPreco" min="0" step="0.01" placeholder="0,00" inputmode="decimal">
+                                </div>
+                                <button type="button" id="btnRecalcularPreco" class="btn-recalcular">
+                                    🔄 Recalcular Preço Sugerido
+                                </button>
+                            </div>
+                        </div>
                     </div>
+                </div>
+
+                <!-- Seção 4: Descrição Técnica -->
+                <div class="prod-form-secao" style="margin-bottom: 0;">
+                    <label for="prodDescricao" style="margin-top: 0;">Descrição Técnica &amp; Observações</label>
+                    <textarea id="prodDescricao" rows="2" placeholder="Material recomendado, bico 0.4mm, preenchimento, instruções de acabamento..."></textarea>
                 </div>
             </div>
-            <label for="prodDescricao">Descrição</label>
-            <textarea id="prodDescricao" rows="2" placeholder="Material, cor, dimensões, acabamento..."></textarea>
-            </div>
 
+            <!-- Rodapé Fixo -->
             <div class="modal-rodape">
                 <button type="button" class="secundario" data-fechar-modal>Cancelar</button>
-                <button type="submit" id="btnSalvarProduto">Salvar produto</button>
+                <button type="submit" id="btnSalvarProduto" class="primario" style="font-weight: 700; padding: 0 20px;">Salvar Produto</button>
             </div>
         </form>
     </div>

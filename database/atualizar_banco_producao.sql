@@ -146,6 +146,8 @@ CREATE TABLE IF NOT EXISTS `pedido_itens` (
     `pedido_id` INT NOT NULL,
     `produto_id` INT NOT NULL,
     `preco_unitario` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    `cor_variacao` VARCHAR(255) DEFAULT NULL,
+    `variacoes_json` TEXT DEFAULT NULL,
     `quantidade` INT NOT NULL,
     `quantidade_estoque` INT NOT NULL DEFAULT 0,
     `quantidade_produzida` INT NOT NULL DEFAULT 0,
@@ -347,6 +349,14 @@ PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 -- pedido_itens.quantidade_produzida
 SET @s = (SELECT IF((SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'pedido_itens' AND COLUMN_NAME = 'quantidade_produzida') > 0, 'SELECT 1', 'ALTER TABLE `pedido_itens` ADD COLUMN `quantidade_produzida` INT NOT NULL DEFAULT 0 AFTER `quantidade_estoque`'));
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- pedido_itens.cor_variacao
+SET @s = (SELECT IF((SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'pedido_itens' AND COLUMN_NAME = 'cor_variacao') > 0, 'SELECT 1', 'ALTER TABLE `pedido_itens` ADD COLUMN `cor_variacao` VARCHAR(255) DEFAULT NULL AFTER `preco_unitario`'));
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- pedido_itens.variacoes_json
+SET @s = (SELECT IF((SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'pedido_itens' AND COLUMN_NAME = 'variacoes_json') > 0, 'SELECT 1', 'ALTER TABLE `pedido_itens` ADD COLUMN `variacoes_json` TEXT DEFAULT NULL AFTER `cor_variacao`'));
 PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 -- producoes.usuario_id

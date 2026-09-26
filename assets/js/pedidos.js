@@ -109,9 +109,10 @@ function renderizar() {
         const iniciais = (partesNome[0][0] + (partesNome.length > 1 ? partesNome[partesNome.length - 1][0] : '')).toUpperCase();
 
         const chipsItens = p.itens.map(i => `
-            <span class="chip-item-pedido" title="${App.esc(i.produto_nome)}: ${i.quantidade_produzida || 0} de ${i.quantidade} produzidos">
+            <span class="chip-item-pedido" title="${App.esc(i.produto_nome)}${i.cor_variacao ? ' (' + App.esc(i.cor_variacao) + ')' : ''}: ${i.quantidade_produzida || 0} de ${i.quantidade} produzidos">
                 <strong class="chip-qtd">${i.quantidade}×</strong>
                 <span class="chip-nome">${App.esc(i.produto_nome)}</span>
+                ${i.cor_variacao ? `<span class="chip-cor-var" style="font-size:10.5px;padding:1px 5px;background:#eef2ff;color:#4f46e5;border-radius:4px;border:1px solid #c7d2fe;margin-left:4px;" title="Variação de Cor">${App.esc(i.cor_variacao)}</span>` : ''}
             </span>
         `).join('');
 

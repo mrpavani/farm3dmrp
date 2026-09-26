@@ -123,6 +123,8 @@ CREATE TABLE IF NOT EXISTS `pedido_itens` (
     `pedido_id` INT NOT NULL,
     `produto_id` INT NOT NULL,
     `preco_unitario` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    `cor_variacao` VARCHAR(255) DEFAULT NULL,
+    `variacoes_json` TEXT DEFAULT NULL,
     `quantidade` INT NOT NULL,
     `quantidade_estoque` INT NOT NULL DEFAULT 0,
     `quantidade_produzida` INT NOT NULL DEFAULT 0,

@@ -238,6 +238,8 @@ execSafe($pdo, "
 ", "Tabela <b>pedido_itens</b> verificada/criada.");
 
 execSafe($pdo, "ALTER TABLE pedido_itens ADD COLUMN preco_unitario DECIMAL(10,2) NOT NULL DEFAULT 0.00 AFTER produto_id", "Coluna <b>preco_unitario</b> em <i>pedido_itens</i> adicionada.", "Coluna <b>preco_unitario</b> já existe em <i>pedido_itens</i>.");
+execSafe($pdo, "ALTER TABLE pedido_itens ADD COLUMN cor_variacao VARCHAR(255) DEFAULT NULL AFTER preco_unitario", "Coluna <b>cor_variacao</b> em <i>pedido_itens</i> adicionada.", "Coluna <b>cor_variacao</b> já existe em <i>pedido_itens</i>.");
+execSafe($pdo, "ALTER TABLE pedido_itens ADD COLUMN variacoes_json TEXT DEFAULT NULL AFTER cor_variacao", "Coluna <b>variacoes_json</b> em <i>pedido_itens</i> adicionada.", "Coluna <b>variacoes_json</b> já existe em <i>pedido_itens</i>.");
 execSafe($pdo, "ALTER TABLE pedido_itens ADD COLUMN quantidade_estoque INT NOT NULL DEFAULT 0 AFTER quantidade", "Coluna <b>quantidade_estoque</b> em <i>pedido_itens</i> adicionada.", "Coluna <b>quantidade_estoque</b> já existe em <i>pedido_itens</i>.");
 execSafe($pdo, "ALTER TABLE pedido_itens ADD COLUMN quantidade_produzida INT NOT NULL DEFAULT 0 AFTER quantidade_estoque", "Coluna <b>quantidade_produzida</b> em <i>pedido_itens</i> adicionada.", "Coluna <b>quantidade_produzida</b> já existe em <i>pedido_itens</i>.");
 

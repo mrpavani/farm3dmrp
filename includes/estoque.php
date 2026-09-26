@@ -116,7 +116,7 @@ function capacidadeMontagem(PDO $pdo, int $produtoId, bool $lock = false): array
 
 // Monta $qtd unidades: baixa as peças da ficha técnica direto do estoque da peça
 // e soma no produto pronto. Lança Exception nomeando o gargalo se não houver peças suficientes.
-function montarProduto(PDO $pdo, int $produtoId, int $qtd, ?int $usuarioId, ?string $obs = null): int {
+function montarProduto(PDO $pdo, int $produtoId, int $qtd, ?int $usuarioId, ?string $obs = null, array $contexto = []): int {
     if ($qtd <= 0) throw new Exception('A quantidade a montar deve ser no mínimo 1.');
 
     $info = capacidadeMontagem($pdo, $produtoId, true);
@@ -158,12 +158,17 @@ function montarProduto(PDO $pdo, int $produtoId, int $qtd, ?int $usuarioId, ?str
 
     $novoEstoque = (int) $pdo->query("SELECT estoque FROM produtos WHERE id = " . (int) $produtoId)->fetchColumn();
 
+    $obsMontado = $obs;
+    if (!empty($contexto['cor_variacao'])) {
+        $obsMontado = ($obsMontado ? "$obsMontado · " : '') . "Variação: " . $contexto['cor_variacao'];
+    }
+
     registrarMovimento($pdo, 'produto_montado', [
         'produto_id'   => $produtoId,
         'quantidade'   => $qtd,
         'saldo_depois' => $novoEstoque,
         'usuario_id'   => $usuarioId,
-        'observacoes'  => $obs,
+        'observacoes'  => $obsMontado,
     ]);
 
     return $novoEstoque;
@@ -172,12 +177,16 @@ function montarProduto(PDO $pdo, int $produtoId, int $qtd, ?int $usuarioId, ?str
 // Gera $qtd de produto pronto. Se o produto tem ficha técnica, monta a partir
 // das peças; se não tem (produto simples, impresso inteiro), entra direto no
 // estoque e consome filamento de todas as cores cadastradas em produto_cores.
-function produzirProdutoPronto(PDO $pdo, int $produtoId, int $qtd, ?int $usuarioId, ?string $obs = null): int {
+function produzirProdutoPronto(PDO $pdo, int $produtoId, int $qtd, ?int $usuarioId, ?string $obs = null, array $contexto = []): int {
     if ($qtd <= 0) throw new Exception('A quantidade deve ser no mínimo 1.');
+
+    $corEscolhida = trim((string)($contexto['cor_variacao'] ?? ''));
+    $variacoesJson = $contexto['variacoes_json'] ?? null;
+    $varData = is_string($variacoesJson) ? json_decode($variacoesJson, true) : (is_array($variacoesJson) ? $variacoesJson : null);
 
     $info = capacidadeMontagem($pdo, $produtoId, true);
     if ($info['tem_ficha']) {
-        return montarProduto($pdo, $produtoId, $qtd, $usuarioId, $obs);
+        return montarProduto($pdo, $produtoId, $qtd, $usuarioId, $obs, $contexto);
     }
 
     $stmtP = $pdo->prepare("SELECT nome, peso_gramas FROM produtos WHERE id = :id");
@@ -188,37 +197,56 @@ function produzirProdutoPronto(PDO $pdo, int $produtoId, int $qtd, ?int $usuario
         ->execute(['q' => $qtd, 'id' => $produtoId]);
     $novoEstoque = (int) $pdo->query("SELECT estoque FROM produtos WHERE id = " . (int) $produtoId)->fetchColumn();
 
+    $obsRegistro = $obs ?? 'Produto simples, sem ficha técnica de peças.';
+    if ($corEscolhida !== '') {
+        $obsRegistro .= " · Cor: $corEscolhida";
+    }
+
     registrarMovimento($pdo, 'produto_montado', [
         'produto_id'   => $produtoId,
         'quantidade'   => $qtd,
         'saldo_depois' => $novoEstoque,
         'usuario_id'   => $usuarioId,
-        'observacoes'  => $obs ?? 'Produto simples, sem ficha técnica de peças.',
+        'observacoes'  => $obsRegistro,
     ]);
 
-    // Baixa automática de filamento: se o produto possui variantes em produto_cores (multicor), baixa CADA cor proporcionalmente
-    $stmtCores = $pdo->prepare("SELECT cor, peso_gramas FROM produto_cores WHERE produto_id = :id AND peso_gramas > 0");
-    $stmtCores->execute(['id' => $produtoId]);
-    $coresProd = $stmtCores->fetchAll();
-
-    if ($coresProd && count($coresProd) > 0) {
-        foreach ($coresProd as $cp) {
-            $gastasCor = round((float)$cp['peso_gramas'] * $qtd, 2);
-            if ($gastasCor > 0) {
-                darBaixaFilamentoConsumo($pdo, (string)$cp['cor'], $gastasCor, [
-                    'produto_id' => $produtoId,
-                    'usuario_id' => $usuarioId,
-                    'observacoes' => "Produção de {$qtd} un. do produto {$prodSimples['nome']} (Cor: {$cp['cor']})",
-                ]);
-            }
-        }
-    } elseif ($prodSimples && (float)$prodSimples['peso_gramas'] > 0) {
+    // Baixa automática de filamento:
+    // Se foi informada uma cor de variação específica (ex.: "Azul", "Verde"), dá baixa DIRETO no estoque desse filamento!
+    if ($corEscolhida !== '' && (float)$prodSimples['peso_gramas'] > 0) {
         $gastas = round((float)$prodSimples['peso_gramas'] * $qtd, 2);
-        darBaixaFilamentoConsumo($pdo, 'Padrão / Única', $gastas, [
+        darBaixaFilamentoConsumo($pdo, $corEscolhida, $gastas, [
             'produto_id' => $produtoId,
+            'pedido_item_id' => $contexto['pedido_item_id'] ?? null,
             'usuario_id' => $usuarioId,
-            'observacoes' => "Produção de {$qtd} un. do produto {$prodSimples['nome']}",
+            'observacoes' => "Produção de {$qtd} un. do produto {$prodSimples['nome']} (Cor: {$corEscolhida})",
         ]);
+    } else {
+        // Baixa automática de filamento: se o produto possui variantes em produto_cores (multicor AMS), baixa CADA cor proporcionalmente
+        $stmtCores = $pdo->prepare("SELECT cor, peso_gramas FROM produto_cores WHERE produto_id = :id AND peso_gramas > 0");
+        $stmtCores->execute(['id' => $produtoId]);
+        $coresProd = $stmtCores->fetchAll();
+
+        if ($coresProd && count($coresProd) > 0) {
+            foreach ($coresProd as $cp) {
+                $gastasCor = round((float)$cp['peso_gramas'] * $qtd, 2);
+                if ($gastasCor > 0) {
+                    darBaixaFilamentoConsumo($pdo, (string)$cp['cor'], $gastasCor, [
+                        'produto_id' => $produtoId,
+                        'pedido_item_id' => $contexto['pedido_item_id'] ?? null,
+                        'usuario_id' => $usuarioId,
+                        'observacoes' => "Produção de {$qtd} un. do produto {$prodSimples['nome']} (Cor: {$cp['cor']})",
+                    ]);
+                }
+            }
+        } elseif ($prodSimples && (float)$prodSimples['peso_gramas'] > 0) {
+            $gastas = round((float)$prodSimples['peso_gramas'] * $qtd, 2);
+            darBaixaFilamentoConsumo($pdo, 'Padrão / Única', $gastas, [
+                'produto_id' => $produtoId,
+                'pedido_item_id' => $contexto['pedido_item_id'] ?? null,
+                'usuario_id' => $usuarioId,
+                'observacoes' => "Produção de {$qtd} un. do produto {$prodSimples['nome']}",
+            ]);
+        }
     }
 
     return $novoEstoque;

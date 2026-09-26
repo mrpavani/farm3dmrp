@@ -220,6 +220,8 @@ if ($method === 'GET') {
         $p['tempo_producao_formatado'] = formatarTempoHHMMSS((int) ($p['tempo_producao_segundos'] ?? 0));
         $cons = calcularConsumoProduto($pdo, (int)$p['id'], 1);
         $p['consumo_cores'] = $cons['cores'] ?? [];
+        $p['pecas'] = $cons['pecas'] ?? [];
+        $p['tem_pecas'] = !empty($cons['pecas']);
         if (!empty($cons['peso_gramas_1un'])) {
             $p['peso_gramas'] = $cons['peso_gramas_1un'];
         }

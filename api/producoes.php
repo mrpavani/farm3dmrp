@@ -83,10 +83,16 @@ if ($method === 'POST') {
         $produtoId = (int) $item['produto_id'];
         $montadasAgora = 0;
 
+        $contextoItem = [
+            'cor_variacao' => $item['cor_variacao'] ?? null,
+            'variacoes_json' => $item['variacoes_json'] ?? null,
+            'pedido_item_id' => (int) $item['id'],
+        ];
+
         if ($item['pedido_tipo'] === 'estoque') {
             // Ordem de estoque: produzir É o objetivo. O saldo fica no estoque.
             produzirProdutoPronto($pdo, $produtoId, $qtd, $usuario['id'],
-                "Ordem de estoque #{$item['pedido_id']}");
+                "Ordem de estoque #{$item['pedido_id']}", $contextoItem);
             $montadasAgora = $qtd;
         } else {
             // Pedido de venda: precisa sair do estoque de produto pronto.
@@ -110,7 +116,7 @@ if ($method === 'POST') {
                 }
                 // Atalho "montar e aplicar": monta só o que falta.
                 produzirProdutoPronto($pdo, $produtoId, $faltam, $usuario['id'],
-                    "Montagem para o pedido #{$item['pedido_id']}");
+                    "Montagem para o pedido #{$item['pedido_id']}", $contextoItem);
                 $montadasAgora = $faltam;
             }
 
