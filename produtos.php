@@ -390,8 +390,7 @@ require __DIR__ . '/includes/header.php';
 </div>
 
 <input type="file" id="inputFotoPecaProdutos" accept="image/png,image/jpeg,image/webp" style="display:none;">
-
-
+<datalist id="listaCoresFilamentosSugestoes"></datalist>
 
 <script src="assets/js/produtos.js?v=<?= filemtime(__DIR__ . '/assets/js/produtos.js') ?>"></script>
 <?php require __DIR__ . '/includes/footer.php'; ?>

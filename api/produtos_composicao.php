@@ -62,18 +62,18 @@ function diagnosticoPecas(PDO $pdo, int $paiId, int $meta): array {
         $p['tempo_producao_segundos'] = $tempoPeca;
         $p['tempo_formatado'] = formatarTempoHHMMSS($tempoPeca);
 
-        $pesoTotal1un += $pesoPeca;
-        $tempoTotal1un += $tempoPeca;
+        $pesoTotal1un += $pesoPeca * $porUnidade;
+        $tempoTotal1un += $tempoPeca * $porUnidade;
 
         if ($cores) {
             $qtdCores = count($cores);
             foreach ($cores as $c) {
                 $cNome = trim((string) $c['cor']) ?: 'qualquer cor';
                 $pCor = $c['peso_gramas'] !== null ? (float) $c['peso_gramas'] : ($pesoPeca > 0 ? ($pesoPeca / $qtdCores) : 0.0);
-                $coresConsumo1un[$cNome] = ($coresConsumo1un[$cNome] ?? 0.0) + $pCor;
+                $coresConsumo1un[$cNome] = ($coresConsumo1un[$cNome] ?? 0.0) + ($pCor * $porUnidade);
             }
         } else {
-            $coresConsumo1un['qualquer cor'] = ($coresConsumo1un['qualquer cor'] ?? 0.0) + $pesoPeca;
+            $coresConsumo1un['qualquer cor'] = ($coresConsumo1un['qualquer cor'] ?? 0.0) + ($pesoPeca * $porUnidade);
         }
     }
     unset($p);
@@ -431,8 +431,8 @@ if ($method === 'POST') {
 
         // Consolida o peso e tempo total no produto pai e atualiza para tipo 'composto' se tiver peças
         $stmtTotais = $pdo->prepare("
-            SELECT COALESCE(SUM(peso_gramas), 0) AS total_peso,
-                   COALESCE(SUM(tempo_producao_segundos), 0) AS total_tempo
+            SELECT COALESCE(SUM(peso_gramas * quantidade), 0) AS total_peso,
+                   COALESCE(SUM(tempo_producao_segundos * quantidade), 0) AS total_tempo
             FROM produto_pecas WHERE produto_id = :id
         ");
         $stmtTotais->execute(['id' => $paiId]);

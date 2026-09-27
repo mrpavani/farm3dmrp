@@ -383,8 +383,11 @@ function calcularConsumoProduto(PDO $pdo, int $produtoId, int $quantidade = 1): 
             $tempoPeca = (int) $p['tempo_producao_segundos']; // tempo da peça para 1 produto
             $pesoPeca = (float) $p['peso_gramas'];             // peso da peça para 1 produto
 
-            $tempo1un += $tempoPeca;
-            $peso1un += $pesoPeca;
+            $tempoPecaTotal = $tempoPeca * $qtdNaPeca;
+            $pesoPecaTotal = $pesoPeca * $qtdNaPeca;
+
+            $tempo1un += $tempoPecaTotal;
+            $peso1un += $pesoPecaTotal;
 
             $cores = $coresPorPeca[$pid] ?? [];
             if ($cores) {
@@ -395,10 +398,10 @@ function calcularConsumoProduto(PDO $pdo, int $produtoId, int $quantidade = 1): 
                     if ($corNome === '') $corNome = 'Padrão / Única';
                     // Se a cor tem peso_gramas especificado na variante, usa ele; senão usa da peça dividida ou integral
                     $pesoCor = $c['peso_gramas'] !== null ? (float) $c['peso_gramas'] : ($pesoPeca > 0 ? ($pesoPeca / $qtdCores) : 0.0);
-                    $coresConsumo1un[$corNome] = ($coresConsumo1un[$corNome] ?? 0.0) + $pesoCor;
+                    $coresConsumo1un[$corNome] = ($coresConsumo1un[$corNome] ?? 0.0) + ($pesoCor * $qtdNaPeca);
                 }
             } else {
-                $coresConsumo1un['Padrão / Única'] = ($coresConsumo1un['Padrão / Única'] ?? 0.0) + $pesoPeca;
+                $coresConsumo1un['Padrão / Única'] = ($coresConsumo1un['Padrão / Única'] ?? 0.0) + $pesoPecaTotal;
             }
 
             $pecasDetalhe[] = [

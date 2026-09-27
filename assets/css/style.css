@@ -1507,6 +1507,174 @@ td.contato a:hover { color: var(--primary); }
     gap: 8px;
     margin-bottom: 10px;
 }
+.bloco-peca-modal-prod {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, .04);
+    transition: border-color .15s ease, box-shadow .15s ease;
+}
+.bloco-peca-modal-prod:hover {
+    border-color: #cbd5e1;
+    box-shadow: 0 2px 5px rgba(15, 23, 42, .07);
+}
+.linha-peca-modal-prod {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.input-bloqueado-soma {
+    background-color: var(--surface-3) !important;
+    color: var(--text-2) !important;
+    cursor: default;
+    border-color: #cbd5e1 !important;
+    font-weight: 600;
+}
+.secao-cores-peca {
+    margin-top: 2px;
+}
+.caixa-cores-peca {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 8px 12px;
+}
+.cabecalho-cores-peca {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.titulo-cores-peca {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.badge-cor-tag {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--primary);
+    background: var(--primary-soft);
+    border: 1px solid #c7d2fe;
+    border-radius: 4px;
+    padding: 2px 6px;
+}
+.dica-tempo-unico {
+    font-size: 11.5px;
+    color: var(--text-3);
+}
+.btn-adicionar-cor-peca {
+    background: #ffffff;
+    border: 1px solid var(--border-strong);
+    color: var(--primary);
+    border-radius: 4px;
+    padding: 3px 8px;
+    font-size: 11.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all .15s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.btn-adicionar-cor-peca:hover {
+    background: var(--primary-soft);
+    border-color: var(--primary);
+}
+.grade-cores-peca {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.item-cor-peca {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #ffffff;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 8px;
+}
+.ponto-cor-indicador {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 1px solid rgba(0, 0, 0, .25);
+    flex-shrink: 0;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .4);
+}
+.input-cor-nome {
+    flex: 1;
+    font-size: 12.5px !important;
+    height: 30px !important;
+    padding: 4px 8px !important;
+}
+.input-cor-gramas {
+    width: 110px;
+}
+.input-cor-gramas input {
+    font-size: 12.5px !important;
+    height: 30px !important;
+    text-align: center !important;
+    padding-right: 22px !important;
+}
+.btn-icone-mini {
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    border-radius: 4px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+}
+.btn-icone-mini svg {
+    width: 14px;
+    height: 14px;
+}
+.btn-icone-mini.perigo {
+    color: var(--danger);
+}
+.btn-icone-mini.perigo:hover {
+    background: var(--danger-bg);
+}
+.faixa-adicionar-cores-peca {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 2px 4px;
+    flex-wrap: wrap;
+}
+.btn-ativar-multicor-peca {
+    background: none;
+    border: 1px dashed #cbd5e1;
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--primary);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    transition: all .15s ease;
+}
+.btn-ativar-multicor-peca:hover {
+    background: var(--primary-soft);
+    border-color: var(--primary);
+}
+.dica-monocor-peca {
+    font-size: 11px;
+    color: var(--text-3);
+}
 
 /* Card de Precificação Inteligente */
 .prod-card-precificacao {

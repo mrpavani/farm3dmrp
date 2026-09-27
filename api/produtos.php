@@ -114,8 +114,9 @@ if ($method === 'GET') {
             }
 
             foreach ($pecas as &$pec) {
-                $somaPeso += (float)$pec['peso_gramas'];
-                $somaTempo += (int)$pec['tempo_producao_segundos'];
+                $qPec = max(1, (int)$pec['quantidade']);
+                $somaPeso += (float)$pec['peso_gramas'] * $qPec;
+                $somaTempo += (int)$pec['tempo_producao_segundos'] * $qPec;
                 $pec['tempo_formatado'] = formatarTempoHHMMSS((int)$pec['tempo_producao_segundos']);
                 $pec['cores'] = $coresPorPeca[(int)$pec['id']] ?? [];
             }
@@ -248,23 +249,49 @@ if ($method === 'POST') {
     foreach ($pecasEntrada as $item) {
         $pNome = trim($item['nome'] ?? '');
         if ($pNome === '') continue;
-        $pPeso = max(0.0, (float)($item['peso_gramas'] ?? 0));
+
+        $coresItem = is_array($item['cores'] ?? null) ? $item['cores'] : [];
+        $coresItemValidas = [];
+        $somaCoresPeso = 0.0;
+        foreach ($coresItem as $ci) {
+            $cNome = trim($ci['cor'] ?? '');
+            if ($cNome === '') continue;
+            $cPeso = (isset($ci['peso_gramas']) && $ci['peso_gramas'] !== '' && $ci['peso_gramas'] !== null)
+                ? max(0.0, (float)$ci['peso_gramas'])
+                : null;
+            if ($cPeso !== null && $cPeso > 0) {
+                $somaCoresPeso += $cPeso;
+            }
+            $coresItemValidas[] = [
+                'cor' => $cNome,
+                'estoque' => max(0, (int)($ci['estoque'] ?? 0)),
+                'peso_gramas' => $cPeso,
+                'tempo_producao_segundos' => null,
+                'foto' => trim($ci['foto'] ?? '') ?: null,
+            ];
+        }
+
+        $pPeso = count($coresItemValidas) > 0 && $somaCoresPeso > 0
+            ? round($somaCoresPeso, 2)
+            : max(0.0, (float)($item['peso_gramas'] ?? 0));
         $pTempo = converterParaSegundos($item['tempo_producao_segundos'] ?? ($item['tempo'] ?? 0));
+        $pQtd = max(1, (int)($item['quantidade'] ?? 1));
+
         $pecasValidas[] = [
             'nome' => $pNome,
-            'quantidade' => max(1, (int)($item['quantidade'] ?? 1)),
+            'quantidade' => $pQtd,
             'peso_gramas' => $pPeso,
             'tempo_producao_segundos' => $pTempo,
             'foto' => trim($item['foto'] ?? '') ?: null,
-            'cores' => is_array($item['cores'] ?? null) ? $item['cores'] : [],
+            'cores' => $coresItemValidas,
         ];
     }
 
-    // 2. Se tem peças, o peso e tempo do produto DEVEM ser a soma das peças
+    // 2. Se tem peças, o peso e tempo do produto DEVEM ser a soma das peças multiplicadas pela quantidade
     if (!empty($pecasValidas)) {
         $d['tipo'] = 'composto';
-        $d['peso_gramas'] = round(array_sum(array_column($pecasValidas, 'peso_gramas')), 2);
-        $d['tempo_producao_segundos'] = (int)array_sum(array_column($pecasValidas, 'tempo_producao_segundos'));
+        $d['peso_gramas'] = round(array_sum(array_map(fn($p) => $p['peso_gramas'] * $p['quantidade'], $pecasValidas)), 2);
+        $d['tempo_producao_segundos'] = (int)array_sum(array_map(fn($p) => $p['tempo_producao_segundos'] * $p['quantidade'], $pecasValidas));
     } else {
         // 3. Se NÃO tem peças: verifica se é produto multicor (tem mais de uma cor)
         $coresEntrada = is_array($raw['cores'] ?? null) ? $raw['cores'] : [];
@@ -387,29 +414,58 @@ if ($method === 'PUT') {
         foreach ($pecasEntrada as $item) {
             $pNome = trim($item['nome'] ?? '');
             if ($pNome === '') continue;
+
+            $coresItem = is_array($item['cores'] ?? null) ? $item['cores'] : [];
+            $coresItemValidas = [];
+            $somaCoresPeso = 0.0;
+            foreach ($coresItem as $ci) {
+                $cNome = trim($ci['cor'] ?? '');
+                if ($cNome === '') continue;
+                $cPeso = (isset($ci['peso_gramas']) && $ci['peso_gramas'] !== '' && $ci['peso_gramas'] !== null)
+                    ? max(0.0, (float)$ci['peso_gramas'])
+                    : null;
+                if ($cPeso !== null && $cPeso > 0) {
+                    $somaCoresPeso += $cPeso;
+                }
+                $coresItemValidas[] = [
+                    'cor_id' => (int)($ci['cor_id'] ?? ($ci['id'] ?? 0)),
+                    'cor' => $cNome,
+                    'estoque' => max(0, (int)($ci['estoque'] ?? 0)),
+                    'peso_gramas' => $cPeso,
+                    'tempo_producao_segundos' => null,
+                    'foto' => trim($ci['foto'] ?? '') ?: null,
+                ];
+            }
+
+            $pPeso = count($coresItemValidas) > 0 && $somaCoresPeso > 0
+                ? round($somaCoresPeso, 2)
+                : max(0.0, (float)($item['peso_gramas'] ?? 0));
+            $pTempo = converterParaSegundos($item['tempo_producao_segundos'] ?? ($item['tempo'] ?? 0));
+            $pQtd = max(1, (int)($item['quantidade'] ?? 1));
+
             $pecasValidas[] = [
                 'peca_id' => (int)($item['peca_id'] ?? ($item['id'] ?? 0)),
                 'nome' => $pNome,
-                'quantidade' => max(1, (int)($item['quantidade'] ?? 1)),
-                'peso_gramas' => max(0.0, (float)($item['peso_gramas'] ?? 0)),
-                'tempo_producao_segundos' => converterParaSegundos($item['tempo_producao_segundos'] ?? ($item['tempo'] ?? 0)),
+                'quantidade' => $pQtd,
+                'peso_gramas' => $pPeso,
+                'tempo_producao_segundos' => $pTempo,
                 'foto' => trim($item['foto'] ?? '') ?: null,
-                'cores' => is_array($item['cores'] ?? null) ? $item['cores'] : [],
+                'cores' => $coresItemValidas,
             ];
         }
         $temPecas = count($pecasValidas) > 0;
         if ($temPecas) {
             $d['tipo'] = 'composto';
-            $d['peso_gramas'] = round(array_sum(array_column($pecasValidas, 'peso_gramas')), 2);
-            $d['tempo_producao_segundos'] = (int)array_sum(array_column($pecasValidas, 'tempo_producao_segundos'));
+            $d['peso_gramas'] = round(array_sum(array_map(fn($p) => $p['peso_gramas'] * $p['quantidade'], $pecasValidas)), 2);
+            $d['tempo_producao_segundos'] = (int)array_sum(array_map(fn($p) => $p['tempo_producao_segundos'] * $p['quantidade'], $pecasValidas));
         }
     } elseif ($qtdPecasBanco > 0) {
         // Não enviou pecas no payload, mas o produto já tem peças no banco:
         // Mantém a regra estrita: tempo e filamento são a soma das peças existentes!
         $d['tipo'] = 'composto';
         $stmtSoma = $pdo->prepare("
-            SELECT COALESCE(SUM(peso_gramas), 0) AS total_peso,
-                   COALESCE(SUM(tempo_producao_segundos), 0) AS total_tempo
+            SELECT COALESCE(SUM(peso_gramas * quantidade), 0) AS total_peso,
+                   COALESCE(SUM(tempo_producao_segundos * quantidade), 0) AS total_tempo
             FROM produto_pecas WHERE produto_id = :id
         ");
         $stmtSoma->execute(['id' => $id]);

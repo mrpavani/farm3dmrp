@@ -148,12 +148,66 @@ function round2(num) {
     return Math.round((Number(num) + Number.EPSILON) * 100) / 100;
 }
 
+let sugestoesCoresCache = [];
+async function carregarSugestoesCores() {
+    try {
+        const lista = await App.api('api/filamentos.php');
+        const coresSet = new Set();
+        (lista || []).forEach(f => {
+            if (f.cor && f.cor.trim()) coresSet.add(f.cor.trim());
+        });
+        ['Branco', 'Preto', 'Cinza', 'Vermelho', 'Azul', 'Amarelo', 'Verde', 'Laranja', 'Roxo', 'Rosa', 'Marrom', 'Dourado', 'Prata', 'Transparente', 'Bege'].forEach(c => coresSet.add(c));
+        sugestoesCoresCache = Array.from(coresSet).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+        const dl = $('listaCoresFilamentosSugestoes');
+        if (dl) {
+            dl.innerHTML = sugestoesCoresCache.map(c => `<option value="${esc(c)}">`).join('');
+        }
+    } catch (_) {}
+}
+
+function obterHexCor(corNome) {
+    if (!corNome) return '#94a3b8';
+    const c = corNome.trim().toLowerCase();
+    if (c.includes('bran') || c.includes('white')) return '#ffffff';
+    if (c.includes('pret') || c.includes('black')) return '#1e293b';
+    if (c.includes('cinz') || c.includes('gray') || c.includes('grey') || c.includes('chumb')) return '#64748b';
+    if (c.includes('verm') || c.includes('red')) return '#ef4444';
+    if (c.includes('azul') || c.includes('blue')) return '#3b82f6';
+    if (c.includes('amar') || c.includes('yellow')) return '#eab308';
+    if (c.includes('verd') || c.includes('green')) return '#22c55e';
+    if (c.includes('laran') || c.includes('orange')) return '#f97316';
+    if (c.includes('rox') || c.includes('purpl') || c.includes('violet')) return '#a855f7';
+    if (c.includes('ros') || c.includes('pink')) return '#ec4899';
+    if (c.includes('marr') || c.includes('brown')) return '#78350f';
+    if (c.includes('dour') || c.includes('gold')) return '#d97706';
+    if (c.includes('prat') || c.includes('silver')) return '#cbd5e1';
+    if (c.includes('transp') || c.includes('clear')) return '#e2e8f0';
+    if (c.includes('bege') || c.includes('skin')) return '#fde68a';
+    return '#6366f1';
+}
+
 function novaCorModalProd() {
     return { id: 0, cor: '', peso_gramas: '', tempo_producao_segundos: 0, tempo_formatado: '' };
 }
 
-function novaPecaModalProd() {
-    return { peca_id: 0, nome: '', quantidade: 1, peso_gramas: '', tempo_producao_segundos: 0, tempo_formatado: '00:00:00' };
+function novaLinhaCorPeca(cor = '', peso = '') {
+    return {
+        cor_id: 0,
+        cor: cor,
+        peso_gramas: (peso !== '' && peso !== null && peso !== undefined) ? Math.max(0, parseFloat(peso) || 0) : ''
+    };
+}
+
+function novaPecaModalProd(nome = '', qtd = 1, tempo = '00:00:00', peso = '') {
+    return {
+        peca_id: 0,
+        nome: nome,
+        quantidade: qtd,
+        peso_gramas: peso,
+        tempo_producao_segundos: parseTempoParaSegundos(tempo),
+        tempo_formatado: tempo,
+        cores: []
+    };
 }
 
 function atualizarModoModalProduto() {
@@ -198,9 +252,24 @@ function atualizarModoModalProduto() {
         let somaPeso = 0;
         let somaTempo = 0;
         let totalPecasQtd = 0;
+        const resumoCoresGerais = {};
+
         modalProdPecas.forEach(pec => {
             const q = Math.max(1, parseInt(pec.quantidade) || 1);
             totalPecasQtd += q;
+            // Se a peça tem cores com peso, atualiza peso da peça
+            if (pec.cores && pec.cores.length > 0) {
+                let somaCores = 0;
+                pec.cores.forEach(c => {
+                    const cPeso = parseFloat(c.peso_gramas) || 0;
+                    somaCores += cPeso;
+                    const cNome = (c.cor || '').trim() || 'Padrão';
+                    resumoCoresGerais[cNome] = (resumoCoresGerais[cNome] || 0) + (cPeso * q);
+                });
+                pec.peso_gramas = somaCores > 0 ? (Math.round(somaCores * 100) / 100) : (pec.cores.some(c => c.peso_gramas !== '') ? 0 : '');
+            } else if (parseFloat(pec.peso_gramas) > 0) {
+                resumoCoresGerais['Monocor'] = (resumoCoresGerais['Monocor'] || 0) + (parseFloat(pec.peso_gramas) * q);
+            }
             somaPeso += (parseFloat(pec.peso_gramas) || 0) * q;
             somaTempo += (parseInt(pec.tempo_producao_segundos) || 0) * q;
         });
@@ -212,7 +281,12 @@ function atualizarModoModalProduto() {
         if (inputTempo) inputTempo.value = tempoFormatado;
 
         if ($('resumoPecasProdBadge')) {
-            $('resumoPecasProdBadge').textContent = `${modalProdPecas.length} tipos (${totalPecasQtd} un) · ${pesoFormatado}g · ${tempoFormatado}`;
+            const coresEntries = Object.entries(resumoCoresGerais).filter(([, g]) => g > 0);
+            let coresTxt = '';
+            if (coresEntries.length > 1) {
+                coresTxt = ' · ' + coresEntries.map(([nome, g]) => `${nome}: ${(Math.round(g * 10) / 10).toFixed(1)}g`).join(', ');
+            }
+            $('resumoPecasProdBadge').textContent = `${modalProdPecas.length} tipos (${totalPecasQtd} un) · ${pesoFormatado}g · ${tempoFormatado}${coresTxt}`;
         }
     } else {
         if (boxPecas) boxPecas.style.display = 'none';
@@ -328,6 +402,83 @@ function atualizarCorModalProduto(cidx, campo, valor) {
     atualizarModoModalProduto();
 }
 
+function adicionarCoresIniciaisPeca(pecaIdx) {
+    const pec = modalProdPecas[pecaIdx];
+    if (!pec) return;
+    if (!pec.cores) pec.cores = [];
+    const pesoAtual = parseFloat(pec.peso_gramas) || 0;
+    if (pesoAtual > 0) {
+        pec.cores.push(novaLinhaCorPeca('Branco', (pesoAtual * 0.7).toFixed(2)));
+        pec.cores.push(novaLinhaCorPeca('Preto', (pesoAtual * 0.3).toFixed(2)));
+    } else {
+        pec.cores.push(novaLinhaCorPeca('Branco', ''));
+        pec.cores.push(novaLinhaCorPeca('Preto', ''));
+    }
+    renderizarPecasModalProduto();
+    setTimeout(() => {
+        const bloco = $('listaPecasModalProd')?.querySelectorAll('.bloco-peca-modal-prod')[pecaIdx];
+        const inputCor = bloco?.querySelector('.grade-cores-peca input[type="text"]');
+        if (inputCor) {
+            inputCor.focus();
+            inputCor.select();
+        }
+    }, 40);
+}
+
+function adicionarCorPecaModal(pecaIdx, corNome = '', peso = '') {
+    const pec = modalProdPecas[pecaIdx];
+    if (!pec) return;
+    if (!pec.cores) pec.cores = [];
+    pec.cores.push(novaLinhaCorPeca(corNome, peso));
+    renderizarPecasModalProduto();
+    setTimeout(() => {
+        const bloco = $('listaPecasModalProd')?.querySelectorAll('.bloco-peca-modal-prod')[pecaIdx];
+        const inputs = bloco?.querySelectorAll('.grade-cores-peca .input-cor-nome');
+        if (inputs && inputs.length) {
+            inputs[inputs.length - 1].focus();
+        }
+    }, 40);
+}
+
+function removerCorPecaModal(pecaIdx, corIdx) {
+    const pec = modalProdPecas[pecaIdx];
+    if (!pec || !pec.cores) return;
+    pec.cores.splice(corIdx, 1);
+    renderizarPecasModalProduto();
+}
+
+function atualizarCorPecaModal(pecaIdx, corIdx, campo, valor) {
+    const pec = modalProdPecas[pecaIdx];
+    if (!pec || !pec.cores || !pec.cores[corIdx]) return;
+    const c = pec.cores[corIdx];
+    if (campo === 'cor') {
+        c.cor = valor;
+        const bloco = $('listaPecasModalProd')?.querySelectorAll('.bloco-peca-modal-prod')[pecaIdx];
+        const itemCor = bloco?.querySelectorAll('.item-cor-peca')[corIdx];
+        const ponto = itemCor?.querySelector('.ponto-cor-indicador');
+        if (ponto) ponto.style.backgroundColor = obterHexCor(valor);
+    } else if (campo === 'peso') {
+        c.peso_gramas = valor === '' ? '' : Math.max(0, parseFloat(valor) || 0);
+    }
+
+    let somaCores = 0;
+    pec.cores.forEach(corItem => {
+        somaCores += (parseFloat(corItem.peso_gramas) || 0);
+    });
+    pec.peso_gramas = somaCores > 0 ? (Math.round(somaCores * 100) / 100) : (pec.cores.some(ci => ci.peso_gramas !== '') ? 0 : '');
+
+    const bloco = $('listaPecasModalProd')?.querySelectorAll('.bloco-peca-modal-prod')[pecaIdx];
+    if (bloco) {
+        const inputPesoPeca = bloco.querySelector('.col-peso-peca-input');
+        if (inputPesoPeca) inputPesoPeca.value = pec.peso_gramas !== '' ? pec.peso_gramas : '';
+        const q = Math.max(1, parseInt(pec.quantidade) || 1);
+        const subtotalEl = bloco.querySelector('.peca-subtotal-info strong');
+        if (subtotalEl) subtotalEl.textContent = ((parseFloat(pec.peso_gramas) || 0) * q).toFixed(1) + 'g';
+    }
+
+    atualizarModoModalProduto();
+}
+
 function renderizarPecasModalProduto() {
     const container = $('listaPecasModalProd');
     if (!container) return;
@@ -338,7 +489,7 @@ function renderizarPecasModalProduto() {
                 <span style="font-size:24px;">🧩</span>
                 <div>
                     <strong>Nenhuma peça adicionada ainda</strong>
-                    <p>Adicione as peças que compõem este produto (ex: Base, Pino, Peças do Empilhar). O tempo e gramas do produto são calculados automaticamente por elas.</p>
+                    <p>Adicione as peças que compõem este produto (ex: Base, Golfinho, Peças do Empilhar). O tempo e gramas do produto são calculados automaticamente por elas.</p>
                 </div>
             </div>`;
         atualizarModoModalProduto();
@@ -356,14 +507,61 @@ function renderizarPecasModalProduto() {
         </div>
         ${modalProdPecas.map((pec, idx) => {
             const q = Math.max(1, parseInt(pec.quantidade) || 1);
+            const temCores = pec.cores && pec.cores.length > 0;
             const p = parseFloat(pec.peso_gramas) || 0;
             const subtotalPeso = (p * q).toFixed(1);
             const t = parseInt(pec.tempo_producao_segundos) || 0;
             const subtotalTempo = formatarSegundosHHMMSS(t * q);
+
+            let coresHtml = '';
+            if (temCores) {
+                const linhasCores = pec.cores.map((c, cidx) => {
+                    const hex = obterHexCor(c.cor);
+                    return `
+                    <div class="item-cor-peca" style="display:flex; align-items:center; gap:6px; margin-bottom:6px;">
+                        <span class="ponto-cor-indicador" style="background:${hex}; width:12px; height:12px; border-radius:50%; border:1px solid rgba(0,0,0,0.15); flex-shrink:0;"></span>
+                        <input type="text" list="listaCoresFilamentosSugestoes" class="input-cor-nome" placeholder="Cor (ex: Branco, Preto...)"
+                               value="${esc(c.cor || '')}"
+                               oninput="atualizarCorPecaModal(${idx}, ${cidx}, 'cor', this.value)"
+                               style="font-size:12px; flex:2; padding:4px 8px;">
+                        <div style="display:flex; align-items:center; gap:3px; flex:1;">
+                            <input type="number" min="0" step="0.01" class="input-cor-gramas" placeholder="0.00"
+                                   value="${c.peso_gramas !== '' && c.peso_gramas !== null && c.peso_gramas !== undefined ? c.peso_gramas : ''}"
+                                   oninput="atualizarCorPecaModal(${idx}, ${cidx}, 'peso', this.value)"
+                                   title="Gramas desta cor gastas nesta peça"
+                                   style="font-size:12px; text-align:center; padding:4px 6px; width:100%;">
+                            <span style="font-size:11px; color:var(--texto-secundario);">g</span>
+                        </div>
+                        <button type="button" class="btn-icone perigo btn-remover-cor-peca" onclick="removerCorPecaModal(${idx}, ${cidx})"
+                                title="Remover esta cor" style="padding:2px 4px;">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:14px; height:14px;"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                        </button>
+                    </div>`;
+                }).join('');
+
+                coresHtml = `
+                <div class="caixa-cores-peca" style="margin-top:8px; padding:10px 12px; background:var(--fundo-secundario, #f8fafc); border-radius:8px; border:1px dashed var(--borda, #cbd5e1);">
+                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+                        <span style="font-size:12px; font-weight:600; color:var(--texto);">🎨 Cores desta peça (gramas por cor; tempo é único da peça):</span>
+                        <button type="button" class="secundario pequeno btn-adicionar-cor-peca" onclick="adicionarCorPecaModal(${idx})" style="font-size:11px; padding:2px 8px;">+ Adicionar cor</button>
+                    </div>
+                    <div class="grade-cores-peca">
+                        ${linhasCores}
+                    </div>
+                </div>`;
+            } else {
+                coresHtml = `
+                <div style="margin-top:6px; display:flex; align-items:center; justify-content:flex-end;">
+                    <button type="button" class="link-sublinhado btn-ativar-multicor-peca" onclick="adicionarCoresIniciaisPeca(${idx})" style="font-size:11.5px; background:none; border:none; color:var(--primaria, #3b82f6); cursor:pointer;">
+                        🎨 + Adicionar cores / filamento desta peça (ex: Branco e Preto)
+                    </button>
+                </div>`;
+            }
+
             return `
             <div class="bloco-peca-modal-prod">
                 <div class="linha-peca-modal-prod" style="display:flex; align-items:center; gap:8px;">
-                    <input type="text" placeholder="Ex: Base, Pino, Anel..."
+                    <input type="text" placeholder="Ex: Golfinho, Base, Pino..."
                            value="${esc(pec.nome || '')}"
                            oninput="atualizarPecaModalProduto(${idx}, 'nome', this.value)"
                            style="font-size:13px; font-weight:600; flex:2;">
@@ -378,14 +576,15 @@ function renderizarPecasModalProduto() {
                         <input type="text" placeholder="00:00:00"
                                value="${esc(pec.tempo_formatado || '')}"
                                oninput="atualizarPecaModalProduto(${idx}, 'tempo', this.value)"
-                               title="Tempo de impressão de 1 unidade desta peça (HH:mm:ss)"
+                               title="Tempo único de impressão desta peça (o tempo é um só)"
                                style="font-size:12.5px; text-align:center;">
                     </div>
                     <div style="width:105px;" class="input-com-unidade">
-                        <input type="number" min="0" step="0.1" placeholder="0.0"
+                        <input type="number" min="0" step="0.01" placeholder="0.00"
                                value="${pec.peso_gramas !== '' && pec.peso_gramas !== null && pec.peso_gramas !== undefined ? pec.peso_gramas : ''}"
+                               ${temCores ? 'readonly title="Filamento calculado automaticamente pela soma das cores abaixo"' : 'title="Filamento gasto por unidade desta peça (em gramas)"'}
                                oninput="atualizarPecaModalProduto(${idx}, 'peso', this.value)"
-                               title="Filamento gasto por unidade desta peça (em gramas)"
+                               class="col-peso-peca-input ${temCores ? 'input-bloqueado-soma' : ''}"
                                style="font-size:12.5px; text-align:center; padding-right:20px !important;">
                         <span class="unidade" style="right:6px; font-size:11px;">g</span>
                     </div>
@@ -398,6 +597,7 @@ function renderizarPecasModalProduto() {
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
                     </button>
                 </div>
+                ${coresHtml}
             </div>`;
         }).join('')}
     `;
@@ -409,8 +609,8 @@ function adicionarPecaModalProduto() {
     modalProdPecas.push(novaPecaModalProd());
     renderizarPecasModalProduto();
     setTimeout(() => {
-        const inputs = $('listaPecasModalProd')?.querySelectorAll('input[type="text"]');
-        if (inputs && inputs.length) inputs[inputs.length - 2].focus();
+        const inputs = $('listaPecasModalProd')?.querySelectorAll('.bloco-peca-modal-prod input[type="text"]');
+        if (inputs && inputs.length) inputs[inputs.length - 1].focus();
     }, 30);
 }
 
@@ -487,6 +687,7 @@ async function abrirModal(p = null) {
     atualizarModoModalProduto();
     recalcularFormacaoPreco(p ? false : true);
 
+    carregarSugestoesCores();
     App.modal.abrir('modalProduto', '#prodNome');
 
     // Se estiver editando, busca os detalhes atualizados e cálculo dinâmico de PEPS
@@ -502,7 +703,13 @@ async function abrirModal(p = null) {
                         peso_gramas: Number(pec.peso_gramas) || 0,
                         tempo_producao_segundos: Number(pec.tempo_producao_segundos) || 0,
                         tempo_formatado: pec.tempo_formatado || formatarSegundosHHMMSS(pec.tempo_producao_segundos),
-                        cores: pec.cores || []
+                        cores: (pec.cores || [])
+                            .filter(c => c.cor && c.cor.trim())
+                            .map(c => ({
+                                cor_id: c.cor_id || c.id || 0,
+                                cor: c.cor,
+                                peso_gramas: (c.peso_gramas !== null && c.peso_gramas !== undefined && c.peso_gramas !== '') ? Number(c.peso_gramas) : ''
+                            }))
                     }));
                     $('prodTipo').value = 'composto';
                     modalProdCores = [];
@@ -580,7 +787,35 @@ async function salvar(ev) {
     }
 
     if (temPecas) {
-        const pecasValidas = modalProdPecas.filter(p => (p.nome || '').trim() !== '');
+        const pecasValidas = modalProdPecas
+            .filter(p => (p.nome || '').trim() !== '')
+            .map(p => {
+                const coresValidas = (p.cores || [])
+                    .filter(c => (c.cor || '').trim() !== '')
+                    .map(c => ({
+                        cor_id: parseInt(c.cor_id) || 0,
+                        cor: c.cor.trim(),
+                        peso_gramas: (c.peso_gramas !== '' && c.peso_gramas !== null && c.peso_gramas !== undefined)
+                            ? Math.max(0, parseFloat(c.peso_gramas) || 0)
+                            : null
+                    }));
+
+                let pesoPeca = parseFloat(p.peso_gramas) || 0;
+                if (coresValidas.length > 0) {
+                    const somaCores = coresValidas.reduce((acc, c) => acc + (c.peso_gramas || 0), 0);
+                    if (somaCores > 0) pesoPeca = Math.round(somaCores * 100) / 100;
+                }
+
+                return {
+                    peca_id: parseInt(p.peca_id) || 0,
+                    nome: p.nome.trim(),
+                    quantidade: Math.max(1, parseInt(p.quantidade) || 1),
+                    tempo_producao_segundos: parseTempoParaSegundos(p.tempo_formatado || p.tempo_producao_segundos),
+                    peso_gramas: pesoPeca,
+                    cores: coresValidas
+                };
+            });
+
         if (tipo === 'composto' && !pecasValidas.length && !editandoId) {
             App.toast('Adicione ao menos uma peça ou troque o tipo para Produto Simples.', 'erro');
             return;
@@ -853,8 +1088,9 @@ function atualizarTotaisInstantaneosEditorBOM() {
 
     bomLinhasEditor.forEach(l => {
         if (!l.nome || !l.nome.trim()) return;
-        const t = Number(l.tempo_producao_segundos) || 0;
-        const p = Number(l.peso_gramas) || 0;
+        const qtd = Number(l.quantidade) || 1;
+        const t = (Number(l.tempo_producao_segundos) || 0) * qtd;
+        const p = (Number(l.peso_gramas) || 0) * qtd;
         tempoTotal += t;
         pesoTotal += p;
 
@@ -866,7 +1102,7 @@ function atualizarTotaisInstantaneosEditorBOM() {
                 const pCor = (c.peso_gramas !== null && c.peso_gramas !== undefined && c.peso_gramas !== '')
                     ? Number(c.peso_gramas)
                     : (p > 0 ? (p / qtdC) : 0);
-                coresConsumo[cNome] = (coresConsumo[cNome] || 0) + pCor;
+                coresConsumo[cNome] = (coresConsumo[cNome] || 0) + (pCor * qtd);
             });
         } else {
             coresConsumo['qualquer cor'] = (coresConsumo['qualquer cor'] || 0) + p;
@@ -879,18 +1115,21 @@ function atualizarTotaisInstantaneosEditorBOM() {
     const badgesContainer = $('editorCoresBadges');
     if (badgesContainer) {
         const entries = Object.entries(coresConsumo).filter(([, g]) => g > 0);
-        badgesContainer.innerHTML = entries.map(([cor, g]) =>
-            `<span class="chip-cor-diag" style="font-size:11.5px;">${esc(cor)}: <b>${Math.round(g * 10) / 10}g</b></span>`
-        ).join('');
+        badgesContainer.innerHTML = entries.map(([cor, g]) => {
+            const hex = obterHexCor(cor);
+            const dot = hex ? `<span class="ponto-cor-indicador" style="background:${hex}; width:8px; height:8px; display:inline-block; border-radius:50%; margin-right:4px;"></span>` : '';
+            return `<span class="chip-cor-diag" style="font-size:11.5px; display:inline-flex; align-items:center;">${dot}${esc(cor)}: <b>${Math.round(g * 10) / 10}g</b></span>`;
+        }).join('');
     }
 }
 
 // ============================================================
 // Editor de Peças: um bloco por peça (nome, qtd/un, tempo, peso, foto) com uma lista
-// de cores aninhada (cada cor com seu saldo e peso opcional).
+// de cores aninhada (cada cor com sua gramatura). O tempo é único da peça.
 // ============================================================
 function renderizarEditorBOM() {
     const container = $('listaEditorBOM');
+    if (!container) return;
     if (!bomLinhasEditor.length) {
         container.innerHTML = `<p class="vazio" style="padding:12px 0;">Nenhuma peça cadastrada. Clique em "+ Adicionar Peça".</p>`;
         atualizarTotaisInstantaneosEditorBOM();
@@ -902,33 +1141,37 @@ function renderizarEditorBOM() {
             ? `<img src="${esc(linha.foto)}" class="foto-peca-editor" onclick="uploadFotoPecaProdutos(${idx})" title="Clique para trocar a foto">`
             : `<button type="button" class="btn-icone foto-peca-editor-vazia" onclick="uploadFotoPecaProdutos(${idx})" title="Adicionar foto">📷</button>`;
 
-        const coresHtml = linha.cores.map((cor, cidx) => `
-            <div class="linha-cor-editor">
-                <input type="text" placeholder="Nome da cor (ex.: Branco, Cinza...)"
+        const coresHtml = (linha.cores || []).map((cor, cidx) => {
+            const hex = obterHexCor(cor.cor);
+            const badgeCor = hex ? `<span class="ponto-cor-indicador" style="background:${hex}; width:14px; height:14px; border-radius:50%; border:1px solid rgba(0,0,0,0.15); flex-shrink:0;"></span>` : '';
+            return `
+            <div class="linha-cor-editor" style="display:flex; align-items:center; gap:8px;">
+                ${badgeCor}
+                <input type="text" list="listaCoresFilamentosSugestoes" placeholder="Nome da cor (ex.: Branco, Preto...)"
                        value="${esc(cor.cor || '')}"
-                       oninput="atualizarCorBOM(${idx}, ${cidx}, 'cor', this.value)">
-                <input type="text" placeholder="HH:mm:ss"
-                       value="${esc(cor.tempo_formatado || '')}"
-                       onchange="atualizarCorBOM(${idx}, ${cidx}, 'tempo', this.value)"
-                       title="Tempo específico desta cor (se vazio, usa o da peça)."
-                       class="tempo-cor-editor">
-                <input type="number" min="0" step="0.1"
-                       placeholder="${linha.peso_gramas ? (linha.peso_gramas + 'g') : 'g desta cor'}"
-                       value="${cor.peso_gramas !== null && cor.peso_gramas !== undefined ? cor.peso_gramas : ''}"
-                       oninput="atualizarCorBOM(${idx}, ${cidx}, 'peso', this.value)"
-                       title="Filamento em gramas desta cor para esta peça."
-                       class="peso-cor-editor">
+                       oninput="atualizarCorBOM(${idx}, ${cidx}, 'cor', this.value)"
+                       style="flex:2;">
+                <div style="display:flex; align-items:center; gap:4px; flex:1;">
+                    <input type="number" min="0" step="0.01"
+                           placeholder="${linha.peso_gramas ? (linha.peso_gramas + 'g') : 'g desta cor'}"
+                           value="${cor.peso_gramas !== null && cor.peso_gramas !== undefined ? cor.peso_gramas : ''}"
+                           oninput="atualizarCorBOM(${idx}, ${cidx}, 'peso', this.value)"
+                           title="Filamento em gramas desta cor para esta peça (tempo de impressão é único na peça)."
+                           class="peso-cor-editor" style="width:100%;">
+                    <span style="font-size:12px; color:var(--texto-secundario);">g</span>
+                </div>
                 <button type="button" class="btn-icone perigo" onclick="removerCorBOM(${idx}, ${cidx})"
-                        title="Remover esta cor" ${linha.cores.length <= 1 ? 'disabled' : ''}>
+                        title="Remover esta cor" ${(linha.cores || []).length <= 1 ? 'disabled' : ''}>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
                 </button>
-            </div>`).join('');
+            </div>`;
+        }).join('');
 
         return `
         <div class="bloco-peca-editor">
             <div class="cabecalho-peca-editor">
                 ${fotoBtn}
-                <input type="text" placeholder="Nome da peça (ex.: Hélice, Chave de Fenda...)"
+                <input type="text" placeholder="Nome da peça (ex.: Golfinho, Base...)"
                        value="${esc(linha.nome || '')}"
                        oninput="atualizarLinhaBOM(${idx}, 'nome', this.value)"
                        class="nome-peca-editor">
@@ -937,17 +1180,17 @@ function renderizarEditorBOM() {
                            oninput="atualizarLinhaBOM(${idx}, 'quantidade', this.value)"
                            class="qtd-peca-editor" title="Quantidade desta peça necessária para 1 produto">
                 </label>
-                <label class="rotulo-inline">Tempo/un
+                <label class="rotulo-inline">Tempo Único (1 un)
                     <input type="text" placeholder="00:00:00"
                            value="${esc(linha.tempo_formatado || '00:00:00')}"
                            onchange="atualizarLinhaBOM(${idx}, 'tempo', this.value)"
-                           class="tempo-peca-editor" title="Tempo de impressão desta peça para 1 produto (HH:mm:ss)">
+                           class="tempo-peca-editor" title="Tempo total de impressão desta peça (o tempo é um só para todas as cores)">
                 </label>
-                <label class="rotulo-inline">Filamento/un (g)
-                    <input type="number" min="0" step="0.1" placeholder="0.0 g"
+                <label class="rotulo-inline">Filamento Total (g)
+                    <input type="number" min="0" step="0.01" placeholder="0.00 g"
                            value="${linha.peso_gramas > 0 ? linha.peso_gramas : ''}"
                            oninput="atualizarLinhaBOM(${idx}, 'peso', this.value)"
-                           class="peso-peca-editor" title="Consumo em gramas desta peça para 1 produto">
+                           class="peso-peca-editor" title="Consumo total em gramas desta peça">
                 </label>
                 <label class="rotulo-inline">Estoque
                     <input type="number" min="0" value="${linha.estoque || 0}"
@@ -960,7 +1203,7 @@ function renderizarEditorBOM() {
                 </button>
             </div>
             <div class="lista-cores-editor">
-                <span class="rotulo-cores-editor">Cores desta peça (defina as cores e gramas de filamento por cor):</span>
+                <span class="rotulo-cores-editor">🎨 Cores desta peça (defina as cores e gramas de filamento por cor; o tempo de impressão é único na peça acima):</span>
                 ${coresHtml}
                 <button type="button" class="secundario pequeno" onclick="adicionarCorBOM(${idx})">+ Adicionar cor</button>
             </div>
@@ -1052,14 +1295,18 @@ function removerCorBOM(idx, cidx) {
 }
 
 function atualizarCorBOM(idx, cidx, campo, valor) {
-    const cor = bomLinhasEditor[idx]?.cores[cidx];
+    const linha = bomLinhasEditor[idx];
+    const cor = linha?.cores[cidx];
     if (!cor) return;
     if (campo === 'peso') {
         cor.peso_gramas = (valor === '' || valor === null) ? null : Math.max(0, parseFloat(valor) || 0);
-    } else if (campo === 'tempo') {
-        const segs = parseTempoParaSegundos(valor);
-        cor.tempo_producao_segundos = valor === '' ? null : segs;
-        cor.tempo_formatado = valor === '' ? '' : formatarSegundosHHMMSS(segs);
+        const somaCores = linha.cores.reduce((acc, c) => acc + (parseFloat(c.peso_gramas) || 0), 0);
+        if (somaCores > 0) {
+            linha.peso_gramas = parseFloat(somaCores.toFixed(2));
+            const bloco = $('listaEditorBOM')?.querySelectorAll('.bloco-peca-editor')[idx];
+            const pesoInput = bloco?.querySelector('.peso-peca-editor');
+            if (pesoInput) pesoInput.value = linha.peso_gramas;
+        }
     } else {
         cor[campo] = valor;
     }
@@ -1074,25 +1321,27 @@ async function salvarBOM() {
     // saldo impresso (quem manda nele é a Bancada da Fábrica).
     const itensValidos = bomLinhasEditor
         .filter(l => (l.nome || '').trim() !== '')
-        .map(l => ({
-            peca_id: parseInt(l.peca_id) || 0,
-            nome: l.nome.trim(),
-            quantidade: Math.max(1, parseInt(l.quantidade) || 1),
-            estoque: Math.max(0, parseInt(l.estoque) || 0),
-            peso_gramas: Math.max(0, parseFloat(l.peso_gramas) || 0),
-            tempo_producao_segundos: parseInt(l.tempo_producao_segundos) || 0,
-            foto: (l.foto || '').trim(),
-            cores: l.cores.map(c => ({
-                cor_id: parseInt(c.cor_id) || 0,
-                cor: (c.cor || '').trim(),
-                peso_gramas: (c.peso_gramas !== null && c.peso_gramas !== undefined && c.peso_gramas !== '')
-                    ? Math.max(0, parseFloat(c.peso_gramas) || 0)
-                    : null,
-                tempo_producao_segundos: (c.tempo_producao_segundos !== null && c.tempo_producao_segundos !== undefined && c.tempo_producao_segundos !== '')
-                    ? parseInt(c.tempo_producao_segundos) || 0
-                    : null,
-            })),
-        }));
+        .map(l => {
+            const somaPesosCores = (l.cores || []).reduce((acc, c) => acc + (parseFloat(c.peso_gramas) || 0), 0);
+            const pesoFinal = somaPesosCores > 0 ? parseFloat(somaPesosCores.toFixed(2)) : Math.max(0, parseFloat(l.peso_gramas) || 0);
+            return {
+                peca_id: parseInt(l.peca_id) || 0,
+                nome: l.nome.trim(),
+                quantidade: Math.max(1, parseInt(l.quantidade) || 1),
+                estoque: Math.max(0, parseInt(l.estoque) || 0),
+                peso_gramas: pesoFinal,
+                tempo_producao_segundos: parseInt(l.tempo_producao_segundos) || 0,
+                foto: (l.foto || '').trim(),
+                cores: (l.cores || []).map(c => ({
+                    cor_id: parseInt(c.cor_id) || 0,
+                    cor: (c.cor || '').trim(),
+                    peso_gramas: (c.peso_gramas !== null && c.peso_gramas !== undefined && c.peso_gramas !== '')
+                        ? Math.max(0, parseFloat(c.peso_gramas) || 0)
+                        : null,
+                    tempo_producao_segundos: null
+                })),
+            };
+        });
 
     if (!itensValidos.length) {
         App.toast('Cadastre ao menos uma peça com nome antes de salvar.', 'erro');
@@ -1172,5 +1421,10 @@ window.atualizarCorModalProduto = atualizarCorModalProduto;
 window.adicionarPecaModalProduto = adicionarPecaModalProduto;
 window.removerPecaModalProduto = removerPecaModalProduto;
 window.atualizarPecaModalProduto = atualizarPecaModalProduto;
+
+window.adicionarCoresIniciaisPeca = adicionarCoresIniciaisPeca;
+window.adicionarCorPecaModal = adicionarCorPecaModal;
+window.removerCorPecaModal = removerCorPecaModal;
+window.atualizarCorPecaModal = atualizarCorPecaModal;
 
 carregar();
