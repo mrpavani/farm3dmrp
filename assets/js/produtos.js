@@ -56,15 +56,20 @@ function renderizar() {
                 <strong>${esc(p.nome)}</strong>
                 ${badgeTipo(p.tipo)}
                 ${p.descricao ? `<span class="sub-linha descricao-curta" title="${esc(p.descricao)}">${esc(p.descricao)}</span>` : ''}
-                ${(Number(p.peso_gramas) > 0 || Number(p.tempo_producao_segundos) > 0)
-                    ? `<span class="sub-linha" style="font-size:11.5px;color:var(--text-3);margin-top:2px;">⏱️ ${p.tempo_producao_formatado || formatarSegundosHHMMSS(p.tempo_producao_segundos)} · ⚖️ ${p.peso_gramas}g/un</span>`
-                    : ''}
+                <span class="sub-linha" style="font-size:11.5px;color:var(--text-3);margin-top:2px;">
+                    ${(Number(p.peso_gramas) > 0 || Number(p.tempo_producao_segundos) > 0)
+                        ? `⏱️ ${p.tempo_producao_formatado || formatarSegundosHHMMSS(p.tempo_producao_segundos)} · ⚖️ ${p.peso_gramas}g/un · `
+                        : ''}
+                    <strong style="color:var(--text);font-weight:600;">💰 ${App.moeda(p.preco || 0)}</strong>
+                    ${Number(p.custo_total) > 0 ? ` <span style="color:var(--text-3);font-size:10.5px;">(Custo: ${App.moeda(p.custo_total)})</span>` : ''}
+                </span>
             </td>
             <td class="num" style="font-weight:600;">${App.fmtInt.format(Number(p.estoque) || 0)}</td>
             <td class="num">${App.fmtInt.format(p.qtd_pedidos)}</td>
             <td class="col-acoes">
                 <div class="acoes-icones">
                     ${App.botaoIcone('ficha', 'Ficha Técnica & Montagem (Peças)', `abrirFicha(${p.id})`, 'primario')}
+                    ${App.botaoIcone('custos', 'Custos & Formação de Preço de Venda', `abrirCustosProduto(${p.id})`, 'sucesso')}
                     ${App.botaoIcone('editar', 'Editar', `editar(${p.id})`)}
                     ${ativo
                         ? App.botaoIcone('desativar', 'Desativar', `alternarAtivo(${p.id}, false)`, 'alerta')
@@ -109,38 +114,203 @@ function parseTempoParaSegundos(str) {
     return Math.max(0, parseInt(s, 10) || 0);
 }
 
-function recalcularFormacaoPreco(forcarAtualizarPreco = true) {
+// Variáveis do modal exclusivo de custos
+let custosProdutoAtualId = null;
+let custosProdutoAtualDados = null;
+
+function recalcularFormacaoPreco(forcarAtualizarPreco = false) {
     const peso = parseFloat($('prodPeso')?.value) || 0;
     let custoFil = parseFloat($('prodCustoFilamento')?.value);
     
-    // Se custo de filamento estiver zerado ou vazio mas tem peso, estima a R$ 0,09/g (R$ 90/kg)
     if ((isNaN(custoFil) || custoFil === 0) && peso > 0) {
         custoFil = round2(peso * 0.0900);
-        $('prodCustoFilamento').value = custoFil.toFixed(2);
+        if ($('prodCustoFilamento')) $('prodCustoFilamento').value = custoFil.toFixed(2);
     } else if (isNaN(custoFil) || custoFil < 0) {
         custoFil = 0;
     }
 
     const temEmb = $('prodTemEmbalagem')?.value === '1';
-    if ($('boxValorEmbalagem')) {
-        $('boxValorEmbalagem').style.display = temEmb ? 'block' : 'none';
-    }
     const valorEmb = temEmb ? (parseFloat($('prodValorEmbalagem')?.value) || 0) : 0;
     const valorOutros = parseFloat($('prodValorOutros')?.value) || 0;
-    const margem = parseFloat($('prodMargemLucro')?.value) || 0;
+    const margem = parseFloat($('prodMargemLucro')?.value) || 100;
 
     const custoTotal = round2(custoFil + valorEmb + valorOutros);
     const valorMargem = round2(custoTotal * (margem / 100));
     const precoSugerido = round2(custoTotal + valorMargem);
 
-    if ($('resumoCustoFilamento')) $('resumoCustoFilamento').textContent = App.moeda(custoFil);
-    if ($('resumoCustoEmbalagem')) $('resumoCustoEmbalagem').textContent = App.moeda(valorEmb);
-    if ($('resumoCustoOutros')) $('resumoCustoOutros').textContent = App.moeda(valorOutros);
-    if ($('resumoCustoTotal')) $('resumoCustoTotal').textContent = App.moeda(custoTotal);
-    if ($('resumoValorMargem')) $('resumoValorMargem').textContent = '+ ' + App.moeda(valorMargem);
+    if ($('prodResumoRapidoFil')) $('prodResumoRapidoFil').textContent = App.moeda(custoFil);
+    if ($('prodResumoRapidoTotal')) $('prodResumoRapidoTotal').textContent = App.moeda(custoTotal);
+    if ($('prodResumoRapidoMargem')) $('prodResumoRapidoMargem').textContent = `${margem}%`;
 
-    if (forcarAtualizarPreco && $('prodPreco')) {
+    if (forcarAtualizarPreco && $('prodPreco') && (!$('prodPreco').value || parseFloat($('prodPreco').value) === 0)) {
         $('prodPreco').value = precoSugerido > 0 ? precoSugerido.toFixed(2) : '0.00';
+    }
+}
+
+async function abrirCustosProduto(id) {
+    custosProdutoAtualId = id;
+    try {
+        const detalhe = await App.api(`api/produtos.php?id=${id}`);
+        if (!detalhe) return;
+        custosProdutoAtualDados = detalhe;
+
+        if ($('custosProdNomeDestaque')) {
+            const rotuloTipo = detalhe.tipo === 'composto' ? '🧩 Composto' : (detalhe.tipo === 'componente' ? '⚙️ Peça Avulsa' : '🔹 Simples');
+            $('custosProdNomeDestaque').textContent = `${detalhe.nome} · ${rotuloTipo}`;
+        }
+        if ($('custosSubModal')) {
+            $('custosSubModal').textContent = `Precificação, parâmetros de custo e formação de preço de venda de ${detalhe.nome}.`;
+        }
+
+        const peso = Number(detalhe.peso_gramas) || 0;
+        if ($('custosProdPeso')) $('custosProdPeso').value = peso > 0 ? peso : '';
+        
+        // Bloqueia edição de peso se for composto com peças ou multicor
+        const bloqueadoSoma = (detalhe.tem_pecas && detalhe.pecas && detalhe.pecas.length > 0) || (detalhe.cores && detalhe.cores.length > 0);
+        if ($('custosProdPeso')) {
+            $('custosProdPeso').readOnly = bloqueadoSoma;
+            if (bloqueadoSoma) {
+                $('custosProdPeso').classList.add('input-bloqueado-soma');
+            } else {
+                $('custosProdPeso').classList.remove('input-bloqueado-soma');
+            }
+        }
+        if ($('custosTagOrigemPeso')) {
+            if (bloqueadoSoma) {
+                $('custosTagOrigemPeso').textContent = detalhe.tem_pecas ? '🔒 Soma das peças' : '🔒 Soma das cores';
+                $('custosTagOrigemPeso').style.display = 'inline-block';
+            } else {
+                $('custosTagOrigemPeso').style.display = 'none';
+            }
+        }
+        if ($('custosDicaProdPeso')) {
+            $('custosDicaProdPeso').textContent = bloqueadoSoma ? 'Calculado automaticamente pela soma das peças/cores.' : 'Filamento total estimado para 1 unidade deste produto.';
+        }
+
+        if ($('custosProdCustoFilamento')) $('custosProdCustoFilamento').value = detalhe.custo_filamento ? Number(detalhe.custo_filamento).toFixed(2) : '';
+        if ($('custosProdTemEmbalagem')) $('custosProdTemEmbalagem').value = Number(detalhe.tem_embalagem) === 1 ? '1' : '0';
+        if ($('custosProdValorEmbalagem')) $('custosProdValorEmbalagem').value = detalhe.valor_embalagem ? Number(detalhe.valor_embalagem).toFixed(2) : '0.00';
+        if ($('custosBoxValorEmbalagem')) $('custosBoxValorEmbalagem').style.display = Number(detalhe.tem_embalagem) === 1 ? 'block' : 'none';
+        if ($('custosProdValorOutros')) $('custosProdValorOutros').value = detalhe.valor_outros ? Number(detalhe.valor_outros).toFixed(2) : '0.00';
+        if ($('custosProdMargemLucro')) $('custosProdMargemLucro').value = (detalhe.margem_lucro !== undefined && detalhe.margem_lucro !== null) ? Number(detalhe.margem_lucro) : 100;
+        if ($('custosProdPreco')) $('custosProdPreco').value = detalhe.preco ? Number(detalhe.preco).toFixed(2) : '';
+
+        // Detalhe de cálculo PEPS por cor
+        const cFil = detalhe.calculo_custo_filamento;
+        if (cFil && cFil.cores && cFil.cores.length > 0) {
+            if ($('custosTagOrigem')) $('custosTagOrigem').textContent = `PEPS ativo (${cFil.cores.length} cor/cores)`;
+            if ($('custosTabelaCorPeps')) {
+                $('custosTabelaCorPeps').innerHTML = cFil.cores.map(c => `
+                    <tr>
+                        <td><strong>${esc(c.cor || 'Padrão')}</strong></td>
+                        <td class="num">${Number(c.gramas).toFixed(1)}g</td>
+                        <td>${esc(c.filamento_nome || 'Estimado')}</td>
+                        <td class="num">${App.moeda(c.preco_por_kg || 0)}/kg</td>
+                        <td class="num" style="font-weight:700;">${App.moeda(c.custo_total || 0)}</td>
+                    </tr>
+                `).join('');
+            }
+            if ($('custosBoxDetalhamentoPeps')) $('custosBoxDetalhamentoPeps').style.display = 'block';
+
+            if (!detalhe.custo_filamento || Number(detalhe.custo_filamento) === 0) {
+                if ($('custosProdCustoFilamento')) $('custosProdCustoFilamento').value = Number(cFil.custo_filamento).toFixed(2);
+            }
+        } else {
+            if ($('custosTagOrigem')) $('custosTagOrigem').textContent = 'Calculadora dinâmica';
+            if ($('custosBoxDetalhamentoPeps')) $('custosBoxDetalhamentoPeps').style.display = 'none';
+        }
+
+        recalcularCustosModal(false);
+        App.modal.abrir('modalCustosProduto', '#custosProdPreco');
+    } catch (e) {
+        App.toast('Erro ao abrir custos do produto: ' + e.message, 'erro');
+    }
+}
+
+function recalcularCustosModal(forcarAtualizarPreco = true) {
+    const peso = parseFloat($('custosProdPeso')?.value) || 0;
+    let custoFil = parseFloat($('custosProdCustoFilamento')?.value);
+
+    if ((isNaN(custoFil) || custoFil === 0) && peso > 0) {
+        custoFil = round2(peso * 0.0900);
+        if ($('custosProdCustoFilamento')) $('custosProdCustoFilamento').value = custoFil.toFixed(2);
+    } else if (isNaN(custoFil) || custoFil < 0) {
+        custoFil = 0;
+    }
+
+    const temEmb = $('custosProdTemEmbalagem')?.value === '1';
+    if ($('custosBoxValorEmbalagem')) {
+        $('custosBoxValorEmbalagem').style.display = temEmb ? 'block' : 'none';
+    }
+    const valorEmb = temEmb ? (parseFloat($('custosProdValorEmbalagem')?.value) || 0) : 0;
+    const valorOutros = parseFloat($('custosProdValorOutros')?.value) || 0;
+    const margem = parseFloat($('custosProdMargemLucro')?.value) || 0;
+
+    const custoTotal = round2(custoFil + valorEmb + valorOutros);
+    const valorMargem = round2(custoTotal * (margem / 100));
+    const precoSugerido = round2(custoTotal + valorMargem);
+
+    if ($('custosResumoFilamento')) $('custosResumoFilamento').textContent = App.moeda(custoFil);
+    if ($('custosResumoEmbalagem')) $('custosResumoEmbalagem').textContent = App.moeda(valorEmb);
+    if ($('custosResumoOutros')) $('custosResumoOutros').textContent = App.moeda(valorOutros);
+    if ($('custosResumoCustoTotal')) $('custosResumoCustoTotal').textContent = App.moeda(custoTotal);
+    if ($('custosResumoValorMargem')) $('custosResumoValorMargem').textContent = '+ ' + App.moeda(valorMargem);
+
+    if (forcarAtualizarPreco && $('custosProdPreco')) {
+        $('custosProdPreco').value = precoSugerido > 0 ? precoSugerido.toFixed(2) : '0.00';
+    }
+}
+
+function definirMargemCustos(valor) {
+    if ($('custosProdMargemLucro')) {
+        $('custosProdMargemLucro').value = valor;
+        recalcularCustosModal(true);
+    }
+}
+
+async function salvarCustosModal() {
+    if (!custosProdutoAtualId) return;
+    const preco = parseFloat($('custosProdPreco')?.value);
+    if (isNaN(preco) || preco < 0) {
+        App.toast('Informe um preço de venda válido.', 'erro');
+        $('custosProdPreco')?.focus();
+        return;
+    }
+
+    const temEmb = $('custosProdTemEmbalagem')?.value === '1';
+    const payload = {
+        custo_filamento: parseFloat($('custosProdCustoFilamento')?.value) || 0,
+        tem_embalagem: temEmb ? 1 : 0,
+        valor_embalagem: temEmb ? (parseFloat($('custosProdValorEmbalagem')?.value) || 0) : 0,
+        valor_outros: parseFloat($('custosProdValorOutros')?.value) || 0,
+        margem_lucro: parseFloat($('custosProdMargemLucro')?.value) || 0,
+        preco: preco,
+        peso_gramas: parseFloat($('custosProdPeso')?.value) || 0
+    };
+
+    const btn = $('btnSalvarCustosModal');
+    if (btn) btn.disabled = true;
+
+    try {
+        await App.api(`api/produtos.php?id=${custosProdutoAtualId}&apenas_custos=1`, 'PUT', payload);
+        App.toast('Precificação atualizada com sucesso!', 'sucesso');
+        App.modal.fechar('modalCustosProduto');
+        carregar();
+
+        // Se o modal de produto estiver aberto, sincroniza os campos
+        if (editandoId === custosProdutoAtualId) {
+            $('prodPreco').value = payload.preco.toFixed(2);
+            $('prodCustoFilamento').value = payload.custo_filamento.toFixed(2);
+            $('prodTemEmbalagem').value = payload.tem_embalagem ? '1' : '0';
+            $('prodValorEmbalagem').value = payload.valor_embalagem.toFixed(2);
+            $('prodValorOutros').value = payload.valor_outros.toFixed(2);
+            $('prodMargemLucro').value = payload.margem_lucro;
+            recalcularFormacaoPreco(false);
+        }
+    } catch (e) {
+        App.toast('Erro ao salvar precificação: ' + e.message, 'erro');
+    } finally {
+        if (btn) btn.disabled = false;
     }
 }
 
@@ -1406,8 +1576,32 @@ $('prodValorOutros')?.addEventListener('input', () => recalcularFormacaoPreco(tr
 $('prodMargemLucro')?.addEventListener('input', () => recalcularFormacaoPreco(true));
 $('btnRecalcularPreco')?.addEventListener('click', () => recalcularFormacaoPreco(true));
 
+// Atalho do modal de produto para abrir calculadora de custos
+$('btnAbrirCustosDoProduto')?.addEventListener('click', () => {
+    if (editandoId) {
+        abrirCustosProduto(editandoId);
+    } else {
+        App.toast('Cadastre o produto primeiro para abrir a precificação PEPS.', 'alerta');
+    }
+});
+
+// Listeners do modal exclusivo de custos
+$('custosProdPeso')?.addEventListener('input', () => recalcularCustosModal(true));
+$('custosProdCustoFilamento')?.addEventListener('input', () => recalcularCustosModal(true));
+$('custosProdTemEmbalagem')?.addEventListener('change', () => recalcularCustosModal(true));
+$('custosProdValorEmbalagem')?.addEventListener('input', () => recalcularCustosModal(true));
+$('custosProdValorOutros')?.addEventListener('input', () => recalcularCustosModal(true));
+$('custosProdMargemLucro')?.addEventListener('input', () => recalcularCustosModal(true));
+$('btnCustosRecalcular')?.addEventListener('click', () => recalcularCustosModal(true));
+$('btnSalvarCustosModal')?.addEventListener('click', salvarCustosModal);
+
 // Torna abrirFicha e manipuladores globais para onclick inline
 window.abrirFicha = abrirFicha;
+window.abrirCustosProduto = abrirCustosProduto;
+window.recalcularCustosModal = recalcularCustosModal;
+window.definirMargemCustos = definirMargemCustos;
+window.salvarCustosModal = salvarCustosModal;
+
 window.removerLinhaBOM = removerLinhaBOM;
 window.atualizarLinhaBOM = atualizarLinhaBOM;
 window.adicionarCorBOM = adicionarCorBOM;

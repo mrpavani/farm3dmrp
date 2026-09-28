@@ -23,6 +23,11 @@ require __DIR__ . '/includes/header.php';
             <option value="componente">⚙️ Peça Avulsa / Componente</option>
         </select>
 
+        <a href="dashboard.php" class="secundario" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;font-weight:600;white-space:nowrap;" title="Ver visão geral de produtos prontos, filamentos e pedidos para tomada de decisões">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+            Painel Gerencial
+        </a>
+
         <button type="button" id="btnNovo">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
             Novo produto
@@ -151,118 +156,40 @@ require __DIR__ . '/includes/header.php';
                     <button type="button" id="btnAdicionarPecaModalProd" class="secundario pequeno">+ Adicionar Peça</button>
                 </div>
 
-                <!-- Seção 3: Precificação Inteligente & Custos -->
-                <div class="prod-card-precificacao">
-                    <div class="prod-prec-topo">
-                        <div class="prod-secao-titulo" style="margin: 0;">
-                            <span>2</span>
-                            <h3>Custos &amp; Formação de Preço de Venda</h3>
+                <!-- Seção 2: Precificação & Custos -->
+                <div class="prod-form-secao">
+                    <div class="prod-secao-titulo">
+                        <span>2</span>
+                        <h3>Precificação &amp; Valores</h3>
+                    </div>
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 16px;">
+                        <div style="flex:1;min-width:180px;">
+                            <label for="prodPreco" style="margin:0 0 4px 0;font-weight:600;">Preço de Venda (R$) <span class="obrigatorio">*</span></label>
+                            <div class="input-com-unidade">
+                                <span class="moeda">R$</span>
+                                <input type="number" id="prodPreco" class="com-moeda" min="0" step="0.01" placeholder="0,00" inputmode="decimal" required style="font-weight:700;font-size:15px;">
+                            </div>
                         </div>
-                        <span class="prod-tag-peps" id="tagCustoOrigem">Calculadora dinâmica PEPS</span>
+                        <div style="display:flex;flex-direction:column;gap:6px;flex:1.8;min-width:240px;">
+                            <div id="resumoRapidoCustos" style="font-size:12px;color:var(--text-2);line-height:1.4;">
+                                Custo Filamento: <b id="prodResumoRapidoFil">R$ 0,00</b> · Custo Base: <b id="prodResumoRapidoTotal">R$ 0,00</b> · Margem: <b id="prodResumoRapidoMargem">100%</b>
+                            </div>
+                            <button type="button" id="btnAbrirCustosDoProduto" class="secundario pequeno" style="align-self:flex-start;display:inline-flex;align-items:center;gap:6px;font-weight:600;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/></svg>
+                                Abrir Calculadora de Custos &amp; Margem ↗
+                            </button>
+                        </div>
                     </div>
 
-                    <div class="prod-prec-layout">
-                        <!-- Lado Esquerdo: Parâmetros de Custo -->
-                        <div class="prod-custos-grid">
-                            <div class="campo-custo">
-                                <div class="rotulo-com-badge">
-                                    <label for="prodPeso">Filamento Total (g) <span class="obrigatorio">*</span></label>
-                                    <span id="tagOrigemPeso" class="badge-origem-soma">🔒 Soma</span>
-                                </div>
-                                <div class="input-com-unidade">
-                                    <input type="number" id="prodPeso" min="0" step="0.1" placeholder="45.0" inputmode="decimal">
-                                    <span class="unidade">g</span>
-                                </div>
-                                <small id="dicaProdPeso" class="prod-dica-campo"></small>
-                            </div>
-
-                            <div class="campo-custo">
-                                <label for="prodCustoFilamento">Custo Filamento (R$)</label>
-                                <div class="input-com-unidade">
-                                    <span class="moeda">R$</span>
-                                    <input type="number" id="prodCustoFilamento" class="com-moeda" step="0.01" min="0" placeholder="0,00">
-                                </div>
-                            </div>
-
-                            <div class="campo-custo">
-                                <label for="prodTemEmbalagem">Embalagem?</label>
-                                <div class="grupo-embalagem">
-                                    <select id="prodTemEmbalagem">
-                                        <option value="0">Não</option>
-                                        <option value="1">Sim</option>
-                                    </select>
-                                    <div id="boxValorEmbalagem" style="display:none;" class="input-com-unidade">
-                                        <span class="moeda">R$</span>
-                                        <input type="number" id="prodValorEmbalagem" class="com-moeda" min="0" step="0.01" placeholder="2,50" value="0.00" inputmode="decimal">
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="campo-custo">
-                                <label for="prodValorOutros" title="Gastos extras: energia, acabamento, fitas...">Outros Custos (R$)</label>
-                                <div class="input-com-unidade">
-                                    <span class="moeda">R$</span>
-                                    <input type="number" id="prodValorOutros" class="com-moeda" min="0" step="0.01" placeholder="0,00" value="0.00" inputmode="decimal">
-                                </div>
-                            </div>
-
-                            <div class="campo-custo campo-margem-inteira">
-                                <div class="rotulo-margem">
-                                    <label for="prodMargemLucro">Margem de Lucro (%)</label>
-                                    <div class="atalhos-margem">
-                                        <button type="button" onclick="$('prodMargemLucro').value=50; recalcularFormacaoPreco(true);">50%</button>
-                                        <button type="button" onclick="$('prodMargemLucro').value=100; recalcularFormacaoPreco(true);">100%</button>
-                                        <button type="button" onclick="$('prodMargemLucro').value=150; recalcularFormacaoPreco(true);">150%</button>
-                                        <button type="button" onclick="$('prodMargemLucro').value=200; recalcularFormacaoPreco(true);">200%</button>
-                                    </div>
-                                </div>
-                                <div class="input-com-unidade">
-                                    <input type="number" id="prodMargemLucro" min="0" step="1" placeholder="100" value="100" inputmode="numeric">
-                                    <span class="unidade">%</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Lado Direito: Painel Financeiro & Preço de Venda -->
-                        <div class="prod-painel-venda">
-                            <div class="prod-resumo-financeiro" id="resumoFormacaoPreco">
-                                <div class="resumo-linha">
-                                    <span>🧵 Filamento:</span>
-                                    <b id="resumoCustoFilamento">R$ 0,00</b>
-                                </div>
-                                <div class="resumo-linha">
-                                    <span>📦 Embalagem:</span>
-                                    <b id="resumoCustoEmbalagem">R$ 0,00</b>
-                                </div>
-                                <div class="resumo-linha">
-                                    <span>⚡ Outros Custos:</span>
-                                    <b id="resumoCustoOutros">R$ 0,00</b>
-                                </div>
-                                <div class="resumo-linha destaque-custo">
-                                    <span>💼 Custo Total Base:</span>
-                                    <b id="resumoCustoTotal">R$ 0,00</b>
-                                </div>
-                                <div class="resumo-linha destaque-margem">
-                                    <span>📈 Lucro Estimado:</span>
-                                    <b id="resumoValorMargem">+ R$ 0,00</b>
-                                </div>
-                            </div>
-
-                            <div class="prod-bloco-preco-final">
-                                <label for="prodPreco">Preço Final de Venda Sugerido</label>
-                                <div class="input-preco-destaque">
-                                    <span class="moeda-grande">R$</span>
-                                    <input type="number" id="prodPreco" min="0" step="0.01" placeholder="0,00" inputmode="decimal">
-                                </div>
-                                <button type="button" id="btnRecalcularPreco" class="btn-recalcular">
-                                    🔄 Recalcular Preço Sugerido
-                                </button>
-                            </div>
-                        </div>
-                    </div>
+                    <!-- Campos ocultos mantidos para compatibilidade de submit no cadastro -->
+                    <input type="hidden" id="prodTemEmbalagem" value="0">
+                    <input type="hidden" id="prodValorEmbalagem" value="0.00">
+                    <input type="hidden" id="prodValorOutros" value="0.00">
+                    <input type="hidden" id="prodMargemLucro" value="100">
+                    <input type="hidden" id="prodCustoFilamento" value="0.00">
                 </div>
 
-                <!-- Seção 4: Descrição Técnica -->
+                <!-- Seção 3: Descrição Técnica -->
                 <div class="prod-form-secao" style="margin-bottom: 0;">
                     <label for="prodDescricao" style="margin-top: 0;">Descrição Técnica &amp; Observações</label>
                     <textarea id="prodDescricao" rows="2" placeholder="Material recomendado, bico 0.4mm, preenchimento, instruções de acabamento..."></textarea>
@@ -275,6 +202,171 @@ require __DIR__ . '/includes/header.php';
                 <button type="submit" id="btnSalvarProduto" class="primario" style="font-weight: 700; padding: 0 20px;">Salvar Produto</button>
             </div>
         </form>
+    </div>
+</div>
+
+<!-- Modal Exclusivo: Custos & Formação de Preço de Venda -->
+<div id="modalCustosProduto" class="modal" hidden>
+    <div class="card modal-caixa modal-custos-eng" role="dialog" aria-modal="true" aria-labelledby="custosTituloModal" style="max-width: 780px;">
+        <!-- Cabeçalho -->
+        <div class="modal-cabecalho">
+            <div class="prod-modal-head-info">
+                <div class="prod-icone-circulo" style="background: rgba(16, 185, 129, 0.1); color: #059669; border-color: rgba(16, 185, 129, 0.25);">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/></svg>
+                </div>
+                <div>
+                    <h2 id="custosTituloModal">Custos &amp; Formação de Preço de Venda</h2>
+                    <p class="modal-sub" id="custosSubModal">Simule despesas, filamento via PEPS, embalagem e defina a margem de lucro.</p>
+                </div>
+            </div>
+            <button type="button" class="btn-icone" data-fechar-modal aria-label="Fechar">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
+        </div>
+
+        <!-- Corpo do Modal -->
+        <div class="modal-corpo" style="padding: 16px 20px;">
+            <div class="prod-card-precificacao" style="margin: 0; box-shadow: none;">
+                <div class="prod-prec-topo">
+                    <div class="prod-secao-titulo" style="margin: 0;">
+                        <span style="background:var(--primary);color:#fff;">$</span>
+                        <h3 id="custosProdNomeDestaque">Precificação do Produto</h3>
+                    </div>
+                    <span class="prod-tag-peps" id="custosTagOrigem">Calculadora dinâmica PEPS</span>
+                </div>
+
+                <div class="prod-prec-layout">
+                    <!-- Lado Esquerdo: Parâmetros de Custo -->
+                    <div class="prod-custos-grid">
+                        <div class="campo-custo">
+                            <div class="rotulo-com-badge">
+                                <label for="custosProdPeso">Filamento Total (g) <span class="obrigatorio">*</span></label>
+                                <span id="custosTagOrigemPeso" class="badge-origem-soma">🔒 Calculado</span>
+                            </div>
+                            <div class="input-com-unidade">
+                                <input type="number" id="custosProdPeso" min="0" step="0.1" placeholder="0.0" inputmode="decimal">
+                                <span class="unidade">g</span>
+                            </div>
+                            <small id="custosDicaProdPeso" class="prod-dica-campo" style="display:block;font-size:11px;color:var(--text-3);margin-top:3px;"></small>
+                        </div>
+
+                        <div class="campo-custo">
+                            <label for="custosProdCustoFilamento">Custo Filamento (R$)</label>
+                            <div class="input-com-unidade">
+                                <span class="moeda">R$</span>
+                                <input type="number" id="custosProdCustoFilamento" class="com-moeda" step="0.01" min="0" placeholder="0,00">
+                            </div>
+                        </div>
+
+                        <div class="campo-custo">
+                            <label for="custosProdTemEmbalagem">Embalagem?</label>
+                            <div class="grupo-embalagem">
+                                <select id="custosProdTemEmbalagem">
+                                    <option value="0">Não</option>
+                                    <option value="1">Sim</option>
+                                </select>
+                                <div id="custosBoxValorEmbalagem" style="display:none;" class="input-com-unidade">
+                                    <span class="moeda">R$</span>
+                                    <input type="number" id="custosProdValorEmbalagem" class="com-moeda" min="0" step="0.01" placeholder="2,50" value="0.00" inputmode="decimal">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="campo-custo">
+                            <label for="custosProdValorOutros" title="Gastos extras: energia, acabamento, fitas...">Outros Custos (R$)</label>
+                            <div class="input-com-unidade">
+                                <span class="moeda">R$</span>
+                                <input type="number" id="custosProdValorOutros" class="com-moeda" min="0" step="0.01" placeholder="0,00" value="0.00" inputmode="decimal">
+                            </div>
+                        </div>
+
+                        <div class="campo-custo campo-margem-inteira">
+                            <div class="rotulo-margem">
+                                <label for="custosProdMargemLucro">Margem de Lucro (%)</label>
+                                <div class="atalhos-margem">
+                                    <button type="button" onclick="definirMargemCustos(50)">50%</button>
+                                    <button type="button" onclick="definirMargemCustos(100)">100%</button>
+                                    <button type="button" onclick="definirMargemCustos(150)">150%</button>
+                                    <button type="button" onclick="definirMargemCustos(200)">200%</button>
+                                </div>
+                            </div>
+                            <div class="input-com-unidade">
+                                <input type="number" id="custosProdMargemLucro" min="0" step="1" placeholder="100" value="100" inputmode="numeric">
+                                <span class="unidade">%</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Lado Direito: Painel Financeiro & Preço de Venda -->
+                    <div class="prod-painel-venda">
+                        <div class="prod-resumo-financeiro">
+                            <div class="resumo-linha">
+                                <span>🧵 Filamento:</span>
+                                <b id="custosResumoFilamento">R$ 0,00</b>
+                            </div>
+                            <div class="resumo-linha">
+                                <span>📦 Embalagem:</span>
+                                <b id="custosResumoEmbalagem">R$ 0,00</b>
+                            </div>
+                            <div class="resumo-linha">
+                                <span>⚡ Outros Custos:</span>
+                                <b id="custosResumoOutros">R$ 0,00</b>
+                            </div>
+                            <div class="resumo-linha destaque-custo">
+                                <span>💼 Custo Total Base:</span>
+                                <b id="custosResumoCustoTotal">R$ 0,00</b>
+                            </div>
+                            <div class="resumo-linha destaque-margem">
+                                <span>📈 Lucro Estimado:</span>
+                                <b id="custosResumoValorMargem">+ R$ 0,00</b>
+                            </div>
+                        </div>
+
+                        <div class="prod-bloco-preco-final">
+                            <label for="custosProdPreco">PREÇO FINAL DE VENDA SUGERIDO</label>
+                            <div class="input-preco-destaque">
+                                <span class="moeda-grande">R$</span>
+                                <input type="number" id="custosProdPreco" min="0" step="0.01" placeholder="0,00" inputmode="decimal">
+                            </div>
+                            <button type="button" id="btnCustosRecalcular" class="btn-recalcular">
+                                🔄 Recalcular Preço Sugerido
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Detalhamento de Filamento por Cor (Memória de Cálculo PEPS) -->
+                <div id="custosBoxDetalhamentoPeps" style="margin-top:14px;border-top:1px solid var(--border);padding-top:10px;display:none;">
+                    <details>
+                        <summary style="font-size:12px;font-weight:700;color:var(--primary);cursor:pointer;user-select:none;">
+                            🔍 Ver Memória de Cálculo por Cor / Lote PEPS
+                        </summary>
+                        <div class="tabela-rolagem" style="margin-top:8px;max-height:160px;overflow-y:auto;">
+                            <table style="font-size:11.5px;">
+                                <thead>
+                                    <tr>
+                                        <th>Cor</th>
+                                        <th class="num">Consumo (g)</th>
+                                        <th>Filamento Vinculado</th>
+                                        <th class="num">Preço/kg</th>
+                                        <th class="num">Custo Parcial</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="custosTabelaCorPeps"></tbody>
+                            </table>
+                        </div>
+                    </details>
+                </div>
+            </div>
+        </div>
+
+        <!-- Rodapé do Modal de Custos -->
+        <div class="modal-rodape">
+            <button type="button" class="secundario" data-fechar-modal>Fechar</button>
+            <button type="button" id="btnSalvarCustosModal" class="primario" style="font-weight:700;padding:0 22px;">
+                💾 Salvar Precificação
+            </button>
+        </div>
     </div>
 </div>
 

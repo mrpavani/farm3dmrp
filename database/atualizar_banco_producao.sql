@@ -1,7 +1,7 @@
 -- ============================================================
 -- ATUALIZAÇÃO COMPLETA DA ESTRUTURA DO BANCO DE DADOS (PRODUÇÃO)
 -- Sistema: Fábrica 3D (MRP / Gestão de Impressão 3D)
--- Versão: 2.0 (Consolida migrações 001 até 013)
+-- Versão: 2.5 (Consolida todas as migrações 001 até 016)
 -- 
 -- CARACTERÍSTICAS DESTE SCRIPT:
 -- 1. 100% IDEMPOTENTE: Pode ser executado em bancos novos ou já existentes
@@ -11,11 +11,12 @@
 --    - Módulo de Usuários e Permissões (Admin)
 --    - Módulo de Clientes e Pedidos (Venda e Ordens Internas de Estoque)
 --    - Módulo de Produtos Simples, Compostos e Componentes (BOM)
---    - Módulo de Peças, Fotos e Variantes Multicor
+--    - Módulo de Peças, Fotos e Variantes Multicor (migração 015)
 --    - Módulo de Peso em Gramas e Tempo de Impressão (Peças e Cores)
---    - Módulo de Precificação Dinâmica (Embalagem, Custos Adicionais, Margem)
+--    - Módulo de Precificação Dinâmica e Custos PEPS (migração 016)
 --    - Módulo de Gestão de Filamentos (Lotes PEPS/FIFO, Custo por Grama, Movimentações)
 --    - Módulo de Histórico de Produção e Livro de Movimentações de Estoque
+--    - Painel Gerencial & Índices de Otimização Executiva (migração 016)
 --
 -- COMO EXECUTAR NO phpMyAdmin (Hostinger / cPanel / Local):
 -- 1. Acesse o phpMyAdmin
@@ -464,13 +465,58 @@ SET pp.estoque = (
 WHERE pp.estoque = 0
   AND EXISTS (SELECT 1 FROM `produto_pecas_cores` pc WHERE pc.peca_id = pp.id AND pc.estoque > 0);
 
+-- Sincronização de peso_gramas entre peça e variante de cor (migração 015)
+UPDATE `produto_pecas_cores` pc
+JOIN `produto_pecas` pp ON pp.id = pc.peca_id
+SET pc.peso_gramas = pp.peso_gramas
+WHERE (pc.peso_gramas IS NULL OR pc.peso_gramas = 0)
+  AND pp.peso_gramas > 0
+  AND (SELECT COUNT(*) FROM `produto_pecas_cores` c2 WHERE c2.peca_id = pp.id) = 1;
+
+UPDATE `produto_pecas` pp
+SET pp.peso_gramas = (
+    SELECT COALESCE(SUM(pc.peso_gramas), 0)
+    FROM `produto_pecas_cores` pc
+    WHERE pc.peca_id = pp.id
+      AND pc.peso_gramas IS NOT NULL
+)
+WHERE pp.peso_gramas = 0
+  AND EXISTS (SELECT 1 FROM `produto_pecas_cores` pc WHERE pc.peca_id = pp.id AND pc.peso_gramas > 0);
+
 -- 2. Preenchimento de preco_unitario em itens antigos que estejam zerados
 UPDATE `pedido_itens` pi
 JOIN `produtos` p ON p.id = pi.produto_id
 SET pi.preco_unitario = p.preco
 WHERE pi.preco_unitario = 0.00;
 
--- 3. Criação ou atualização do Usuário Administrador Padrão
+-- 3. Índices de Otimização para o Painel Gerencial & Relatórios (migração 016)
+SET @s = (SELECT IF((SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'produtos' AND INDEX_NAME = 'idx_produtos_estoque_ativo') > 0, 'SELECT 1', 'CREATE INDEX idx_produtos_estoque_ativo ON `produtos`(`estoque`, `ativo`)'));
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @s = (SELECT IF((SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'pedidos' AND INDEX_NAME = 'idx_pedidos_status_entrega') > 0, 'SELECT 1', 'CREATE INDEX idx_pedidos_status_entrega ON `pedidos`(`status`, `data_entrega_prometida`)'));
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @s = (SELECT IF((SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'pedido_itens' AND INDEX_NAME = 'idx_pedido_itens_prod_qtd') > 0, 'SELECT 1', 'CREATE INDEX idx_pedido_itens_prod_qtd ON `pedido_itens`(`produto_id`, `quantidade`, `quantidade_produzida`)'));
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- 4. Recálculo e sincronização de Custos Base e Formação de Preço (migração 016)
+UPDATE `produtos`
+SET `custo_total` = ROUND(
+    COALESCE(`custo_filamento`, 0) +
+    IF(`tem_embalagem` = 1, COALESCE(`valor_embalagem`, 0), 0) +
+    COALESCE(`valor_outros`, 0),
+    2
+)
+WHERE `custo_total` = 0.00
+  AND (`custo_filamento` > 0 OR `valor_embalagem` > 0 OR `valor_outros` > 0);
+
+UPDATE `produtos`
+SET `custo_filamento` = ROUND(`peso_gramas` * 0.09, 2),
+    `custo_total` = ROUND((`peso_gramas` * 0.09) + IF(`tem_embalagem` = 1, COALESCE(`valor_embalagem`, 0), 0) + COALESCE(`valor_outros`, 0), 2)
+WHERE (`custo_filamento` = 0.00 OR `custo_filamento` IS NULL)
+  AND `peso_gramas` > 0;
+
+-- 5. Criação ou atualização do Usuário Administrador Padrão
 -- Login: admin@mail.com | Senha padrão: A123456 (troque no primeiro acesso em Perfil)
 INSERT INTO `usuarios` (`id`, `nome`, `login`, `senha_hash`, `admin`, `ativo`)
 VALUES (1, 'Administrador', 'admin@mail.com', '$2y$12$c9jgI75ewT6lyFbhBP0z6O0MVaa2sO6A3wPjO8Ml3mMY1P.CwH8fG', 1, 1)

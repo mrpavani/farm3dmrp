@@ -391,12 +391,61 @@ if ($method === 'POST') {
 if ($method === 'PUT') {
     $id = (int) ($_GET['id'] ?? 0);
     if (!$id) jsonError('Informe o id do produto.');
-    $raw = readJsonBody();
-    $d = dadosProduto($raw);
-
     $existe = $pdo->prepare("SELECT COUNT(*) FROM produtos WHERE id = :id");
     $existe->execute(['id' => $id]);
     if (!(int) $existe->fetchColumn()) jsonError('Produto não encontrado.', 404);
+
+    $raw = readJsonBody();
+
+    // Se a requisição for apenas para atualizar custos e precificação
+    if (!empty($_GET['apenas_custos'])) {
+        $custoFilamento = max(0.0, (float)($raw['custo_filamento'] ?? 0.0));
+        $temEmbalagem = !empty($raw['tem_embalagem']) ? 1 : 0;
+        $valorEmbalagem = $temEmbalagem ? max(0.0, (float)($raw['valor_embalagem'] ?? 0.0)) : 0.0;
+        $valorOutros = max(0.0, (float)($raw['valor_outros'] ?? 0.0));
+        $margemLucro = isset($raw['margem_lucro']) && is_numeric($raw['margem_lucro']) ? (float)$raw['margem_lucro'] : 100.0;
+        $custoTotal = round($custoFilamento + $valorEmbalagem + $valorOutros, 2);
+        $preco = isset($raw['preco']) && is_numeric($raw['preco']) ? round((float)$raw['preco'], 2) : round($custoTotal * (1 + ($margemLucro / 100)), 2);
+        $peso = isset($raw['peso_gramas']) && is_numeric($raw['peso_gramas']) ? round((float)$raw['peso_gramas'], 2) : null;
+
+        $setPartes = [
+            "custo_filamento = :cf",
+            "tem_embalagem = :te",
+            "valor_embalagem = :ve",
+            "valor_outros = :vo",
+            "margem_lucro = :ml",
+            "custo_total = :ct",
+            "preco = :pr"
+        ];
+        $params = [
+            'cf' => $custoFilamento,
+            'te' => $temEmbalagem,
+            've' => $valorEmbalagem,
+            'vo' => $valorOutros,
+            'ml' => $margemLucro,
+            'ct' => $custoTotal,
+            'pr' => $preco,
+            'id' => $id
+        ];
+        if ($peso !== null && $peso > 0) {
+            $setPartes[] = "peso_gramas = :pg";
+            $params['pg'] = $peso;
+        }
+
+        $sql = "UPDATE produtos SET " . implode(', ', $setPartes) . " WHERE id = :id";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+
+        jsonResponse([
+            'ok' => true,
+            'custo_filamento' => $custoFilamento,
+            'custo_total' => $custoTotal,
+            'preco' => $preco,
+            'margem_lucro' => $margemLucro
+        ]);
+    }
+
+    $d = dadosProduto($raw);
     if (nomeDuplicado($pdo, $d['nome'], $id)) jsonError('Já existe outro produto com esse nome.');
 
     // Verifica se já existem peças cadastradas no banco

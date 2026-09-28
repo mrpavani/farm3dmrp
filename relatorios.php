@@ -10,6 +10,17 @@ require __DIR__ . '/includes/header.php';
 <main>
     <div id="msg" aria-live="polite"></div>
 
+    <div class="card nao-imprimir" style="background: linear-gradient(90deg, #eef2ff 0%, #f5f3ff 100%); border-color: #c7d2fe; padding: 12px 16px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+        <div style="display:flex; align-items:center; gap:10px;">
+            <span style="font-size:22px;">📊</span>
+            <div>
+                <strong style="color:var(--text); font-size:13.5px;">Procurando uma visão executiva para tomada de decisões?</strong>
+                <p style="margin:0; font-size:12px; color:var(--text-3);">Acesse o Painel Gerencial com números de produtos prontos, patrimônio em filamentos e carteira de pedidos.</p>
+            </div>
+        </div>
+        <a href="dashboard.php" class="primario pequeno" style="text-decoration:none; font-weight:700;">Acessar Painel Gerencial ↗</a>
+    </div>
+
     <div class="card nao-imprimir">
         <div class="filtros">
             <div>

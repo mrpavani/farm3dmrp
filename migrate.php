@@ -344,7 +344,27 @@ execSafe($pdo, "
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 ", "Tabela <b>filamento_movimentacoes</b> verificada/criada.");
 
-// 13. Administrador padrão
+// 13. Migração 016: Índices de Otimização do Painel Gerencial & Sincronização de Custos Base
+execSafe($pdo, "CREATE INDEX idx_produtos_estoque_ativo ON produtos(estoque, ativo)", "Índice de otimização de estoque pronto criado em produtos.", "Índice idx_produtos_estoque_ativo já existe.");
+execSafe($pdo, "CREATE INDEX idx_pedidos_status_entrega ON pedidos(status, data_entrega_prometida)", "Índice de prazos e status criado em pedidos.", "Índice idx_pedidos_status_entrega já existe.");
+execSafe($pdo, "CREATE INDEX idx_pedido_itens_prod_qtd ON pedido_itens(produto_id, quantidade, quantidade_produzida)", "Índice de demandas criado em pedido_itens.", "Índice idx_pedido_itens_prod_qtd já existe.");
+
+try {
+    $pdo->exec("
+        UPDATE produtos
+        SET custo_total = ROUND(COALESCE(custo_filamento, 0) + IF(tem_embalagem = 1, COALESCE(valor_embalagem, 0), 0) + COALESCE(valor_outros, 0), 2)
+        WHERE custo_total = 0.00 AND (custo_filamento > 0 OR valor_embalagem > 0 OR valor_outros > 0);
+    ");
+    $pdo->exec("
+        UPDATE produtos
+        SET custo_filamento = ROUND(peso_gramas * 0.09, 2),
+            custo_total = ROUND((peso_gramas * 0.09) + IF(tem_embalagem = 1, COALESCE(valor_embalagem, 0), 0) + COALESCE(valor_outros, 0), 2)
+        WHERE (custo_filamento = 0.00 OR custo_filamento IS NULL) AND peso_gramas > 0;
+    ");
+    echo "<div class='msg ok'>✅ Custos base e estimativas PEPS sincronizados nos produtos.</div>";
+} catch (PDOException $e) {}
+
+// 14. Administrador padrão
 try {
     $pdo->exec("
         INSERT INTO usuarios (id, nome, login, senha_hash, admin, ativo)
@@ -356,10 +376,10 @@ try {
 
 ?>
     <h2>🎉 Migração concluída com sucesso!</h2>
-    <p>O banco de dados está sincronizado com todas as tabelas, colunas, módulos de precificação e controle de filamento.</p>
+    <p>O banco de dados está 100% sincronizado com todas as tabelas, colunas, módulos de precificação, controle de filamento e Painel Gerencial.</p>
     
     <div class="actions">
-        <a href="fabrica.php" class="btn">Painel da Fábrica</a>
+        <a href="dashboard.php" class="btn" style="background:#4f46e5;">📊 Painel Gerencial</a>
         <a href="produtos.php" class="btn">Catálogo de Produtos</a>
         <a href="filamentos.php" class="btn">Estoque de Filamentos</a>
         <a href="pedidos.php" class="btn">Gestão de Pedidos</a>
