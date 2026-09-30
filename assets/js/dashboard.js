@@ -371,7 +371,8 @@ async function abrirCustosProduto(id) {
             }
             if ($('custosBoxDetalhamentoPeps')) $('custosBoxDetalhamentoPeps').style.display = 'block';
 
-            if (!detalhe.custo_filamento || Number(detalhe.custo_filamento) === 0) {
+            const custoAtual = Number(detalhe.custo_filamento) || 0;
+            if (custoAtual <= 0 || (peso > 50 && custoAtual < 1.0)) {
                 if ($('custosProdCustoFilamento')) $('custosProdCustoFilamento').value = Number(cFil.custo_filamento).toFixed(2);
             }
         } else {
@@ -389,9 +390,17 @@ async function abrirCustosProduto(id) {
 function recalcularCustosModal(forcarAtualizarPreco = true) {
     const peso = parseFloat($('custosProdPeso')?.value) || 0;
     let custoFil = parseFloat($('custosProdCustoFilamento')?.value);
+    const cFil = custosProdutoAtualDados?.calculo_custo_filamento;
 
-    if ((isNaN(custoFil) || custoFil === 0) && peso > 0) {
-        custoFil = round2(peso * 0.0900);
+    if (forcarAtualizarPreco && cFil && Number(cFil.custo_filamento) > 0) {
+        custoFil = Number(cFil.custo_filamento);
+        if ($('custosProdCustoFilamento')) $('custosProdCustoFilamento').value = custoFil.toFixed(2);
+    } else if ((isNaN(custoFil) || custoFil === 0) && peso > 0) {
+        if (cFil && Number(cFil.custo_filamento) > 0) {
+            custoFil = Number(cFil.custo_filamento);
+        } else {
+            custoFil = round2(peso * 0.0900);
+        }
         if ($('custosProdCustoFilamento')) $('custosProdCustoFilamento').value = custoFil.toFixed(2);
     } else if (isNaN(custoFil) || custoFil < 0) {
         custoFil = 0;

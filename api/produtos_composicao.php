@@ -451,6 +451,30 @@ if ($method === 'POST') {
             'id' => $paiId,
         ]);
 
+        // Sincroniza custo de filamento e preço do produto pai com base nas novas peças
+        $infoCusto = calcularCustoFilamentoProduto($pdo, $paiId);
+        if (!empty($infoCusto['custo_filamento']) && (float)$infoCusto['custo_filamento'] > 0) {
+            $custoFil = (float)$infoCusto['custo_filamento'];
+            $stmtCustoAntigo = $pdo->prepare("SELECT tem_embalagem, valor_embalagem, valor_outros, margem_lucro, preco, custo_filamento, custo_total FROM produtos WHERE id = :id");
+            $stmtCustoAntigo->execute(['id' => $paiId]);
+            $pAtual = $stmtCustoAntigo->fetch();
+            if ($pAtual) {
+                $vEmb = (float)($pAtual['valor_embalagem'] ?? 0);
+                $vOut = (float)($pAtual['valor_outros'] ?? 0);
+                $marg = (float)($pAtual['margem_lucro'] ?: 100.0);
+                $cTotal = round($custoFil + $vEmb + $vOut, 2);
+                $precoAntigo = (float)($pAtual['preco'] ?? 0);
+                $cTotalAntigo = (float)($pAtual['custo_total'] ?? 0);
+                $precoEsperadoAntigo = round($cTotalAntigo * (1 + ($marg / 100)), 2);
+                $precoNovo = $precoAntigo;
+                if ($precoAntigo <= 0 || $precoAntigo < $cTotal || abs($precoAntigo - $precoEsperadoAntigo) < 0.05) {
+                    $precoNovo = round($cTotal * (1 + ($marg / 100)), 2);
+                }
+                $pdo->prepare("UPDATE produtos SET custo_filamento = :cf, custo_total = :ct, preco = :pr WHERE id = :id")
+                    ->execute(['cf' => $custoFil, 'ct' => $cTotal, 'pr' => $precoNovo, 'id' => $paiId]);
+            }
+        }
+
         $pdo->commit();
 
         jsonResponse([

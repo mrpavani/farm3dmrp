@@ -377,6 +377,25 @@ if ($method === 'POST') {
             }
         }
 
+        // Recalcula custos e formação de preço com base no PEPS e na composição de peças/cores
+        $infoCusto = calcularCustoFilamentoProduto($pdo, $novoId);
+        $custoFilCalculado = (float)($infoCusto['custo_filamento'] ?? 0.0);
+        if ($custoFilCalculado > 0) {
+            $custoEnviado = (float)($d['custo_filamento'] ?? 0.0);
+            $deveAtualizar = ($custoEnviado <= 0) || !empty($pecasValidas) || !empty($coresValidas) || empty($raw['custo_manual']);
+            if ($deveAtualizar) {
+                $custoTotalAtual = round($custoFilCalculado + $d['valor_embalagem'] + $d['valor_outros'], 2);
+                $precoAtual = (float)$d['preco'];
+                $custoTotalAntigo = (float)$d['custo_total'];
+                $precoEsperadoAntigo = round($custoTotalAntigo * (1 + ($d['margem_lucro'] / 100)), 2);
+                if ($precoAtual <= 0 || $precoAtual < $custoTotalAtual || abs($precoAtual - $precoEsperadoAntigo) < 0.05 || empty($raw['preco_manual'])) {
+                    $precoAtual = round($custoTotalAtual * (1 + ($d['margem_lucro'] / 100)), 2);
+                }
+                $pdo->prepare("UPDATE produtos SET custo_filamento = :cf, custo_total = :ct, preco = :pr WHERE id = :id")
+                    ->execute(['cf' => $custoFilCalculado, 'ct' => $custoTotalAtual, 'pr' => $precoAtual, 'id' => $novoId]);
+            }
+        }
+
         $pdo->commit();
         jsonResponse(['id' => $novoId], 201);
     } catch (Exception $e) {
@@ -664,6 +683,25 @@ if ($method === 'PUT') {
                         'tempo_producao_segundos' => $cv['tempo_producao_segundos'],
                     ]);
                 }
+            }
+        }
+
+        // Recalcula custos e formação de preço com base no PEPS e na composição de peças/cores
+        $infoCusto = calcularCustoFilamentoProduto($pdo, $id);
+        $custoFilCalculado = (float)($infoCusto['custo_filamento'] ?? 0.0);
+        if ($custoFilCalculado > 0) {
+            $custoEnviado = (float)($d['custo_filamento'] ?? 0.0);
+            $deveAtualizar = ($custoEnviado <= 0) || $temPecas || !empty($coresValidas) || empty($raw['custo_manual']);
+            if ($deveAtualizar) {
+                $custoTotalAtual = round($custoFilCalculado + $d['valor_embalagem'] + $d['valor_outros'], 2);
+                $precoAtual = (float)$d['preco'];
+                $custoTotalAntigo = (float)$d['custo_total'];
+                $precoEsperadoAntigo = round($custoTotalAntigo * (1 + ($d['margem_lucro'] / 100)), 2);
+                if ($precoAtual <= 0 || $precoAtual < $custoTotalAtual || abs($precoAtual - $precoEsperadoAntigo) < 0.05 || empty($raw['preco_manual'])) {
+                    $precoAtual = round($custoTotalAtual * (1 + ($d['margem_lucro'] / 100)), 2);
+                }
+                $pdo->prepare("UPDATE produtos SET custo_filamento = :cf, custo_total = :ct, preco = :pr WHERE id = :id")
+                    ->execute(['cf' => $custoFilCalculado, 'ct' => $custoTotalAtual, 'pr' => $precoAtual, 'id' => $id]);
             }
         }
 

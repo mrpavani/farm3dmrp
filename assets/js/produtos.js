@@ -114,19 +114,67 @@ function parseTempoParaSegundos(str) {
     return Math.max(0, parseInt(s, 10) || 0);
 }
 
-// Variáveis do modal exclusivo de custos
+// Variáveis do modal exclusivo de custos e precificação
 let custosProdutoAtualId = null;
 let custosProdutoAtualDados = null;
+let precoManualCadastrado = false;
+let custoFilManual = false;
+let mapaCustosPorCor = {};
+
+function calcularCustoEstimadoFilamento(tipo, pesoTotal) {
+    let custoTotal = 0;
+    let temCoresDetalhadas = false;
+
+    if (tipo === 'composto' && modalProdPecas && modalProdPecas.length > 0) {
+        modalProdPecas.forEach(pec => {
+            const q = Math.max(1, parseInt(pec.quantidade) || 1);
+            if (pec.cores && pec.cores.length > 0) {
+                pec.cores.forEach(c => {
+                    const cPeso = parseFloat(c.peso_gramas) || 0;
+                    if (cPeso > 0) {
+                        temCoresDetalhadas = true;
+                        const corNome = (c.cor || '').trim().toLowerCase();
+                        const precoG = mapaCustosPorCor[corNome] || 0.0900;
+                        custoTotal += (cPeso * q) * precoG;
+                    }
+                });
+            } else {
+                const pPeso = parseFloat(pec.peso_gramas) || 0;
+                if (pPeso > 0) {
+                    custoTotal += (pPeso * q) * 0.0900;
+                }
+            }
+        });
+    } else if (tipo === 'simples' && $('checkProdMulticor') && $('checkProdMulticor').checked && modalProdCores && modalProdCores.length > 0) {
+        modalProdCores.forEach(c => {
+            const cPeso = parseFloat(c.peso_gramas) || 0;
+            if (cPeso > 0) {
+                temCoresDetalhadas = true;
+                const corNome = (c.cor || '').trim().toLowerCase();
+                const precoG = mapaCustosPorCor[corNome] || 0.0900;
+                custoTotal += cPeso * precoG;
+            }
+        });
+    }
+
+    if (custoTotal > 0) {
+        return round2(custoTotal);
+    }
+    return round2((pesoTotal || 0) * 0.0900);
+}
 
 function recalcularFormacaoPreco(forcarAtualizarPreco = false) {
     const peso = parseFloat($('prodPeso')?.value) || 0;
+    const tipo = $('prodTipo')?.value || 'simples';
+    const temPecas = tipo === 'composto' && modalProdPecas && modalProdPecas.length > 0;
+    const ehMulticor = tipo === 'simples' && $('checkProdMulticor') && $('checkProdMulticor').checked;
+
     let custoFil = parseFloat($('prodCustoFilamento')?.value);
     
-    if ((isNaN(custoFil) || custoFil === 0) && peso > 0) {
-        custoFil = round2(peso * 0.0900);
+    // Sempre recalcula dinamicamente se for composto ou multicor, ou se não foi forçado manualmente
+    if (!custoFilManual || temPecas || ehMulticor || isNaN(custoFil) || custoFil <= 0) {
+        custoFil = calcularCustoEstimadoFilamento(tipo, peso);
         if ($('prodCustoFilamento')) $('prodCustoFilamento').value = custoFil.toFixed(2);
-    } else if (isNaN(custoFil) || custoFil < 0) {
-        custoFil = 0;
     }
 
     const temEmb = $('prodTemEmbalagem')?.value === '1';
@@ -142,8 +190,10 @@ function recalcularFormacaoPreco(forcarAtualizarPreco = false) {
     if ($('prodResumoRapidoTotal')) $('prodResumoRapidoTotal').textContent = App.moeda(custoTotal);
     if ($('prodResumoRapidoMargem')) $('prodResumoRapidoMargem').textContent = `${margem}%`;
 
-    if (forcarAtualizarPreco && $('prodPreco') && (!$('prodPreco').value || parseFloat($('prodPreco').value) === 0)) {
-        $('prodPreco').value = precoSugerido > 0 ? precoSugerido.toFixed(2) : '0.00';
+    if (forcarAtualizarPreco || !precoManualCadastrado) {
+        if ($('prodPreco')) {
+            $('prodPreco').value = precoSugerido > 0 ? precoSugerido.toFixed(2) : '0.00';
+        }
     }
 }
 
@@ -212,7 +262,8 @@ async function abrirCustosProduto(id) {
             }
             if ($('custosBoxDetalhamentoPeps')) $('custosBoxDetalhamentoPeps').style.display = 'block';
 
-            if (!detalhe.custo_filamento || Number(detalhe.custo_filamento) === 0) {
+            const custoAtual = Number(detalhe.custo_filamento) || 0;
+            if (custoAtual <= 0 || (peso > 50 && custoAtual < 1.0)) {
                 if ($('custosProdCustoFilamento')) $('custosProdCustoFilamento').value = Number(cFil.custo_filamento).toFixed(2);
             }
         } else {
@@ -230,9 +281,17 @@ async function abrirCustosProduto(id) {
 function recalcularCustosModal(forcarAtualizarPreco = true) {
     const peso = parseFloat($('custosProdPeso')?.value) || 0;
     let custoFil = parseFloat($('custosProdCustoFilamento')?.value);
+    const cFil = custosProdutoAtualDados?.calculo_custo_filamento;
 
-    if ((isNaN(custoFil) || custoFil === 0) && peso > 0) {
-        custoFil = round2(peso * 0.0900);
+    if (forcarAtualizarPreco && cFil && Number(cFil.custo_filamento) > 0) {
+        custoFil = Number(cFil.custo_filamento);
+        if ($('custosProdCustoFilamento')) $('custosProdCustoFilamento').value = custoFil.toFixed(2);
+    } else if ((isNaN(custoFil) || custoFil === 0) && peso > 0) {
+        if (cFil && Number(cFil.custo_filamento) > 0) {
+            custoFil = Number(cFil.custo_filamento);
+        } else {
+            custoFil = round2(peso * 0.0900);
+        }
         if ($('custosProdCustoFilamento')) $('custosProdCustoFilamento').value = custoFil.toFixed(2);
     } else if (isNaN(custoFil) || custoFil < 0) {
         custoFil = 0;
@@ -323,8 +382,16 @@ async function carregarSugestoesCores() {
     try {
         const lista = await App.api('api/filamentos.php');
         const coresSet = new Set();
+        mapaCustosPorCor = {};
         (lista || []).forEach(f => {
-            if (f.cor && f.cor.trim()) coresSet.add(f.cor.trim());
+            if (f.cor && f.cor.trim()) {
+                const corTrim = f.cor.trim();
+                coresSet.add(corTrim);
+                const precoG = Number(f.custo_peps_g) || Number(f.custo_medio_g) || ((Number(f.preco_kg) || 90) / 1000);
+                if (precoG > 0) {
+                    mapaCustosPorCor[corTrim.toLowerCase()] = precoG;
+                }
+            }
         });
         ['Branco', 'Preto', 'Cinza', 'Vermelho', 'Azul', 'Amarelo', 'Verde', 'Laranja', 'Roxo', 'Rosa', 'Marrom', 'Dourado', 'Prata', 'Transparente', 'Bege'].forEach(c => coresSet.add(c));
         sugestoesCoresCache = Array.from(coresSet).sort((a, b) => a.localeCompare(b, 'pt-BR'));
@@ -808,6 +875,9 @@ function atualizarPecaModalProduto(pidx, campo, valor) {
 
 async function abrirModal(p = null) {
     editandoId = p ? p.id : null;
+    precoManualCadastrado = (p && p.preco !== null && Number(p.preco) > 0);
+    custoFilManual = (p && p.custo_filamento !== null && Number(p.custo_filamento) > 0 && !(Number(p.peso_gramas) > 50 && Number(p.custo_filamento) < 1.0));
+
     $('formProduto').reset();
     $('prodNome').value = p ? p.nome : '';
     $('prodTipo').value = p ? (p.tipo || 'simples') : 'simples';
@@ -934,6 +1004,8 @@ async function salvar(ev) {
         nome: $('prodNome').value.trim(),
         tipo: tipo,
         preco: parseFloat($('prodPreco').value) || 0,
+        preco_manual: precoManualCadastrado ? 1 : 0,
+        custo_manual: custoFilManual ? 1 : 0,
         estoque: parseInt($('prodEstoque').value) || 0,
         peso_gramas: parseFloat($('prodPeso')?.value) || 0,
         tempo_producao_segundos: parseTempoParaSegundos($('prodTempo')?.value),
@@ -1575,12 +1647,17 @@ $('btnSalvarBOM')?.addEventListener('click', salvarBOM);
 
 // Listeners de precificação dinâmica
 $('prodPeso')?.addEventListener('input', () => recalcularFormacaoPreco(true));
-$('prodCustoFilamento')?.addEventListener('input', () => recalcularFormacaoPreco(true));
+$('prodPreco')?.addEventListener('input', () => { precoManualCadastrado = true; });
+$('prodCustoFilamento')?.addEventListener('input', () => { custoFilManual = true; recalcularFormacaoPreco(true); });
 $('prodTemEmbalagem')?.addEventListener('change', () => recalcularFormacaoPreco(true));
 $('prodValorEmbalagem')?.addEventListener('input', () => recalcularFormacaoPreco(true));
 $('prodValorOutros')?.addEventListener('input', () => recalcularFormacaoPreco(true));
 $('prodMargemLucro')?.addEventListener('input', () => recalcularFormacaoPreco(true));
-$('btnRecalcularPreco')?.addEventListener('click', () => recalcularFormacaoPreco(true));
+$('btnRecalcularPreco')?.addEventListener('click', () => {
+    precoManualCadastrado = false;
+    custoFilManual = false;
+    recalcularFormacaoPreco(true);
+});
 
 // Atalho do modal de produto para abrir calculadora de custos
 $('btnAbrirCustosDoProduto')?.addEventListener('click', () => {
