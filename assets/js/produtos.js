@@ -381,8 +381,8 @@ function novaPecaModalProd(nome = '', qtd = 1, tempo = '00:00:00', peso = '') {
 }
 
 function atualizarModoModalProduto() {
-    const tipo = $('prodTipo') ? $('prodTipo').value : 'composto';
-    const temPecas = tipo === 'composto' || (modalProdPecas && modalProdPecas.length > 0);
+    const tipo = $('prodTipo') ? $('prodTipo').value : 'simples';
+    const temPecas = tipo === 'composto';
     const boxPecas = $('boxPecasProduto');
     const boxMulticor = $('boxMulticorProduto');
     const inputTempo = $('prodTempo');
@@ -810,20 +810,20 @@ async function abrirModal(p = null) {
     editandoId = p ? p.id : null;
     $('formProduto').reset();
     $('prodNome').value = p ? p.nome : '';
-    $('prodTipo').value = p ? (p.tipo || 'simples') : 'composto';
+    $('prodTipo').value = p ? (p.tipo || 'simples') : 'simples';
     $('prodPreco').value = p ? Number(p.preco).toFixed(2) : '';
     $('prodEstoque').value = p ? Number(p.estoque) : '0';
-    $('prodPeso').value = p && Number(p.peso_gramas) > 0 ? Number(p.peso_gramas) : '';
-    $('prodTempo').value = p ? (p.tempo_producao_formatado || (p.tempo_producao_segundos ? formatarSegundosHHMMSS(p.tempo_producao_segundos) : '')) : '';
+    if ($('prodPeso')) $('prodPeso').value = p && Number(p.peso_gramas) > 0 ? Number(p.peso_gramas) : '';
+    if ($('prodTempo')) $('prodTempo').value = p ? (p.tempo_producao_formatado || (p.tempo_producao_segundos ? formatarSegundosHHMMSS(p.tempo_producao_segundos) : '')) : '';
     $('prodAtivo').value = p ? String(p.ativo) : '1';
     $('prodDescricao').value = p ? (p.descricao || '') : '';
 
     // Campos de Precificação
-    $('prodTemEmbalagem').value = p && Number(p.tem_embalagem) === 1 ? '1' : '0';
-    $('prodValorEmbalagem').value = p && p.valor_embalagem ? Number(p.valor_embalagem).toFixed(2) : '0.00';
-    $('prodValorOutros').value = p && p.valor_outros ? Number(p.valor_outros).toFixed(2) : '0.00';
-    $('prodMargemLucro').value = p && p.margem_lucro !== undefined && p.margem_lucro !== null ? Number(p.margem_lucro) : 100;
-    $('prodCustoFilamento').value = p && p.custo_filamento ? Number(p.custo_filamento).toFixed(2) : '';
+    if ($('prodTemEmbalagem')) $('prodTemEmbalagem').value = p && Number(p.tem_embalagem) === 1 ? '1' : '0';
+    if ($('prodValorEmbalagem')) $('prodValorEmbalagem').value = p && p.valor_embalagem ? Number(p.valor_embalagem).toFixed(2) : '0.00';
+    if ($('prodValorOutros')) $('prodValorOutros').value = p && p.valor_outros ? Number(p.valor_outros).toFixed(2) : '0.00';
+    if ($('prodMargemLucro')) $('prodMargemLucro').value = p && p.margem_lucro !== undefined && p.margem_lucro !== null ? Number(p.margem_lucro) : 100;
+    if ($('prodCustoFilamento')) $('prodCustoFilamento').value = p && p.custo_filamento ? Number(p.custo_filamento).toFixed(2) : '';
 
     $('prodTituloModal').textContent = p ? 'Editar produto' : 'Novo produto';
     $('prodSubModal').textContent = p ? p.nome : 'Cadastre produtos com tempo, filamento por cor ou composição de peças.';
@@ -832,7 +832,7 @@ async function abrirModal(p = null) {
     modalProdCores = [];
     modalProdPecas = [];
 
-    // Se for novo produto composto, já cria 2 linhas de peças por padrão para facilidade do usuário
+    // Se for produto composto, cria 2 linhas de peças por padrão para facilidade do usuário
     if (!p && $('prodTipo').value === 'composto') {
         modalProdPecas = [novaPecaModalProd(), novaPecaModalProd()];
     }
@@ -907,11 +907,12 @@ async function abrirModal(p = null) {
                 if (detalhe.calculo_custo_filamento) {
                     const cFil = detalhe.calculo_custo_filamento;
                     if (cFil.custo_filamento > 0) {
-                        $('prodCustoFilamento').value = Number(cFil.custo_filamento).toFixed(2);
+                        if ($('prodCustoFilamento')) $('prodCustoFilamento').value = Number(cFil.custo_filamento).toFixed(2);
                         if (cFil.peso_total_gramas > 0 && !detalhe.tem_pecas && (!modalProdCores.length)) {
-                            $('prodPeso').value = Number(cFil.peso_total_gramas);
+                            if ($('prodPeso')) $('prodPeso').value = Number(cFil.peso_total_gramas);
                         }
-                        $('tagCustoOrigem').textContent = `PEPS ativo (${cFil.cores?.length || 0} cor/cores)`;
+                        if ($('tagCustoOrigem')) $('tagCustoOrigem').textContent = `PEPS ativo (${cFil.cores?.length || 0} cor/cores)`;
+                        if ($('custosTagOrigem')) $('custosTagOrigem').textContent = `PEPS ativo (${cFil.cores?.length || 0} cor/cores)`;
                     }
                 }
                 recalcularFormacaoPreco(false);
@@ -924,23 +925,23 @@ const editar = id => abrirModal(produtos.find(p => p.id === id));
 
 async function salvar(ev) {
     ev.preventDefault();
-    const temEmb = $('prodTemEmbalagem').value === '1';
-    const tipo = $('prodTipo').value;
-    const temPecas = tipo === 'composto' || modalProdPecas.length > 0;
+    const temEmb = $('prodTemEmbalagem')?.value === '1';
+    const tipo = $('prodTipo') ? $('prodTipo').value : 'simples';
+    const temPecas = tipo === 'composto';
     const ehMulticor = !temPecas && $('checkProdMulticor') && $('checkProdMulticor').checked;
 
     const payload = {
         nome: $('prodNome').value.trim(),
-        tipo: temPecas ? 'composto' : tipo,
+        tipo: tipo,
         preco: parseFloat($('prodPreco').value) || 0,
         estoque: parseInt($('prodEstoque').value) || 0,
-        peso_gramas: parseFloat($('prodPeso').value) || 0,
-        tempo_producao_segundos: parseTempoParaSegundos($('prodTempo').value),
+        peso_gramas: parseFloat($('prodPeso')?.value) || 0,
+        tempo_producao_segundos: parseTempoParaSegundos($('prodTempo')?.value),
         tem_embalagem: temEmb ? 1 : 0,
-        valor_embalagem: temEmb ? (parseFloat($('prodValorEmbalagem').value) || 0) : 0,
-        valor_outros: parseFloat($('prodValorOutros').value) || 0,
-        margem_lucro: parseFloat($('prodMargemLucro').value) || 0,
-        custo_filamento: parseFloat($('prodCustoFilamento').value) || 0,
+        valor_embalagem: temEmb ? (parseFloat($('prodValorEmbalagem')?.value) || 0) : 0,
+        valor_outros: parseFloat($('prodValorOutros')?.value) || 0,
+        margem_lucro: parseFloat($('prodMargemLucro')?.value) || 0,
+        custo_filamento: parseFloat($('prodCustoFilamento')?.value) || 0,
         ativo: $('prodAtivo').value === '1',
         descricao: $('prodDescricao').value.trim(),
     };
@@ -1543,10 +1544,15 @@ $('filtroTipo')?.addEventListener('change', renderizar);
 
 $('prodTipo')?.addEventListener('change', () => {
     const tipo = $('prodTipo').value;
-    if (tipo === 'composto' && (!modalProdPecas || !modalProdPecas.length)) {
-        modalProdPecas = [novaPecaModalProd(), novaPecaModalProd()];
+    if (tipo === 'composto') {
+        if (!modalProdPecas || !modalProdPecas.length) {
+            modalProdPecas = [novaPecaModalProd(), novaPecaModalProd()];
+        }
         renderizarPecasModalProduto();
     } else {
+        if (modalProdPecas) {
+            modalProdPecas = modalProdPecas.filter(p => (p.nome || '').trim() !== '');
+        }
         atualizarModoModalProduto();
     }
 });

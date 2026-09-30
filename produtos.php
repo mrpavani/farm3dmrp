@@ -88,8 +88,8 @@ require __DIR__ . '/includes/header.php';
                         <div class="campo-tipo">
                             <label for="prodTipo">Estrutura do Produto <span class="obrigatorio">*</span></label>
                             <select id="prodTipo">
+                                <option value="simples" selected>🔹 Produto Simples (Peça única, monocor ou multicor)</option>
                                 <option value="composto">🧩 Produto Composto (Montagem de Peças / Componentes)</option>
-                                <option value="simples">🔹 Produto Simples (Peça única, monocor ou multicor)</option>
                                 <option value="componente">⚙️ Peça Avulsa / Reposição</option>
                             </select>
                             <div id="prodTipoExplicacao" class="prod-tipo-dica"></div>
@@ -107,6 +107,17 @@ require __DIR__ . '/includes/header.php';
                                 <option value="1">Ativo (visível para pedidos)</option>
                                 <option value="0">Inativo</option>
                             </select>
+                        </div>
+                        <div>
+                            <div class="rotulo-com-badge">
+                                <label for="prodPeso">Filamento Total (g) <span class="obrigatorio">*</span></label>
+                                <span id="tagOrigemPeso" class="badge-origem-soma">🔒 Soma</span>
+                            </div>
+                            <div class="input-com-unidade">
+                                <input type="number" id="prodPeso" min="0" step="0.1" placeholder="45.0" inputmode="decimal">
+                                <span class="unidade">g</span>
+                            </div>
+                            <small id="dicaProdPeso" class="prod-dica-campo"></small>
                         </div>
                         <div>
                             <div class="rotulo-com-badge">
