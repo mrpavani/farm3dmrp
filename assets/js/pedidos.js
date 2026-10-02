@@ -116,6 +116,44 @@ function filtrarPorKpi(status) {
     carregar();
 }
 
+function formatarItemLinhaTabela(i, pedidoId) {
+    const qtd = i.quantidade;
+    const nome = i.produto_nome || 'Produto';
+    const corVar = (i.cor_variacao || '').trim();
+
+    let tagCor = '';
+    if (corVar) {
+        const partes = corVar.split('|').map(s => s.trim()).filter(Boolean);
+        if (partes.length === 1) {
+            tagCor = `<span class="tag-item-tabela-cor" title="${App.esc(corVar)}">${App.esc(partes[0])}</span>`;
+        } else if (partes.length === 2) {
+            tagCor = `<span class="tag-item-tabela-cor" title="${App.esc(corVar)}">${App.esc(partes.join(' · '))}</span>`;
+        } else {
+            tagCor = `<span class="tag-item-tabela-cor tag-pecas-qtd" title="${App.esc(corVar)}">${partes.length} peças</span>`;
+        }
+    }
+
+    return `
+        <div class="linha-item-celula" onclick="verDetalhes(${pedidoId})" role="button" tabindex="0" title="${App.esc(nome)}${corVar ? ' (' + App.esc(corVar) + ')' : ''} · Clique para ver detalhes">
+            <span class="badge-item-qtd">${qtd}×</span>
+            <span class="badge-item-nome">${App.esc(nome)}</span>
+            ${tagCor}
+        </div>
+    `;
+}
+
+function toggleMaisItens(pedidoId, btn) {
+    const bloco = $(`extras-pedido-${pedidoId}`);
+    if (!bloco) return;
+    const expandido = !bloco.hidden;
+    bloco.hidden = expandido;
+    const qtdExtras = bloco.children.length;
+    btn.textContent = expandido
+        ? `+ ${qtdExtras} outro${qtdExtras === 1 ? '' : 's'} produto${qtdExtras === 1 ? '' : 's'}...`
+        : `▲ Recolher ${qtdExtras} produto${qtdExtras === 1 ? '' : 's'}`;
+}
+window.toggleMaisItens = toggleMaisItens;
+
 function renderizar() {
     renderizarKpis();
 
@@ -147,13 +185,23 @@ function renderizar() {
         const partesNome = nomeCliente.trim().split(/\s+/);
         const iniciais = (partesNome[0][0] + (partesNome.length > 1 ? partesNome[partesNome.length - 1][0] : '')).toUpperCase();
 
-        const chipsItens = p.itens.map(i => `
-            <span class="chip-item-pedido" onclick="verDetalhes(${p.id})" style="cursor:pointer;" title="${App.esc(i.produto_nome)}${i.cor_variacao ? ' (' + App.esc(i.cor_variacao) + ')' : ''}: ${i.quantidade_produzida || 0} de ${i.quantidade} produzidos (Clique para ver detalhes)">
-                <strong class="chip-qtd">${i.quantidade}×</strong>
-                <span class="chip-nome">${App.esc(i.produto_nome)}</span>
-                ${i.cor_variacao ? `<span class="chip-cor-var" style="font-size:10.5px;padding:1px 5px;background:#eef2ff;color:#4f46e5;border-radius:4px;border:1px solid #c7d2fe;margin-left:4px;" title="Variação de Cor">${App.esc(i.cor_variacao)}</span>` : ''}
-            </span>
-        `).join('');
+        const LIMITE_ITENS_TABELA = 3;
+        let htmlItens = '';
+        if (p.itens.length <= LIMITE_ITENS_TABELA) {
+            htmlItens = p.itens.map(i => formatarItemLinhaTabela(i, p.id)).join('');
+        } else {
+            const visiveis = p.itens.slice(0, LIMITE_ITENS_TABELA);
+            const extras = p.itens.slice(LIMITE_ITENS_TABELA);
+            htmlItens = `
+                ${visiveis.map(i => formatarItemLinhaTabela(i, p.id)).join('')}
+                <div class="bloco-itens-extras" id="extras-pedido-${p.id}" hidden style="display:flex;flex-direction:column;gap:4px;">
+                    ${extras.map(i => formatarItemLinhaTabela(i, p.id)).join('')}
+                </div>
+                <button type="button" class="btn-toggle-mais-itens" onclick="toggleMaisItens(${p.id}, this)" title="Clique para ver os outros produtos deste pedido">
+                    + ${extras.length} outro${extras.length === 1 ? '' : 's'} produto${extras.length === 1 ? '' : 's'}...
+                </button>
+            `;
+        }
 
         return `
         <tr class="linha-pedido-tabela">
@@ -173,7 +221,7 @@ function renderizar() {
                 </div>
             </td>
             <td class="col-itens">
-                <div class="grade-chips-itens">${chipsItens}</div>
+                <div class="grade-chips-itens">${htmlItens}</div>
             </td>
             <td class="col-entrega">
                 <div class="entrega-info">
