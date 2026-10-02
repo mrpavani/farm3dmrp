@@ -158,32 +158,78 @@ window.FormPedido = (() => {
             }
 
             const pecasHtml = p.pecas.map(peca => {
-                const corAtual = salvas[peca.id] || salvas[peca.nome] || '';
-                const corExiste = coresList.some(c => c.nome.toLowerCase() === corAtual.toLowerCase());
-                const isCustom = corAtual && !corExiste;
-                const opts = `<option value="">— Cor padrão —</option>` + coresList.map(c => {
-                    const sel = (c.nome.toLowerCase() === corAtual.toLowerCase()) ? 'selected' : '';
-                    return `<option value="${App.esc(c.nome)}" ${sel}>${App.esc(c.nome)}</option>`;
-                }).join('') + `<option value="_custom_" ${isCustom ? 'selected' : ''}>+ Outra cor...</option>`;
+                const pecaId = peca.peca_id || peca.id;
+
+                // Cores cadastradas na ficha técnica da peça:
+                const coresCadastradas = (peca.cores || [])
+                    .map(c => typeof c === 'string' ? c.trim() : (c && c.cor ? String(c.cor).trim() : ''))
+                    .filter(c => c && c.toLowerCase() !== 'null' && c !== 'Padrão / Única' && c !== 'Padrão');
+
+                const temCorPadrao = coresCadastradas.length > 0;
+                const corPadraoCadastrada = temCorPadrao ? coresCadastradas[0] : '';
+
+                // Se houver cor salva no item (edição de pedido), respeita.
+                // Senão, pega automaticamente a cor padrão cadastrada no produto!
+                // Se a peça não tiver cor cadastrada, fica vazio para forçar o preenchimento.
+                const corSalva = salvas[pecaId] || salvas[peca.nome] || '';
+                const corAtual = corSalva || corPadraoCadastrada || '';
+
+                const coresAdicionadas = new Set();
+                let opts = '';
+
+                if (!corAtual) {
+                    opts += `<option value="" selected disabled>⚠️ Selecione a cor (obrigatório)...</option>`;
+                }
+
+                // 1. Cores cadastradas no produto (Destaque ⭐ Padrão e Variações)
+                coresCadastradas.forEach((cNome, idx) => {
+                    coresAdicionadas.add(cNome.toLowerCase());
+                    const isSel = (cNome.toLowerCase() === corAtual.toLowerCase());
+                    const tag = idx === 0 ? ' (Padrão do produto)' : ' (Opção cadastrada)';
+                    opts += `<option value="${App.esc(cNome)}" ${isSel ? 'selected' : ''}>⭐ ${App.esc(cNome)}${tag}</option>`;
+                });
+
+                // 2. Cores disponíveis no catálogo de filamentos
+                coresList.forEach(c => {
+                    if (!coresAdicionadas.has(c.nome.toLowerCase())) {
+                        coresAdicionadas.add(c.nome.toLowerCase());
+                        const isSel = (c.nome.toLowerCase() === corAtual.toLowerCase());
+                        opts += `<option value="${App.esc(c.nome)}" ${isSel ? 'selected' : ''}>${App.esc(c.nome)}</option>`;
+                    }
+                });
+
+                // 3. Digitar outra cor personalizada
+                const isCustom = corAtual && !coresAdicionadas.has(corAtual.toLowerCase());
+                opts += `<option value="_custom_" ${isCustom ? 'selected' : ''}>+ Digitar outra cor...</option>`;
+
+                // Rótulo com indicação clara do padrão ou de obrigatoriedade
+                let badgeInfo = '';
+                if (temCorPadrao) {
+                    badgeInfo = `<span style="font-size:11px;color:var(--text-3);" title="Cor cadastrada na ficha técnica do produto">· Padrão: <b style="color:var(--text-1);">${App.esc(corPadraoCadastrada)}</b></span>`;
+                } else {
+                    badgeInfo = `<span style="font-size:11px;font-weight:600;color:var(--alerta, #f59e0b);" title="Esta peça não possui cor padrão no produto. Você deve selecionar uma cor.">· ⚠️ Sem cor padrão (selecione)</span>`;
+                }
+
+                const estiloBorda = !corAtual ? 'border-color:var(--alerta, #f59e0b);background:var(--surface-3);' : '';
 
                 return `
-                <div class="campo-peca-cor" data-peca-id="${peca.id}" data-peca-nome="${App.esc(peca.nome)}" data-peca-peso="${peca.peso_gramas || 0}" data-peca-qtd="${peca.quantidade || 1}">
-                    <label>
-                        🧩 ${App.esc(peca.nome)}
-                        <span style="font-weight:normal;color:var(--text-3);font-size:11px;">(${peca.quantidade} un · ${peca.peso_gramas}g)</span>
+                <div class="campo-peca-cor" data-peca-id="${pecaId}" data-peca-nome="${App.esc(peca.nome)}" data-peca-peso="${peca.peso_gramas || 0}" data-peca-qtd="${peca.quantidade || 1}">
+                    <label style="display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;margin-bottom:3px;font-size:12px;">
+                        <span>🧩 <b>${App.esc(peca.nome)}</b> <small style="color:var(--text-3);">(${peca.quantidade || 1} un · ${peca.peso_gramas || 0}g)</small></span>
+                        ${badgeInfo}
                     </label>
-                    <select data-role="cor-peca" style="width:100%;font-size:12px;padding:4px 6px;">
+                    <select data-role="cor-peca" style="width:100%;font-size:12px;padding:5px 8px;border-radius:var(--radius-sm);${estiloBorda}">
                         ${opts}
                     </select>
-                    <input type="text" data-role="cor-peca-custom" placeholder="Digitar cor" style="width:100%;font-size:12px;padding:3px 6px;margin-top:3px;${isCustom ? '' : 'display:none;'}" value="${isCustom ? App.esc(corAtual) : ''}">
+                    <input type="text" data-role="cor-peca-custom" placeholder="Digitar nome da cor" style="width:100%;font-size:12px;padding:4px 8px;margin-top:4px;border-radius:var(--radius-sm);${isCustom ? '' : 'display:none;'}" value="${isCustom ? App.esc(corAtual) : ''}">
                 </div>`;
             }).join('');
 
             box.innerHTML = `
                 <div class="bloco-pecas-cores">
-                    <div style="font-size:12px;font-weight:600;color:var(--text-1);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+                    <div style="font-size:12px;font-weight:600;color:var(--text-1);margin-bottom:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
                         <span>🧩 Variação de Cores das Peças:</span>
-                        <span style="font-weight:normal;font-size:11.5px;color:var(--text-3);">O estoque de filamento será baixado por cor.</span>
+                        <span style="font-weight:normal;font-size:11.5px;color:var(--text-3);">(Puxa a cor padrão do produto; altere se o cliente desejar)</span>
                     </div>
                     <div class="grade-pecas-cores">${pecasHtml}</div>
                 </div>`;
@@ -192,11 +238,28 @@ window.FormPedido = (() => {
                 const s = cp.querySelector('[data-role="cor-peca"]');
                 const inp = cp.querySelector('[data-role="cor-peca-custom"]');
                 s.addEventListener('change', () => {
-                    inp.style.display = (s.value === '_custom_') ? 'block' : 'none';
-                    if (s.value === '_custom_') inp.focus();
+                    if (s.value === '_custom_') {
+                        inp.style.display = 'block';
+                        inp.focus();
+                    } else {
+                        inp.style.display = 'none';
+                    }
+                    if (s.value) {
+                        s.style.borderColor = '';
+                        s.style.background = '';
+                    } else {
+                        s.style.borderColor = 'var(--alerta, #f59e0b)';
+                        s.style.background = 'var(--surface-3)';
+                    }
                     atualizarResumo();
                 });
-                inp.addEventListener('input', atualizarResumo);
+                inp.addEventListener('input', () => {
+                    if (inp.value.trim()) {
+                        s.style.borderColor = '';
+                        inp.style.borderColor = '';
+                    }
+                    atualizarResumo();
+                });
             });
             return;
         }
@@ -214,33 +277,95 @@ window.FormPedido = (() => {
         }
 
         // Produto Simples Monocor (permite selecionar a cor do filamento)
-        const corSalva = (itemSalvo && itemSalvo.cor_variacao) ? itemSalvo.cor_variacao.trim() : '';
-        const corExiste = coresList.some(c => c.nome.toLowerCase() === corSalva.toLowerCase());
-        const isCustom = corSalva && !corExiste;
+        const coresProdCadastradas = (p.consumo_cores || [])
+            .map(c => typeof c === 'string' ? c.trim() : (c && c.cor ? String(c.cor).trim() : ''))
+            .filter(c => c && c !== 'Padrão / Única' && c !== 'Padrão');
 
-        const opts = `<option value="">— Cor padrão / qualquer —</option>` + coresList.map(c => {
-            const sel = (c.nome.toLowerCase() === corSalva.toLowerCase()) ? 'selected' : '';
-            return `<option value="${App.esc(c.nome)}" ${sel}>${App.esc(c.nome)}</option>`;
-        }).join('') + `<option value="_custom_" ${isCustom ? 'selected' : ''}>+ Digitar outra cor...</option>`;
+        const temCorPadraoProd = coresProdCadastradas.length > 0;
+        const corPadraoProd = temCorPadraoProd ? coresProdCadastradas[0] : '';
+
+        const corSalva = (itemSalvo && itemSalvo.cor_variacao) ? itemSalvo.cor_variacao.trim() : '';
+        const corAtual = corSalva || corPadraoProd || '';
+
+        const coresAdicionadasSimples = new Set();
+        let opts = '';
+
+        if (!corAtual) {
+            opts += `<option value="" selected disabled>⚠️ Selecione a cor (obrigatório)...</option>`;
+        }
+
+        // 1. Cores cadastradas no produto
+        if (temCorPadraoProd) {
+            coresProdCadastradas.forEach((cNome, idx) => {
+                coresAdicionadasSimples.add(cNome.toLowerCase());
+                const isSel = (cNome.toLowerCase() === corAtual.toLowerCase());
+                const tag = idx === 0 ? ' (Padrão do produto)' : ' (Opção cadastrada)';
+                opts += `<option value="${App.esc(cNome)}" ${isSel ? 'selected' : ''}>⭐ ${App.esc(cNome)}${tag}</option>`;
+            });
+        }
+
+        // 2. Cores do catálogo de filamentos
+        coresList.forEach(c => {
+            if (!coresAdicionadasSimples.has(c.nome.toLowerCase())) {
+                coresAdicionadasSimples.add(c.nome.toLowerCase());
+                const isSel = (c.nome.toLowerCase() === corAtual.toLowerCase());
+                opts += `<option value="${App.esc(c.nome)}" ${isSel ? 'selected' : ''}>${App.esc(c.nome)}</option>`;
+            }
+        });
+
+        // 3. Custom
+        const isCustom = corAtual && !coresAdicionadasSimples.has(corAtual.toLowerCase());
+        opts += `<option value="_custom_" ${isCustom ? 'selected' : ''}>+ Digitar outra cor...</option>`;
+
+        let badgeProdInfo = '';
+        if (temCorPadraoProd) {
+            badgeProdInfo = `<span style="font-size:11px;color:var(--text-3);">(Padrão: <b style="color:var(--text-1);">${App.esc(corPadraoProd)}</b>)</span>`;
+        } else {
+            badgeProdInfo = `<span style="font-size:11px;font-weight:600;color:var(--alerta, #f59e0b);">⚠️ Sem cor padrão (selecione)</span>`;
+        }
+
+        const estiloBordaSimples = !corAtual ? 'border-color:var(--alerta, #f59e0b);background:var(--surface-3);' : '';
 
         box.innerHTML = `
-            <div style="display:flex;align-items:center;gap:8px;margin-top:4px;font-size:12px;flex-wrap:wrap;">
-                <span style="font-weight:600;color:var(--text-2);">🎨 Cor da Peça:</span>
-                <select data-role="cor-simples" style="font-size:12px;padding:4px 8px;max-width:220px;">
-                    ${opts}
-                </select>
-                <input type="text" data-role="cor-simples-custom" placeholder="Nome da cor" style="font-size:12px;padding:4px 8px;max-width:140px;${isCustom ? '' : 'display:none;'}" value="${isCustom ? App.esc(corSalva) : ''}">
-                <span style="color:var(--text-3);font-size:11.5px;">(baixa do carretel da cor selecionada)</span>
+            <div style="display:flex;flex-direction:column;gap:4px;margin-top:6px;font-size:12px;">
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                    <span style="font-weight:600;color:var(--text-2);">🎨 Cor da Peça:</span>
+                    ${badgeProdInfo}
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                    <select data-role="cor-simples" style="font-size:12px;padding:5px 8px;max-width:240px;border-radius:var(--radius-sm);${estiloBordaSimples}">
+                        ${opts}
+                    </select>
+                    <input type="text" data-role="cor-simples-custom" placeholder="Digitar nome da cor" style="font-size:12px;padding:4px 8px;max-width:160px;border-radius:var(--radius-sm);${isCustom ? '' : 'display:none;'}" value="${isCustom ? App.esc(corAtual) : ''}">
+                    <span style="color:var(--text-3);font-size:11.5px;">(baixa do carretel da cor selecionada)</span>
+                </div>
             </div>`;
 
         const s = box.querySelector('[data-role="cor-simples"]');
         const inp = box.querySelector('[data-role="cor-simples-custom"]');
         s.addEventListener('change', () => {
-            inp.style.display = (s.value === '_custom_') ? 'block' : 'none';
-            if (s.value === '_custom_') inp.focus();
+            if (s.value === '_custom_') {
+                inp.style.display = 'block';
+                inp.focus();
+            } else {
+                inp.style.display = 'none';
+            }
+            if (s.value) {
+                s.style.borderColor = '';
+                s.style.background = '';
+            } else {
+                s.style.borderColor = 'var(--alerta, #f59e0b)';
+                s.style.background = 'var(--surface-3)';
+            }
             atualizarResumo();
         });
-        inp.addEventListener('input', atualizarResumo);
+        inp.addEventListener('input', () => {
+            if (inp.value.trim()) {
+                s.style.borderColor = '';
+                inp.style.borderColor = '';
+            }
+            atualizarResumo();
+        });
     }
 
     function atualizarResumo() {
@@ -410,10 +535,60 @@ window.FormPedido = (() => {
         App.modal.abrir('modalPedido', estoque ? '#pedItens input' : '#pedCliente');
     }
 
-    // ---------- Salvar ----------
     async function salvar(ev) {
         ev.preventDefault();
+        const erro = (msg, foco) => { App.toast(msg, 'erro'); if (foco) foco.focus(); };
+        if (tipo !== 'estoque' && !$('pedCliente').value) {
+            return erro('Selecione o cliente (ou cadastre um novo).', $('pedCliente'));
+        }
+
         const linhas = [...$('pedItens').querySelectorAll('.item-linha')];
+        const semProduto = linhas.find(d => !d.querySelector('[data-role="produto"]').value);
+        if (semProduto) return erro('Selecione o produto em todas as linhas.', semProduto.querySelector('select'));
+        const qtdInvalida = linhas.find(d => !(parseInt(d.querySelector('[data-role="quantidade"]').value, 10) > 0));
+        if (qtdInvalida) return erro('As quantidades devem ser maiores que zero.', qtdInvalida.querySelector('input'));
+        if (!$('pedEntrega').value) {
+            return erro(tipo === 'estoque' ? 'Informe até quando a produção deve ser concluída.' : 'Informe a data prometida de entrega.', $('pedEntrega'));
+        }
+
+        // Validação rigorosa de cores: se não houver cor padrão nem selecionada, impede o salvamento
+        for (const div of linhas) {
+            const p = produtos.find(x => String(x.id) === div.querySelector('[data-role="produto"]').value);
+            if (!p) continue;
+
+            if (p.tipo === 'composto' && p.pecas && p.pecas.length > 0) {
+                const camposPeca = div.querySelectorAll('.campo-peca-cor');
+                for (const cp of camposPeca) {
+                    const selCor = cp.querySelector('[data-role="cor-peca"]');
+                    const inpCustom = cp.querySelector('[data-role="cor-peca-custom"]');
+                    let cor = selCor ? selCor.value : '';
+                    if (cor === '_custom_') cor = inpCustom ? inpCustom.value.trim() : '';
+                    if (!cor) {
+                        if (selCor) {
+                            selCor.style.borderColor = 'var(--perigo, #ef4444)';
+                            selCor.focus();
+                        }
+                        return erro(`Por favor, informe a cor da peça "${cp.dataset.pecaNome}" do produto "${p.nome}".`, selCor || cp);
+                    }
+                }
+            } else {
+                const multicorAMS = p.consumo_cores && p.consumo_cores.length > 1;
+                if (!multicorAMS) {
+                    const selCor = div.querySelector('[data-role="cor-simples"]');
+                    const inpCustom = div.querySelector('[data-role="cor-simples-custom"]');
+                    let cor = selCor ? selCor.value : '';
+                    if (cor === '_custom_') cor = inpCustom ? inpCustom.value.trim() : '';
+                    if (!cor) {
+                        if (selCor) {
+                            selCor.style.borderColor = 'var(--perigo, #ef4444)';
+                            selCor.focus();
+                        }
+                        return erro(`Por favor, selecione a cor do produto "${p.nome}".`, selCor || div);
+                    }
+                }
+            }
+        }
+
         const itens = linhas.map(div => {
             const p = produtos.find(x => String(x.id) === div.querySelector('[data-role="produto"]').value);
             const item = {
@@ -434,34 +609,28 @@ window.FormPedido = (() => {
                         peca_nome: cp.dataset.pecaNome,
                         peso_gramas: parseFloat(cp.dataset.pecaPeso) || 0,
                         quantidade: parseInt(cp.dataset.pecaQtd, 10) || 1,
-                        cor: cor || 'Padrão'
+                        cor: cor
                     });
                 });
                 item.cor_variacao = pecasCores.map(pc => `${pc.peca_nome}: ${pc.cor}`).join(' | ');
                 item.variacoes_json = { tipo: 'composto', pecas: pecasCores };
             } else if (p) {
-                const selCor = div.querySelector('[data-role="cor-simples"]');
-                const inpCustom = div.querySelector('[data-role="cor-simples-custom"]');
-                let cor = selCor ? selCor.value : '';
-                if (cor === '_custom_') cor = inpCustom ? inpCustom.value.trim() : '';
-                item.cor_variacao = cor || null;
-                item.variacoes_json = cor ? { tipo: 'simples', cor } : null;
+                const multicorAMS = p.consumo_cores && p.consumo_cores.length > 1;
+                if (multicorAMS) {
+                    item.cor_variacao = p.consumo_cores.map(c => c.cor).join(' + ');
+                    item.variacoes_json = { tipo: 'multicor_ams', cores: p.consumo_cores };
+                } else {
+                    const selCor = div.querySelector('[data-role="cor-simples"]');
+                    const inpCustom = div.querySelector('[data-role="cor-simples-custom"]');
+                    let cor = selCor ? selCor.value : '';
+                    if (cor === '_custom_') cor = inpCustom ? inpCustom.value.trim() : '';
+                    item.cor_variacao = cor || null;
+                    item.variacoes_json = cor ? { tipo: 'simples', cor } : null;
+                }
             }
 
             return item;
         });
-
-        const erro = (msg, foco) => { App.toast(msg, 'erro'); if (foco) foco.focus(); };
-        if (tipo !== 'estoque' && !$('pedCliente').value) {
-            return erro('Selecione o cliente (ou cadastre um novo).', $('pedCliente'));
-        }
-        const semProduto = linhas.find(d => !d.querySelector('[data-role="produto"]').value);
-        if (semProduto) return erro('Selecione o produto em todas as linhas.', semProduto.querySelector('select'));
-        const qtdInvalida = linhas.find(d => !(parseInt(d.querySelector('[data-role="quantidade"]').value, 10) > 0));
-        if (qtdInvalida) return erro('As quantidades devem ser maiores que zero.', qtdInvalida.querySelector('input'));
-        if (!$('pedEntrega').value) {
-            return erro(tipo === 'estoque' ? 'Informe até quando a produção deve ser concluída.' : 'Informe a data prometida de entrega.', $('pedEntrega'));
-        }
 
         const payload = {
             tipo,

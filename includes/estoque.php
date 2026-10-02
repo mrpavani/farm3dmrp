@@ -514,7 +514,36 @@ function enriquecerPedidoComConsumo(PDO $pdo, array &$pedido): void {
 
         $coresItemTotal = [];
         $coresItemFuturo = [];
-        foreach ($info1['cores'] as $c) {
+
+        $varData = null;
+        if (!empty($it['variacoes_json'])) {
+            $varData = is_string($it['variacoes_json']) ? json_decode($it['variacoes_json'], true) : (is_array($it['variacoes_json']) ? $it['variacoes_json'] : null);
+        }
+
+        $coresConsumoUsadas = [];
+        if ($varData && !empty($varData['pecas']) && is_array($varData['pecas'])) {
+            foreach ($varData['pecas'] as $vp) {
+                $cNome = !empty($vp['cor']) ? trim((string)$vp['cor']) : 'Padrão / Única';
+                $gPeca = (float)($vp['peso_gramas'] ?? 0) * max(1, (int)($vp['quantidade'] ?? 1));
+                if ($gPeca > 0) {
+                    $coresConsumoUsadas[$cNome] = ($coresConsumoUsadas[$cNome] ?? 0.0) + $gPeca;
+                }
+            }
+        } elseif (!empty($it['cor_variacao']) && $p1un > 0 && (!isset($varData['tipo']) || $varData['tipo'] !== 'multicor_ams')) {
+            $cNome = trim((string)$it['cor_variacao']);
+            $coresConsumoUsadas[$cNome] = $p1un;
+        }
+
+        if (!empty($coresConsumoUsadas)) {
+            $listaCoresLoop = [];
+            foreach ($coresConsumoUsadas as $cNome => $g1) {
+                $listaCoresLoop[] = ['cor' => $cNome, 'gramas_1un' => $g1];
+            }
+        } else {
+            $listaCoresLoop = $info1['cores'];
+        }
+
+        foreach ($listaCoresLoop as $c) {
             $corNome = $c['cor'];
             $g1 = (float) $c['gramas_1un'];
             $gTot = round($g1 * $qtd, 2);

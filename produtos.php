@@ -218,7 +218,7 @@ require __DIR__ . '/includes/header.php';
 
 <!-- Modal Exclusivo: Custos & Formação de Preço de Venda -->
 <div id="modalCustosProduto" class="modal" hidden>
-    <div class="card modal-caixa modal-custos-eng" role="dialog" aria-modal="true" aria-labelledby="custosTituloModal" style="max-width: 780px;">
+    <div class="card modal-caixa modal-custos-eng" role="dialog" aria-modal="true" aria-labelledby="custosTituloModal">
         <!-- Cabeçalho -->
         <div class="modal-cabecalho">
             <div class="prod-modal-head-info">

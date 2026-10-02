@@ -516,6 +516,19 @@ SET `custo_filamento` = ROUND(`peso_gramas` * 0.09, 2),
 WHERE (`custo_filamento` = 0.00 OR `custo_filamento` IS NULL)
   AND `peso_gramas` > 0;
 
+-- Corrige produtos que travaram com custo residual (ex: R$ 0,45 com peso alto)
+UPDATE `produtos`
+SET `custo_filamento` = 24.13,
+    `custo_total` = 24.13,
+    `preco` = 48.26
+WHERE `nome` LIKE '%Placa de chaves%' AND `custo_filamento` < 2.0;
+
+UPDATE `produtos`
+SET `custo_filamento` = ROUND(`peso_gramas` * 0.09, 2),
+    `custo_total` = ROUND((`peso_gramas` * 0.09) + IF(`tem_embalagem` = 1, COALESCE(`valor_embalagem`, 0), 0) + COALESCE(`valor_outros`, 0), 2),
+    `preco` = ROUND(((`peso_gramas` * 0.09) + IF(`tem_embalagem` = 1, COALESCE(`valor_embalagem`, 0), 0) + COALESCE(`valor_outros`, 0)) * (1 + (COALESCE(`margem_lucro`, 100) / 100)), 2)
+WHERE `peso_gramas` > 50 AND `custo_filamento` < 1.0;
+
 -- 5. Criação ou atualização do Usuário Administrador Padrão
 -- Login: admin@mail.com | Senha padrão: A123456 (troque no primeiro acesso em Perfil)
 INSERT INTO `usuarios` (`id`, `nome`, `login`, `senha_hash`, `admin`, `ativo`)

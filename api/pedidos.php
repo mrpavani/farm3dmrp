@@ -75,6 +75,62 @@ function buscarPedidoParaAlterar(PDO $pdo, int $id): array {
     return $pedido;
 }
 
+// Se não veio cor_variacao informada pelo cliente, resolve as cores padrão cadastradas no produto/peças
+function resolverVariacaoItemPadrao(PDO $pdo, int $produtoId, ?string $corVariacao, ?string $variacoesJson): array {
+    $corVariacao = !empty($corVariacao) ? trim((string)$corVariacao) : null;
+    if (!empty($corVariacao)) {
+        return [$corVariacao, $variacoesJson];
+    }
+
+    $infoConsumo = calcularConsumoProduto($pdo, $produtoId, 1);
+    if (!empty($infoConsumo['pecas'])) {
+        $partesCor = [];
+        $pecasJson = [];
+        foreach ($infoConsumo['pecas'] as $pc) {
+            $cNome = '';
+            if (!empty($pc['cores']) && is_array($pc['cores'])) {
+                foreach ($pc['cores'] as $cObj) {
+                    $corCandidata = is_string($cObj) ? trim($cObj) : trim((string)($cObj['cor'] ?? ''));
+                    if ($corCandidata !== '' && strtolower($corCandidata) !== 'null' && $corCandidata !== 'Padrão / Única' && $corCandidata !== 'Padrão') {
+                        $cNome = $corCandidata;
+                        break;
+                    }
+                }
+            }
+            if ($cNome !== '') {
+                $partesCor[] = "{$pc['nome']}: {$cNome}";
+                $pecasJson[] = [
+                    'peca_id' => $pc['peca_id'],
+                    'peca_nome' => $pc['nome'],
+                    'peso_gramas' => (float)($pc['peso_gramas'] ?? 0),
+                    'quantidade' => (int)($pc['quantidade'] ?? 1),
+                    'cor' => $cNome,
+                ];
+            }
+        }
+        if (!empty($partesCor)) {
+            $corVariacao = implode(' | ', $partesCor);
+            if (empty($variacoesJson)) {
+                $variacoesJson = json_encode(['tipo' => 'composto', 'pecas' => $pecasJson], JSON_UNESCAPED_UNICODE);
+            }
+        }
+    } elseif (!empty($infoConsumo['cores'])) {
+        $coresValidas = array_filter($infoConsumo['cores'], function($c) {
+            $cn = is_array($c) ? ($c['cor'] ?? '') : '';
+            return !empty($cn) && $cn !== 'Padrão / Única' && $cn !== 'Padrão';
+        });
+        if (!empty($coresValidas)) {
+            $nomes = array_column($coresValidas, 'cor');
+            $corVariacao = implode(' + ', $nomes);
+            if (empty($variacoesJson)) {
+                $variacoesJson = json_encode(['tipo' => count($nomes) > 1 ? 'multicor_ams' : 'simples', 'cor' => $corVariacao], JSON_UNESCAPED_UNICODE);
+            }
+        }
+    }
+
+    return [$corVariacao, $variacoesJson];
+}
+
 // ------------------------------------------------------------
 // GET /api/pedidos.php
 //   ?data_de=YYYY-MM-DD&data_ate=YYYY-MM-DD  -> filtra por data_pedido
@@ -218,6 +274,7 @@ if ($method === 'POST') {
             $preco = precoAtualProduto($pdo, (int) $item['produto_id']);
             $corVariacao = !empty($item['cor_variacao']) ? trim((string)$item['cor_variacao']) : null;
             $variacoesJson = !empty($item['variacoes_json']) ? (is_string($item['variacoes_json']) ? $item['variacoes_json'] : json_encode($item['variacoes_json'], JSON_UNESCAPED_UNICODE)) : null;
+            [$corVariacao, $variacoesJson] = resolverVariacaoItemPadrao($pdo, (int)$item['produto_id'], $corVariacao, $variacoesJson);
 
             if ($tipo === 'venda') {
                 // Alocação automática desativada: o estoque não será puxado automaticamente
@@ -307,6 +364,7 @@ if ($method === 'PUT') {
             $itemId = (int) ($item['id'] ?? 0);
             $corVariacao = !empty($item['cor_variacao']) ? trim((string)$item['cor_variacao']) : null;
             $variacoesJson = !empty($item['variacoes_json']) ? (is_string($item['variacoes_json']) ? $item['variacoes_json'] : json_encode($item['variacoes_json'], JSON_UNESCAPED_UNICODE)) : null;
+            [$corVariacao, $variacoesJson] = resolverVariacaoItemPadrao($pdo, $produtoId, $corVariacao, $variacoesJson);
 
             if (!$itemId) {
                 $qtdEstoque = 0;

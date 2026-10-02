@@ -240,7 +240,7 @@ async function abrirCustosProduto(id) {
         if ($('custosProdCustoFilamento')) $('custosProdCustoFilamento').value = detalhe.custo_filamento ? Number(detalhe.custo_filamento).toFixed(2) : '';
         if ($('custosProdTemEmbalagem')) $('custosProdTemEmbalagem').value = Number(detalhe.tem_embalagem) === 1 ? '1' : '0';
         if ($('custosProdValorEmbalagem')) $('custosProdValorEmbalagem').value = detalhe.valor_embalagem ? Number(detalhe.valor_embalagem).toFixed(2) : '0.00';
-        if ($('custosBoxValorEmbalagem')) $('custosBoxValorEmbalagem').style.display = Number(detalhe.tem_embalagem) === 1 ? 'block' : 'none';
+        if ($('custosBoxValorEmbalagem')) $('custosBoxValorEmbalagem').style.display = Number(detalhe.tem_embalagem) === 1 ? 'flex' : 'none';
         if ($('custosProdValorOutros')) $('custosProdValorOutros').value = detalhe.valor_outros ? Number(detalhe.valor_outros).toFixed(2) : '0.00';
         if ($('custosProdMargemLucro')) $('custosProdMargemLucro').value = (detalhe.margem_lucro !== undefined && detalhe.margem_lucro !== null) ? Number(detalhe.margem_lucro) : 100;
         if ($('custosProdPreco')) $('custosProdPreco').value = detalhe.preco ? Number(detalhe.preco).toFixed(2) : '';
@@ -299,7 +299,7 @@ function recalcularCustosModal(forcarAtualizarPreco = true) {
 
     const temEmb = $('custosProdTemEmbalagem')?.value === '1';
     if ($('custosBoxValorEmbalagem')) {
-        $('custosBoxValorEmbalagem').style.display = temEmb ? 'block' : 'none';
+        $('custosBoxValorEmbalagem').style.display = temEmb ? 'flex' : 'none';
     }
     const valorEmb = temEmb ? (parseFloat($('custosProdValorEmbalagem')?.value) || 0) : 0;
     const valorOutros = parseFloat($('custosProdValorOutros')?.value) || 0;

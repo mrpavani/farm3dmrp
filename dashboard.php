@@ -232,7 +232,7 @@ require __DIR__ . '/includes/header.php';
 
 <!-- Modal de Custos do Produto (reaproveitado para consulta rápida direto no Dashboard!) -->
 <div id="modalCustosProduto" class="modal" hidden>
-    <div class="card modal-caixa modal-custos-eng" role="dialog" aria-modal="true" aria-labelledby="custosTituloModal" style="max-width: 780px;">
+    <div class="card modal-caixa modal-custos-eng" role="dialog" aria-modal="true" aria-labelledby="custosTituloModal">
         <div class="modal-cabecalho">
             <div class="prod-modal-head-info">
                 <div class="prod-icone-circulo" style="background: rgba(16, 185, 129, 0.1); color: #059669; border-color: rgba(16, 185, 129, 0.25);">

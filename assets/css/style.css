@@ -394,6 +394,27 @@ td.col-acoes { width: 1%; white-space: nowrap; }
     position: relative;
 }
 
+.modal-caixa.modal-pequeno {
+    width: 440px;
+    max-width: min(440px, calc(100vw - 32px));
+}
+.modal-caixa.modal-medio {
+    width: 620px;
+    max-width: min(620px, calc(100vw - 32px));
+}
+.modal-caixa.modal-largo {
+    width: 820px;
+    max-width: min(820px, calc(100vw - 32px));
+}
+.modal-caixa.modal-custos-eng {
+    width: 820px;
+    max-width: min(820px, calc(100vw - 32px));
+}
+.modal-caixa.modal-produto-eng {
+    width: 860px;
+    max-width: min(860px, calc(100vw - 32px));
+}
+
 /* Modais que não utilizam o container .modal-corpo recebem scroll e padding padrão no corpo */
 .modal-caixa:not(:has(.modal-corpo)):not(.modal-pecas-gerenciar) {
     overflow-y: auto;
@@ -1702,29 +1723,53 @@ td.contato a:hover { color: var(--primary); }
 }
 .prod-prec-layout {
     display: grid;
-    grid-template-columns: 1.25fr 1fr;
-    gap: 16px;
+    grid-template-columns: 1.35fr 1fr;
+    gap: 18px;
     align-items: start;
 }
 .prod-custos-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 10px 12px;
+    gap: 12px 14px;
 }
 .campo-custo {
     display: flex;
     flex-direction: column;
+    min-width: 0;
 }
 .campo-margem-inteira {
     grid-column: 1 / -1;
-    margin-top: 2px;
+    margin-top: 4px;
+}
+.rotulo-com-badge {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+.rotulo-com-badge label {
+    margin: 0 !important;
+    white-space: nowrap;
+}
+.badge-origem-soma {
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--primary);
+    background: var(--primary-soft);
+    border: 1px solid #c7d2fe;
+    border-radius: 999px;
+    padding: 1px 7px;
+    white-space: nowrap;
 }
 .input-com-unidade {
     position: relative;
     display: flex;
     align-items: center;
+    width: 100%;
 }
 .input-com-unidade input {
+    width: 100%;
     padding-right: 26px !important;
 }
 .input-com-unidade input.com-moeda {
@@ -1749,13 +1794,19 @@ td.contato a:hover { color: var(--primary); }
 }
 .grupo-embalagem {
     display: flex;
-    gap: 6px;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
 }
 .grupo-embalagem select {
     flex: 1;
+    min-width: 80px;
 }
+.grupo-embalagem .input-com-unidade,
+.grupo-embalagem #custosBoxValorEmbalagem,
 .grupo-embalagem #boxValorEmbalagem {
-    flex: 1.4;
+    flex: 1 1 auto;
+    min-width: 110px;
 }
 
 .rotulo-margem {
