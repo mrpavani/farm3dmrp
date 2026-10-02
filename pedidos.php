@@ -49,7 +49,7 @@ require __DIR__ . '/includes/header.php';
                         <th style="min-width:140px;">Previsão Entrega</th>
                         <th style="min-width:150px;">Progresso</th>
                         <th style="min-width:120px;">Status</th>
-                        <th class="num" style="width:130px;">Ações</th>
+                        <th class="num" style="min-width:150px;width:160px;">Ações</th>
                     </tr>
                 </thead>
                 <tbody id="tabelaPedidos"></tbody>
@@ -60,5 +60,6 @@ require __DIR__ . '/includes/header.php';
 </main>
 
 <?php require_once __DIR__ . '/includes/modal_pedido.php'; ?>
+<?php require_once __DIR__ . '/includes/modal_detalhes_pedido.php'; ?>
 <script src="assets/js/pedidos.js?v=<?= @filemtime(__DIR__ . '/assets/js/pedidos.js') ?>"></script>
 <?php require __DIR__ . '/includes/footer.php'; ?>

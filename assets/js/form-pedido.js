@@ -12,6 +12,7 @@ window.FormPedido = (() => {
     let editandoId = null;
     let tipo = 'venda';
     let callback = null;
+    let itemEmEdicaoCores = null;
 
     async function carregarListas() {
         [produtos, clientes, filamentos] = await Promise.all([
@@ -64,7 +65,292 @@ window.FormPedido = (() => {
         el.hidden = partes.length === 0;
     }
 
-    // ---------- Itens ----------
+    // ---------- Cores e Variações ----------
+
+    function inicializarCoresItem(div, p, itemSalvo = null) {
+        if (!p) {
+            div._configCores = null;
+            return;
+        }
+        const coresList = obterCoresDisponiveis();
+
+        // 1. Produto Composto com Peças
+        if (p.tipo === 'composto' && p.pecas && p.pecas.length > 0) {
+            let salvas = {};
+            if (itemSalvo && itemSalvo.variacoes_json) {
+                try {
+                    const parsed = typeof itemSalvo.variacoes_json === 'string' ? JSON.parse(itemSalvo.variacoes_json) : itemSalvo.variacoes_json;
+                    if (parsed && Array.isArray(parsed.pecas)) {
+                        parsed.pecas.forEach(pc => {
+                            if (pc.peca_id) salvas[pc.peca_id] = pc.cor;
+                            if (pc.peca_nome) salvas[pc.peca_nome] = pc.cor;
+                        });
+                    }
+                } catch(e) {}
+            } else if (itemSalvo && itemSalvo.cor_variacao) {
+                // Tenta extrair pares "Nome: Cor" da string antiga se houver
+                const partes = itemSalvo.cor_variacao.split('|');
+                partes.forEach(pt => {
+                    const idx = pt.indexOf(':');
+                    if (idx > -1) {
+                        const k = pt.slice(0, idx).trim();
+                        const v = pt.slice(idx + 1).trim();
+                        if (k && v) salvas[k] = v;
+                    }
+                });
+            }
+
+            const pecas = p.pecas.map(peca => {
+                const pecaId = peca.peca_id || peca.id;
+                const coresCadastradas = (peca.cores || [])
+                    .map(c => typeof c === 'string' ? c.trim() : (c && c.cor ? String(c.cor).trim() : ''))
+                    .filter(c => c && c.toLowerCase() !== 'null' && c !== 'Padrão / Única' && c !== 'Padrão');
+
+                const corPadrao = coresCadastradas.length > 0 ? coresCadastradas[0] : (coresList[0]?.nome || 'Branco');
+                const corSalva = salvas[pecaId] || salvas[peca.nome] || '';
+                const corAtual = corSalva || corPadrao;
+
+                return {
+                    peca_id: pecaId,
+                    peca_nome: peca.nome,
+                    peso_gramas: Number(peca.peso_gramas) || 0,
+                    quantidade: Number(peca.quantidade) || 1,
+                    corPadrao: corPadrao,
+                    cor: corAtual,
+                    coresCadastradas: coresCadastradas
+                };
+            });
+
+            div._configCores = { tipo: 'composto', pecas };
+            return;
+        }
+
+        // 2. Multicor AMS
+        const multicorAMS = p.consumo_cores && p.consumo_cores.length > 1;
+        if (multicorAMS) {
+            div._configCores = { tipo: 'multicor_ams', consumo_cores: p.consumo_cores };
+            return;
+        }
+
+        // 3. Produto Simples Monocor
+        const coresProd = (p.consumo_cores || [])
+            .map(c => typeof c === 'string' ? c.trim() : (c && c.cor ? String(c.cor).trim() : ''))
+            .filter(c => c && c !== 'Padrão / Única' && c !== 'Padrão');
+
+        const corPadrao = coresProd.length > 0 ? coresProd[0] : (coresList[0]?.nome || 'Branco');
+        const corSalva = (itemSalvo && itemSalvo.cor_variacao) ? itemSalvo.cor_variacao.trim() : '';
+        const corAtual = corSalva || corPadrao;
+
+        div._configCores = {
+            tipo: 'simples',
+            corPadrao: corPadrao,
+            cor: corAtual,
+            coresCadastradas: coresProd
+        };
+    }
+
+    function renderizarBarraCoresItem(div, p) {
+        const box = div.querySelector('[data-role="variacao-box"]');
+        if (!box) return;
+        if (!p || !div._configCores) {
+            box.innerHTML = '';
+            box.style.display = 'none';
+            return;
+        }
+
+        box.style.display = 'block';
+        const cfg = div._configCores;
+
+        if (cfg.tipo === 'composto') {
+            const pecas = cfg.pecas || [];
+            const todasPadrao = pecas.every(pc => pc.cor.toLowerCase() === pc.corPadrao.toLowerCase());
+            const resumoPills = pecas.map(pc => `
+                <span class="chip-peca-cor-resumo" title="${App.esc(pc.peca_nome)}: ${App.esc(pc.cor)}">
+                    <span class="chip-p-nome">${App.esc(pc.peca_nome)}:</span>
+                    <strong class="chip-p-cor">${App.esc(pc.cor)}</strong>
+                </span>
+            `).join('');
+
+            box.innerHTML = `
+                <div class="item-variacao-resumo-bar">
+                    <div class="resumo-cores-info">
+                        <span class="tag-status-cor ${todasPadrao ? 'tag-padrao' : 'tag-customizada'}">
+                            ${todasPadrao ? '⭐ Padrão' : '✨ Personalizado'}
+                        </span>
+                        <div class="grade-pills-resumo">${resumoPills}</div>
+                    </div>
+                    <button type="button" class="btn-editar-cores-item" data-role="btn-editar-cores" title="Ver ou alterar cores das peças">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.563-2.512 5.563-5.563C22 6.5 17.5 2 12 2Z"/></svg>
+                        Editar cores
+                    </button>
+                </div>
+            `;
+            box.querySelector('[data-role="btn-editar-cores"]').addEventListener('click', () => abrirModalCoresItem(div, p));
+            return;
+        }
+
+        if (cfg.tipo === 'multicor_ams') {
+            const lista = (cfg.consumo_cores || []).map(c => `<span class="chip-cor-diag" style="font-size:11px;">${App.esc(c.cor)}: <b>${c.gramas_1un}g</b></span>`).join(' ');
+            box.innerHTML = `
+                <div class="item-variacao-resumo-bar">
+                    <div class="resumo-cores-info">
+                        <span class="tag-status-cor tag-padrao">🎨 Multicor AMS</span>
+                        <div class="grade-pills-resumo">${lista}</div>
+                    </div>
+                </div>
+            `;
+            return;
+        }
+
+        // Simples Monocor
+        const ehPadrao = cfg.cor.toLowerCase() === cfg.corPadrao.toLowerCase();
+        box.innerHTML = `
+            <div class="item-variacao-resumo-bar">
+                <div class="resumo-cores-info">
+                    <span class="tag-status-cor ${ehPadrao ? 'tag-padrao' : 'tag-customizada'}">
+                        ${ehPadrao ? '⭐ Padrão' : '✨ Personalizada'}
+                    </span>
+                    <span class="chip-peca-cor-resumo">
+                        <span class="chip-p-nome">Cor do produto:</span>
+                        <strong class="chip-p-cor">${App.esc(cfg.cor)}</strong>
+                    </span>
+                </div>
+                <button type="button" class="btn-editar-cores-item" data-role="btn-editar-cores" title="Alterar a cor deste produto">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.563-2.512 5.563-5.563C22 6.5 17.5 2 12 2Z"/></svg>
+                    Editar cor
+                </button>
+            </div>
+        `;
+        box.querySelector('[data-role="btn-editar-cores"]').addEventListener('click', () => abrirModalCoresItem(div, p));
+    }
+
+    function abrirModalCoresItem(div, p) {
+        if (!div || !p || !div._configCores) return;
+        itemEmEdicaoCores = { div, p };
+
+        const tit = $('titEditarCoresItem');
+        const sub = $('subEditarCoresItem');
+        const corpo = $('modalCoresListaPecas');
+        const aviso = $('modalCoresAviso');
+        aviso.hidden = true;
+
+        tit.textContent = `Personalizar Cores: ${p.nome}`;
+        sub.textContent = `As cores padrão cadastradas já vêm selecionadas. Ajuste somente se o cliente desejar uma combinação específica.`;
+
+        const coresList = obterCoresDisponiveis();
+        const cfg = div._configCores;
+
+        if (cfg.tipo === 'composto') {
+            corpo.innerHTML = cfg.pecas.map((peca, idx) => {
+                const coresCadastradas = peca.coresCadastradas || [];
+                const coresAdicionadas = new Set();
+                let opts = '';
+
+                // 1. Cores cadastradas na peça (Destaques)
+                coresCadastradas.forEach((cNome, i) => {
+                    coresAdicionadas.add(cNome.toLowerCase());
+                    const isSel = (cNome.toLowerCase() === peca.cor.toLowerCase());
+                    const tag = (cNome.toLowerCase() === peca.corPadrao.toLowerCase()) ? ' (Padrão do produto)' : ' (Opção cadastrada)';
+                    opts += `<option value="${App.esc(cNome)}" ${isSel ? 'selected' : ''}>⭐ ${App.esc(cNome)}${tag}</option>`;
+                });
+
+                if (peca.corPadrao && !coresAdicionadas.has(peca.corPadrao.toLowerCase())) {
+                    coresAdicionadas.add(peca.corPadrao.toLowerCase());
+                    const isSel = (peca.corPadrao.toLowerCase() === peca.cor.toLowerCase());
+                    opts += `<option value="${App.esc(peca.corPadrao)}" ${isSel ? 'selected' : ''}>⭐ ${App.esc(peca.corPadrao)} (Padrão)</option>`;
+                }
+
+                // 2. Cores do catálogo de filamentos
+                coresList.forEach(c => {
+                    if (!coresAdicionadas.has(c.nome.toLowerCase())) {
+                        coresAdicionadas.add(c.nome.toLowerCase());
+                        const isSel = (c.nome.toLowerCase() === peca.cor.toLowerCase());
+                        opts += `<option value="${App.esc(c.nome)}" ${isSel ? 'selected' : ''}>${App.esc(c.nome)}</option>`;
+                    }
+                });
+
+                // 3. Digitar outra cor
+                const isCustom = peca.cor && !coresAdicionadas.has(peca.cor.toLowerCase());
+                opts += `<option value="_custom_" ${isCustom ? 'selected' : ''}>+ Digitar outra cor...</option>`;
+
+                return `
+                    <div class="campo-modal-peca-cor" data-peca-idx="${idx}" style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:11px 13px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:4px;">
+                            <span style="font-weight:600;font-size:13px;color:var(--text-1);">
+                                🧩 ${App.esc(peca.peca_nome)}
+                                <small style="color:var(--text-3);font-weight:normal;">(${peca.quantidade} un · ${peca.peso_gramas}g)</small>
+                            </span>
+                            <span style="font-size:11.5px;color:var(--text-3);">
+                                Padrão: <b style="color:var(--text-2);">${App.esc(peca.corPadrao)}</b>
+                            </span>
+                        </div>
+                        <select data-role="submodal-cor" style="width:100%;font-size:12.5px;padding:6px 10px;border-radius:var(--radius-sm);">
+                            ${opts}
+                        </select>
+                        <input type="text" data-role="submodal-cor-custom" placeholder="Digitar nome da cor..." style="width:100%;font-size:12.5px;padding:6px 10px;margin-top:6px;border-radius:var(--radius-sm);${isCustom ? '' : 'display:none;'}" value="${isCustom ? App.esc(peca.cor) : ''}">
+                    </div>
+                `;
+            }).join('');
+        } else if (cfg.tipo === 'simples') {
+            const coresCadastradas = cfg.coresCadastradas || [];
+            const coresAdicionadas = new Set();
+            let opts = '';
+
+            coresCadastradas.forEach((cNome, i) => {
+                coresAdicionadas.add(cNome.toLowerCase());
+                const isSel = (cNome.toLowerCase() === cfg.cor.toLowerCase());
+                const tag = (cNome.toLowerCase() === cfg.corPadrao.toLowerCase()) ? ' (Padrão do produto)' : ' (Opção cadastrada)';
+                opts += `<option value="${App.esc(cNome)}" ${isSel ? 'selected' : ''}>⭐ ${App.esc(cNome)}${tag}</option>`;
+            });
+
+            if (cfg.corPadrao && !coresAdicionadas.has(cfg.corPadrao.toLowerCase())) {
+                coresAdicionadas.add(cfg.corPadrao.toLowerCase());
+                const isSel = (cfg.corPadrao.toLowerCase() === cfg.cor.toLowerCase());
+                opts += `<option value="${App.esc(cfg.corPadrao)}" ${isSel ? 'selected' : ''}>⭐ ${App.esc(cfg.corPadrao)} (Padrão)</option>`;
+            }
+
+            coresList.forEach(c => {
+                if (!coresAdicionadas.has(c.nome.toLowerCase())) {
+                    coresAdicionadas.add(c.nome.toLowerCase());
+                    const isSel = (c.nome.toLowerCase() === cfg.cor.toLowerCase());
+                    opts += `<option value="${App.esc(c.nome)}" ${isSel ? 'selected' : ''}>${App.esc(c.nome)}</option>`;
+                }
+            });
+
+            const isCustom = cfg.cor && !coresAdicionadas.has(cfg.cor.toLowerCase());
+            opts += `<option value="_custom_" ${isCustom ? 'selected' : ''}>+ Digitar outra cor...</option>`;
+
+            corpo.innerHTML = `
+                <div class="campo-modal-peca-cor" style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:13px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                        <span style="font-weight:600;font-size:13px;color:var(--text-1);">🎨 Cor do Produto:</span>
+                        <span style="font-size:11.5px;color:var(--text-3);">Padrão: <b style="color:var(--text-2);">${App.esc(cfg.corPadrao)}</b></span>
+                    </div>
+                    <select data-role="submodal-cor" style="width:100%;font-size:12.5px;padding:6px 10px;border-radius:var(--radius-sm);">
+                        ${opts}
+                    </select>
+                    <input type="text" data-role="submodal-cor-custom" placeholder="Digitar nome da cor..." style="width:100%;font-size:12.5px;padding:6px 10px;margin-top:6px;border-radius:var(--radius-sm);${isCustom ? '' : 'display:none;'}" value="${isCustom ? App.esc(cfg.cor) : ''}">
+                </div>
+            `;
+        }
+
+        corpo.querySelectorAll('.campo-modal-peca-cor').forEach(bloco => {
+            const s = bloco.querySelector('[data-role="submodal-cor"]');
+            const inp = bloco.querySelector('[data-role="submodal-cor-custom"]');
+            s.addEventListener('change', () => {
+                if (s.value === '_custom_') {
+                    inp.style.display = 'block';
+                    inp.focus();
+                } else {
+                    inp.style.display = 'none';
+                }
+            });
+        });
+
+        App.modal.abrir('modalEditarCoresItem');
+    }
+
+    // ---------- Linha de Item do Formulário ----------
     function adicionarItem(item = null) {
         const produzido = item ? Number(item.quantidade_produzida) || 0 : 0;
         const qtdEstoque = item ? Number(item.quantidade_estoque) || 0 : 0;
@@ -94,9 +380,15 @@ window.FormPedido = (() => {
                 <span class="preco-item" data-role="preco" style="text-align:right;font-weight:600;">—</span>
                 <input type="number" data-role="quantidade" aria-label="Quantidade" inputmode="numeric"
                        min="${Math.max(1, prodFabrica)}" value="${item ? item.quantidade : 1}">
-                <div style="display:flex;align-items:center;gap:6px;">
+                <div style="display:flex;align-items:center;gap:4px;">
                     ${badges.length ? `<span class="info-produzido" title="Já atendido">${badges.join(' e ')}</span>` : ''}
-                    ${prodFabrica === 0 ? App.botaoIcone('excluir', 'Remover produto', '', 'perigo') : ''}
+                    <button type="button" class="btn-icone secundario btn-duplicar-item" data-tip="Duplicar este item (mesmo produto)" aria-label="Duplicar item">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="13" height="13" x="9" y="9" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    </button>
+                    ${prodFabrica === 0 ? `
+                    <button type="button" class="btn-icone perigo btn-remover-item" data-tip="Remover produto" aria-label="Remover produto">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/></svg>
+                    </button>` : ''}
                 </div>
             </div>
             <div class="item-variacao-box" data-role="variacao-box"></div>`;
@@ -105,267 +397,60 @@ window.FormPedido = (() => {
         const atualizar = () => {
             const p = produtos.find(x => String(x.id) === sel.value);
             div.querySelector('[data-role="preco"]').textContent = p ? App.fmtMoeda.format(p.preco) : '—';
-            renderizarVariacaoItem(div, p, item);
+            inicializarCoresItem(div, p, item);
+            renderizarBarraCoresItem(div, p);
             atualizarResumo();
         };
 
         sel.addEventListener('change', () => {
-            // Se trocou de produto, limpa a referência do item anterior para recarregar limpo
             item = null;
             atualizar();
         });
 
         div.querySelector('[data-role="quantidade"]').addEventListener('input', atualizarResumo);
-        const remover = div.querySelector('.btn-icone');
+
+        const btnDuplicar = div.querySelector('.btn-duplicar-item');
+        if (btnDuplicar) {
+            btnDuplicar.addEventListener('click', () => {
+                const prodId = sel.value;
+                if (!prodId) {
+                    App.toast('Selecione primeiro um produto antes de duplicar.', 'alerta');
+                    return;
+                }
+                const qtd = parseInt(div.querySelector('[data-role="quantidade"]').value, 10) || 1;
+                const copiaItem = {
+                    produto_id: parseInt(prodId, 10),
+                    quantidade: qtd
+                };
+                if (div._configCores) {
+                    if (div._configCores.tipo === 'composto') {
+                        copiaItem.variacoes_json = {
+                            tipo: 'composto',
+                            pecas: JSON.parse(JSON.stringify(div._configCores.pecas))
+                        };
+                        copiaItem.cor_variacao = div._configCores.pecas.map(pc => `${pc.peca_nome}: ${pc.cor}`).join(' | ');
+                    } else if (div._configCores.tipo === 'simples') {
+                        copiaItem.cor_variacao = div._configCores.cor;
+                    }
+                }
+                const novaLinha = adicionarItem(copiaItem);
+                novaLinha.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                App.toast('Item duplicado! Se desejar outra cor, basta clicar em "Editar cores".', 'info');
+            });
+        }
+
+        const remover = div.querySelector('.btn-remover-item');
         if (remover) {
-            remover.removeAttribute('onclick');
             remover.addEventListener('click', () => {
                 div.remove();
                 if (!$('pedItens').children.length) adicionarItem();
                 atualizarResumo();
             });
         }
+
         $('pedItens').appendChild(div);
         atualizar();
         return div;
-    }
-
-    function renderizarVariacaoItem(div, p, itemSalvo = null) {
-        const box = div.querySelector('[data-role="variacao-box"]');
-        if (!box) return;
-        if (!p) {
-            box.innerHTML = '';
-            box.style.display = 'none';
-            return;
-        }
-
-        const coresList = obterCoresDisponiveis();
-        box.style.display = 'block';
-
-        // 1. Produto Composto com Peças
-        if (p.tipo === 'composto' && p.pecas && p.pecas.length > 0) {
-            let salvas = {};
-            if (itemSalvo && itemSalvo.variacoes_json) {
-                try {
-                    const parsed = typeof itemSalvo.variacoes_json === 'string' ? JSON.parse(itemSalvo.variacoes_json) : itemSalvo.variacoes_json;
-                    if (parsed && Array.isArray(parsed.pecas)) {
-                        parsed.pecas.forEach(pc => {
-                            if (pc.peca_id) salvas[pc.peca_id] = pc.cor;
-                            if (pc.peca_nome) salvas[pc.peca_nome] = pc.cor;
-                        });
-                    }
-                } catch(e) {}
-            }
-
-            const pecasHtml = p.pecas.map(peca => {
-                const pecaId = peca.peca_id || peca.id;
-
-                // Cores cadastradas na ficha técnica da peça:
-                const coresCadastradas = (peca.cores || [])
-                    .map(c => typeof c === 'string' ? c.trim() : (c && c.cor ? String(c.cor).trim() : ''))
-                    .filter(c => c && c.toLowerCase() !== 'null' && c !== 'Padrão / Única' && c !== 'Padrão');
-
-                const temCorPadrao = coresCadastradas.length > 0;
-                const corPadraoCadastrada = temCorPadrao ? coresCadastradas[0] : '';
-
-                // Se houver cor salva no item (edição de pedido), respeita.
-                // Senão, pega automaticamente a cor padrão cadastrada no produto!
-                // Se a peça não tiver cor cadastrada, fica vazio para forçar o preenchimento.
-                const corSalva = salvas[pecaId] || salvas[peca.nome] || '';
-                const corAtual = corSalva || corPadraoCadastrada || '';
-
-                const coresAdicionadas = new Set();
-                let opts = '';
-
-                if (!corAtual) {
-                    opts += `<option value="" selected disabled>⚠️ Selecione a cor (obrigatório)...</option>`;
-                }
-
-                // 1. Cores cadastradas no produto (Destaque ⭐ Padrão e Variações)
-                coresCadastradas.forEach((cNome, idx) => {
-                    coresAdicionadas.add(cNome.toLowerCase());
-                    const isSel = (cNome.toLowerCase() === corAtual.toLowerCase());
-                    const tag = idx === 0 ? ' (Padrão do produto)' : ' (Opção cadastrada)';
-                    opts += `<option value="${App.esc(cNome)}" ${isSel ? 'selected' : ''}>⭐ ${App.esc(cNome)}${tag}</option>`;
-                });
-
-                // 2. Cores disponíveis no catálogo de filamentos
-                coresList.forEach(c => {
-                    if (!coresAdicionadas.has(c.nome.toLowerCase())) {
-                        coresAdicionadas.add(c.nome.toLowerCase());
-                        const isSel = (c.nome.toLowerCase() === corAtual.toLowerCase());
-                        opts += `<option value="${App.esc(c.nome)}" ${isSel ? 'selected' : ''}>${App.esc(c.nome)}</option>`;
-                    }
-                });
-
-                // 3. Digitar outra cor personalizada
-                const isCustom = corAtual && !coresAdicionadas.has(corAtual.toLowerCase());
-                opts += `<option value="_custom_" ${isCustom ? 'selected' : ''}>+ Digitar outra cor...</option>`;
-
-                // Rótulo com indicação clara do padrão ou de obrigatoriedade
-                let badgeInfo = '';
-                if (temCorPadrao) {
-                    badgeInfo = `<span style="font-size:11px;color:var(--text-3);" title="Cor cadastrada na ficha técnica do produto">· Padrão: <b style="color:var(--text-1);">${App.esc(corPadraoCadastrada)}</b></span>`;
-                } else {
-                    badgeInfo = `<span style="font-size:11px;font-weight:600;color:var(--alerta, #f59e0b);" title="Esta peça não possui cor padrão no produto. Você deve selecionar uma cor.">· ⚠️ Sem cor padrão (selecione)</span>`;
-                }
-
-                const estiloBorda = !corAtual ? 'border-color:var(--alerta, #f59e0b);background:var(--surface-3);' : '';
-
-                return `
-                <div class="campo-peca-cor" data-peca-id="${pecaId}" data-peca-nome="${App.esc(peca.nome)}" data-peca-peso="${peca.peso_gramas || 0}" data-peca-qtd="${peca.quantidade || 1}">
-                    <label style="display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;margin-bottom:3px;font-size:12px;">
-                        <span>🧩 <b>${App.esc(peca.nome)}</b> <small style="color:var(--text-3);">(${peca.quantidade || 1} un · ${peca.peso_gramas || 0}g)</small></span>
-                        ${badgeInfo}
-                    </label>
-                    <select data-role="cor-peca" style="width:100%;font-size:12px;padding:5px 8px;border-radius:var(--radius-sm);${estiloBorda}">
-                        ${opts}
-                    </select>
-                    <input type="text" data-role="cor-peca-custom" placeholder="Digitar nome da cor" style="width:100%;font-size:12px;padding:4px 8px;margin-top:4px;border-radius:var(--radius-sm);${isCustom ? '' : 'display:none;'}" value="${isCustom ? App.esc(corAtual) : ''}">
-                </div>`;
-            }).join('');
-
-            box.innerHTML = `
-                <div class="bloco-pecas-cores">
-                    <div style="font-size:12px;font-weight:600;color:var(--text-1);margin-bottom:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-                        <span>🧩 Variação de Cores das Peças:</span>
-                        <span style="font-weight:normal;font-size:11.5px;color:var(--text-3);">(Puxa a cor padrão do produto; altere se o cliente desejar)</span>
-                    </div>
-                    <div class="grade-pecas-cores">${pecasHtml}</div>
-                </div>`;
-
-            box.querySelectorAll('.campo-peca-cor').forEach(cp => {
-                const s = cp.querySelector('[data-role="cor-peca"]');
-                const inp = cp.querySelector('[data-role="cor-peca-custom"]');
-                s.addEventListener('change', () => {
-                    if (s.value === '_custom_') {
-                        inp.style.display = 'block';
-                        inp.focus();
-                    } else {
-                        inp.style.display = 'none';
-                    }
-                    if (s.value) {
-                        s.style.borderColor = '';
-                        s.style.background = '';
-                    } else {
-                        s.style.borderColor = 'var(--alerta, #f59e0b)';
-                        s.style.background = 'var(--surface-3)';
-                    }
-                    atualizarResumo();
-                });
-                inp.addEventListener('input', () => {
-                    if (inp.value.trim()) {
-                        s.style.borderColor = '';
-                        inp.style.borderColor = '';
-                    }
-                    atualizarResumo();
-                });
-            });
-            return;
-        }
-
-        // 2. Produto Simples
-        // Verifica se é multicor AMS (mais de 1 cor fixa configurada no cadastro)
-        const multicorAMS = p.consumo_cores && p.consumo_cores.length > 1;
-        if (multicorAMS) {
-            box.innerHTML = `
-                <div style="font-size:12px;color:var(--text-2);margin-top:4px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-                    <span>🎨 Multicor (AMS):</span>
-                    ${p.consumo_cores.map(c => `<span class="chip-cor-diag" style="font-size:11px;">${App.esc(c.cor)}: <b>${c.gramas_1un}g</b></span>`).join(' ')}
-                </div>`;
-            return;
-        }
-
-        // Produto Simples Monocor (permite selecionar a cor do filamento)
-        const coresProdCadastradas = (p.consumo_cores || [])
-            .map(c => typeof c === 'string' ? c.trim() : (c && c.cor ? String(c.cor).trim() : ''))
-            .filter(c => c && c !== 'Padrão / Única' && c !== 'Padrão');
-
-        const temCorPadraoProd = coresProdCadastradas.length > 0;
-        const corPadraoProd = temCorPadraoProd ? coresProdCadastradas[0] : '';
-
-        const corSalva = (itemSalvo && itemSalvo.cor_variacao) ? itemSalvo.cor_variacao.trim() : '';
-        const corAtual = corSalva || corPadraoProd || '';
-
-        const coresAdicionadasSimples = new Set();
-        let opts = '';
-
-        if (!corAtual) {
-            opts += `<option value="" selected disabled>⚠️ Selecione a cor (obrigatório)...</option>`;
-        }
-
-        // 1. Cores cadastradas no produto
-        if (temCorPadraoProd) {
-            coresProdCadastradas.forEach((cNome, idx) => {
-                coresAdicionadasSimples.add(cNome.toLowerCase());
-                const isSel = (cNome.toLowerCase() === corAtual.toLowerCase());
-                const tag = idx === 0 ? ' (Padrão do produto)' : ' (Opção cadastrada)';
-                opts += `<option value="${App.esc(cNome)}" ${isSel ? 'selected' : ''}>⭐ ${App.esc(cNome)}${tag}</option>`;
-            });
-        }
-
-        // 2. Cores do catálogo de filamentos
-        coresList.forEach(c => {
-            if (!coresAdicionadasSimples.has(c.nome.toLowerCase())) {
-                coresAdicionadasSimples.add(c.nome.toLowerCase());
-                const isSel = (c.nome.toLowerCase() === corAtual.toLowerCase());
-                opts += `<option value="${App.esc(c.nome)}" ${isSel ? 'selected' : ''}>${App.esc(c.nome)}</option>`;
-            }
-        });
-
-        // 3. Custom
-        const isCustom = corAtual && !coresAdicionadasSimples.has(corAtual.toLowerCase());
-        opts += `<option value="_custom_" ${isCustom ? 'selected' : ''}>+ Digitar outra cor...</option>`;
-
-        let badgeProdInfo = '';
-        if (temCorPadraoProd) {
-            badgeProdInfo = `<span style="font-size:11px;color:var(--text-3);">(Padrão: <b style="color:var(--text-1);">${App.esc(corPadraoProd)}</b>)</span>`;
-        } else {
-            badgeProdInfo = `<span style="font-size:11px;font-weight:600;color:var(--alerta, #f59e0b);">⚠️ Sem cor padrão (selecione)</span>`;
-        }
-
-        const estiloBordaSimples = !corAtual ? 'border-color:var(--alerta, #f59e0b);background:var(--surface-3);' : '';
-
-        box.innerHTML = `
-            <div style="display:flex;flex-direction:column;gap:4px;margin-top:6px;font-size:12px;">
-                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-                    <span style="font-weight:600;color:var(--text-2);">🎨 Cor da Peça:</span>
-                    ${badgeProdInfo}
-                </div>
-                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-                    <select data-role="cor-simples" style="font-size:12px;padding:5px 8px;max-width:240px;border-radius:var(--radius-sm);${estiloBordaSimples}">
-                        ${opts}
-                    </select>
-                    <input type="text" data-role="cor-simples-custom" placeholder="Digitar nome da cor" style="font-size:12px;padding:4px 8px;max-width:160px;border-radius:var(--radius-sm);${isCustom ? '' : 'display:none;'}" value="${isCustom ? App.esc(corAtual) : ''}">
-                    <span style="color:var(--text-3);font-size:11.5px;">(baixa do carretel da cor selecionada)</span>
-                </div>
-            </div>`;
-
-        const s = box.querySelector('[data-role="cor-simples"]');
-        const inp = box.querySelector('[data-role="cor-simples-custom"]');
-        s.addEventListener('change', () => {
-            if (s.value === '_custom_') {
-                inp.style.display = 'block';
-                inp.focus();
-            } else {
-                inp.style.display = 'none';
-            }
-            if (s.value) {
-                s.style.borderColor = '';
-                s.style.background = '';
-            } else {
-                s.style.borderColor = 'var(--alerta, #f59e0b)';
-                s.style.background = 'var(--surface-3)';
-            }
-            atualizarResumo();
-        });
-        inp.addEventListener('input', () => {
-            if (inp.value.trim()) {
-                s.style.borderColor = '';
-                inp.style.borderColor = '';
-            }
-            atualizarResumo();
-        });
     }
 
     function atualizarResumo() {
@@ -386,38 +471,28 @@ window.FormPedido = (() => {
             tempoSegundos += t1 * q;
             pesoGramas += w1 * q;
 
-            // Se for composto com peças:
-            if (p.tipo === 'composto' && p.pecas && p.pecas.length > 0) {
-                div.querySelectorAll('.campo-peca-cor').forEach(cp => {
-                    const selCor = cp.querySelector('[data-role="cor-peca"]');
-                    const inpCustom = cp.querySelector('[data-role="cor-peca-custom"]');
-                    let cor = selCor ? selCor.value : '';
-                    if (cor === '_custom_') cor = inpCustom ? inpCustom.value.trim() : '';
-                    if (!cor) cor = 'Cor Padrão';
-                    const pesoPeca = Number(cp.dataset.pecaPeso) || 0;
-                    const g = pesoPeca * q;
+            const cfg = div._configCores;
+            if (p.tipo === 'composto' && cfg && cfg.pecas) {
+                cfg.pecas.forEach(pc => {
+                    const cor = pc.cor || pc.corPadrao || 'Cor Padrão';
+                    const pesoPeca = Number(pc.peso_gramas) || 0;
+                    const qtdPecaPorProd = Number(pc.quantidade) || 1;
+                    const g = pesoPeca * qtdPecaPorProd * q;
                     if (g > 0) coresTotais[cor] = (coresTotais[cor] || 0) + g;
                 });
+            } else if (cfg && cfg.tipo === 'simples') {
+                const cor = cfg.cor || cfg.corPadrao || 'Cor Padrão';
+                coresTotais[cor] = (coresTotais[cor] || 0) + (w1 * q);
             } else {
-                // Se for simples:
-                const selCor = div.querySelector('[data-role="cor-simples"]');
-                const inpCustom = div.querySelector('[data-role="cor-simples-custom"]');
-                let cor = selCor ? selCor.value : '';
-                if (cor === '_custom_') cor = inpCustom ? inpCustom.value.trim() : '';
-
-                if (cor) {
-                    coresTotais[cor] = (coresTotais[cor] || 0) + (w1 * q);
-                } else {
-                    const coresArr = p.consumo_cores || [];
-                    if (coresArr.length) {
-                        coresArr.forEach(c => {
-                            const cNome = c.cor || 'qualquer cor';
-                            const g = (Number(c.gramas_1un) || 0) * q;
-                            coresTotais[cNome] = (coresTotais[cNome] || 0) + g;
-                        });
-                    } else if (w1 > 0) {
-                        coresTotais['qualquer cor'] = (coresTotais['qualquer cor'] || 0) + (w1 * q);
-                    }
+                const coresArr = p.consumo_cores || [];
+                if (coresArr.length) {
+                    coresArr.forEach(c => {
+                        const cNome = c.cor || 'qualquer cor';
+                        const g = (Number(c.gramas_1un) || 0) * q;
+                        coresTotais[cNome] = (coresTotais[cNome] || 0) + g;
+                    });
+                } else if (w1 > 0) {
+                    coresTotais['qualquer cor'] = (coresTotais['qualquer cor'] || 0) + (w1 * q);
                 }
             }
         });
@@ -454,7 +529,7 @@ window.FormPedido = (() => {
         }
     }
 
-    // ---------- Abrir ----------
+    // ---------- Abrir Modal Principal ----------
     function configurarTipo(t) {
         tipo = t;
         const estoque = t === 'estoque';
@@ -479,6 +554,7 @@ window.FormPedido = (() => {
         $('pedAvisoBloqueado').hidden = true;
         $('pedSalvar').disabled = false;
         $('pedAddItem').disabled = false;
+        if ($('pedAddItemAbaixo')) $('pedAddItemAbaixo').disabled = false;
         $('pedNotaItens').hidden = true;
         $('pedUsuario').textContent = window.USUARIO.nome;
         $('pedRotuloUsuario').textContent = 'Registrado por';
@@ -498,6 +574,7 @@ window.FormPedido = (() => {
             $('pedAvisoSemProdutos').hidden = !semProdutos;
             $('pedSalvar').disabled = semProdutos;
             $('pedAddItem').disabled = semProdutos;
+            if ($('pedAddItemAbaixo')) $('pedAddItemAbaixo').disabled = semProdutos;
             adicionarItem();
             App.modal.abrir('modalPedido', estoque || clienteId ? '#pedItens select' : '#pedCliente');
             return;
@@ -531,6 +608,7 @@ window.FormPedido = (() => {
             $('pedAvisoBloqueado').hidden = false;
             $('pedSalvar').disabled = true;
             $('pedAddItem').disabled = true;
+            if ($('pedAddItemAbaixo')) $('pedAddItemAbaixo').disabled = true;
         }
         App.modal.abrir('modalPedido', estoque ? '#pedItens input' : '#pedCliente');
     }
@@ -551,44 +629,6 @@ window.FormPedido = (() => {
             return erro(tipo === 'estoque' ? 'Informe até quando a produção deve ser concluída.' : 'Informe a data prometida de entrega.', $('pedEntrega'));
         }
 
-        // Validação rigorosa de cores: se não houver cor padrão nem selecionada, impede o salvamento
-        for (const div of linhas) {
-            const p = produtos.find(x => String(x.id) === div.querySelector('[data-role="produto"]').value);
-            if (!p) continue;
-
-            if (p.tipo === 'composto' && p.pecas && p.pecas.length > 0) {
-                const camposPeca = div.querySelectorAll('.campo-peca-cor');
-                for (const cp of camposPeca) {
-                    const selCor = cp.querySelector('[data-role="cor-peca"]');
-                    const inpCustom = cp.querySelector('[data-role="cor-peca-custom"]');
-                    let cor = selCor ? selCor.value : '';
-                    if (cor === '_custom_') cor = inpCustom ? inpCustom.value.trim() : '';
-                    if (!cor) {
-                        if (selCor) {
-                            selCor.style.borderColor = 'var(--perigo, #ef4444)';
-                            selCor.focus();
-                        }
-                        return erro(`Por favor, informe a cor da peça "${cp.dataset.pecaNome}" do produto "${p.nome}".`, selCor || cp);
-                    }
-                }
-            } else {
-                const multicorAMS = p.consumo_cores && p.consumo_cores.length > 1;
-                if (!multicorAMS) {
-                    const selCor = div.querySelector('[data-role="cor-simples"]');
-                    const inpCustom = div.querySelector('[data-role="cor-simples-custom"]');
-                    let cor = selCor ? selCor.value : '';
-                    if (cor === '_custom_') cor = inpCustom ? inpCustom.value.trim() : '';
-                    if (!cor) {
-                        if (selCor) {
-                            selCor.style.borderColor = 'var(--perigo, #ef4444)';
-                            selCor.focus();
-                        }
-                        return erro(`Por favor, selecione a cor do produto "${p.nome}".`, selCor || div);
-                    }
-                }
-            }
-        }
-
         const itens = linhas.map(div => {
             const p = produtos.find(x => String(x.id) === div.querySelector('[data-role="produto"]').value);
             const item = {
@@ -597,35 +637,26 @@ window.FormPedido = (() => {
             };
             if (div.dataset.itemId) item.id = parseInt(div.dataset.itemId, 10);
 
-            if (p && p.tipo === 'composto' && p.pecas && p.pecas.length > 0) {
-                const pecasCores = [];
-                div.querySelectorAll('.campo-peca-cor').forEach(cp => {
-                    const selCor = cp.querySelector('[data-role="cor-peca"]');
-                    const inpCustom = cp.querySelector('[data-role="cor-peca-custom"]');
-                    let cor = selCor ? selCor.value : '';
-                    if (cor === '_custom_') cor = inpCustom ? inpCustom.value.trim() : '';
-                    pecasCores.push({
-                        peca_id: parseInt(cp.dataset.pecaId, 10),
-                        peca_nome: cp.dataset.pecaNome,
-                        peso_gramas: parseFloat(cp.dataset.pecaPeso) || 0,
-                        quantidade: parseInt(cp.dataset.pecaQtd, 10) || 1,
-                        cor: cor
-                    });
-                });
-                item.cor_variacao = pecasCores.map(pc => `${pc.peca_nome}: ${pc.cor}`).join(' | ');
-                item.variacoes_json = { tipo: 'composto', pecas: pecasCores };
-            } else if (p) {
-                const multicorAMS = p.consumo_cores && p.consumo_cores.length > 1;
-                if (multicorAMS) {
-                    item.cor_variacao = p.consumo_cores.map(c => c.cor).join(' + ');
+            const cfg = div._configCores;
+            if (p && cfg) {
+                if (cfg.tipo === 'composto' && cfg.pecas) {
+                    item.cor_variacao = cfg.pecas.map(pc => `${pc.peca_nome}: ${pc.cor}`).join(' | ');
+                    item.variacoes_json = {
+                        tipo: 'composto',
+                        pecas: cfg.pecas.map(pc => ({
+                            peca_id: pc.peca_id,
+                            peca_nome: pc.peca_nome,
+                            peso_gramas: pc.peso_gramas,
+                            quantidade: pc.quantidade,
+                            cor: pc.cor
+                        }))
+                    };
+                } else if (cfg.tipo === 'multicor_ams') {
+                    item.cor_variacao = (p.consumo_cores || []).map(c => c.cor).join(' + ');
                     item.variacoes_json = { tipo: 'multicor_ams', cores: p.consumo_cores };
-                } else {
-                    const selCor = div.querySelector('[data-role="cor-simples"]');
-                    const inpCustom = div.querySelector('[data-role="cor-simples-custom"]');
-                    let cor = selCor ? selCor.value : '';
-                    if (cor === '_custom_') cor = inpCustom ? inpCustom.value.trim() : '';
-                    item.cor_variacao = cor || null;
-                    item.variacoes_json = cor ? { tipo: 'simples', cor } : null;
+                } else if (cfg.tipo === 'simples') {
+                    item.cor_variacao = cfg.cor || null;
+                    item.variacoes_json = cfg.cor ? { tipo: 'simples', cor: cfg.cor } : null;
                 }
             }
 
@@ -646,7 +677,7 @@ window.FormPedido = (() => {
         try {
             const estoque = tipo === 'estoque';
             const nome = estoque ? 'Ordem de estoque' : 'Pedido';
-            const a = estoque ? 'a' : 'o'; // concordância: criada/criado
+            const a = estoque ? 'a' : 'o';
             let r;
             if (editandoId) {
                 r = await App.api(`api/pedidos.php?id=${editandoId}`, 'PUT', payload);
@@ -667,7 +698,20 @@ window.FormPedido = (() => {
 
     // ---------- Eventos ----------
     $('formPedido').addEventListener('submit', salvar);
-    $('pedAddItem').addEventListener('click', () => adicionarItem().querySelector('select').focus());
+    $('pedAddItem').addEventListener('click', () => {
+        const row = adicionarItem();
+        row.querySelector('select')?.focus();
+    });
+
+    const btnAbaixo = $('pedAddItemAbaixo');
+    if (btnAbaixo) {
+        btnAbaixo.addEventListener('click', () => {
+            const row = adicionarItem();
+            row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            row.querySelector('select')?.focus();
+        });
+    }
+
     $('pedCliente').addEventListener('change', mostrarInfoCliente);
     $('pedNovoCliente').addEventListener('click', () => {
         FormCliente.abrir({
@@ -677,6 +721,92 @@ window.FormPedido = (() => {
                 $('pedItens').querySelector('select:not([disabled])')?.focus();
             },
         });
+    });
+
+    // Eventos do Sub-Modal de Cores
+    const btnSalvarCores = $('btnSalvarCoresItem');
+    if (btnSalvarCores) {
+        btnSalvarCores.addEventListener('click', () => {
+            if (!itemEmEdicaoCores || !itemEmEdicaoCores.div) return;
+            const { div, p } = itemEmEdicaoCores;
+            const cfg = div._configCores;
+            const blocos = $('modalCoresListaPecas').querySelectorAll('.campo-modal-peca-cor');
+
+            if (cfg.tipo === 'composto') {
+                blocos.forEach(bloco => {
+                    const idx = parseInt(bloco.dataset.pecaIdx, 10);
+                    const sel = bloco.querySelector('[data-role="submodal-cor"]');
+                    const inp = bloco.querySelector('[data-role="submodal-cor-custom"]');
+                    let cor = sel.value;
+                    if (cor === '_custom_') cor = inp.value.trim();
+                    if (!cor) cor = cfg.pecas[idx].corPadrao || 'Branco';
+                    cfg.pecas[idx].cor = cor;
+                });
+            } else if (cfg.tipo === 'simples') {
+                const bloco = blocos[0];
+                if (bloco) {
+                    const sel = bloco.querySelector('[data-role="submodal-cor"]');
+                    const inp = bloco.querySelector('[data-role="submodal-cor-custom"]');
+                    let cor = sel.value;
+                    if (cor === '_custom_') cor = inp.value.trim();
+                    if (!cor) cor = cfg.corPadrao || 'Branco';
+                    cfg.cor = cor;
+                }
+            }
+
+            renderizarBarraCoresItem(div, p);
+            atualizarResumo();
+            App.modal.fechar('modalEditarCoresItem');
+            App.toast('Cores atualizadas para este item.', 'sucesso');
+        });
+    }
+
+    const btnRestaurarCores = $('btnRestaurarCoresItem');
+    if (btnRestaurarCores) {
+        btnRestaurarCores.addEventListener('click', () => {
+            if (!itemEmEdicaoCores || !itemEmEdicaoCores.div) return;
+            const cfg = itemEmEdicaoCores.div._configCores;
+            const blocos = $('modalCoresListaPecas').querySelectorAll('.campo-modal-peca-cor');
+
+            if (cfg.tipo === 'composto') {
+                blocos.forEach(bloco => {
+                    const idx = parseInt(bloco.dataset.pecaIdx, 10);
+                    const corPadrao = cfg.pecas[idx].corPadrao;
+                    const sel = bloco.querySelector('[data-role="submodal-cor"]');
+                    const inp = bloco.querySelector('[data-role="submodal-cor-custom"]');
+                    let achou = false;
+                    for (let i = 0; i < sel.options.length; i++) {
+                        if (sel.options[i].value.toLowerCase() === corPadrao.toLowerCase()) {
+                            sel.selectedIndex = i;
+                            achou = true;
+                            break;
+                        }
+                    }
+                    if (!achou) sel.selectedIndex = 0;
+                    inp.style.display = 'none';
+                });
+            } else if (cfg.tipo === 'simples') {
+                const bloco = blocos[0];
+                if (bloco) {
+                    const sel = bloco.querySelector('[data-role="submodal-cor"]');
+                    const inp = bloco.querySelector('[data-role="submodal-cor-custom"]');
+                    let achou = false;
+                    for (let i = 0; i < sel.options.length; i++) {
+                        if (sel.options[i].value.toLowerCase() === cfg.corPadrao.toLowerCase()) {
+                            sel.selectedIndex = i;
+                            achou = true;
+                            break;
+                        }
+                    }
+                    if (!achou) sel.selectedIndex = 0;
+                    inp.style.display = 'none';
+                }
+            }
+        });
+    }
+
+    document.querySelectorAll('[data-fechar-modal-cores]').forEach(btn => {
+        btn.addEventListener('click', () => App.modal.fechar('modalEditarCoresItem'));
     });
 
     return {

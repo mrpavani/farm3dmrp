@@ -142,7 +142,8 @@ if ($method === 'GET') {
 
     if (!empty($_GET['id'])) {
         $stmt = $pdo->prepare("
-            SELECT p.*, c.nome AS cliente_nome, c.cidade AS cliente_cidade, c.estado AS cliente_estado,
+            SELECT p.*, c.nome AS cliente_nome, c.telefone AS cliente_telefone, c.email AS cliente_email,
+                   c.descricao AS cliente_descricao, c.cidade AS cliente_cidade, c.estado AS cliente_estado,
                    u.nome AS usuario_nome
             FROM pedidos p
             LEFT JOIN clientes c ON c.id = p.cliente_id

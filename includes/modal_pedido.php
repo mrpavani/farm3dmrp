@@ -3,6 +3,7 @@
 // Incluir com require_once. Script: assets/js/form-pedido.js (FormPedido.abrir()).
 /** @var array $usuario */
 require_once __DIR__ . '/modal_cliente.php';
+require_once __DIR__ . '/modal_cores_item.php';
 ?>
 <div id="modalPedido" class="modal" hidden>
     <div class="card modal-caixa modal-largo" role="dialog" aria-modal="true" aria-labelledby="pedTitulo">
@@ -46,6 +47,10 @@ require_once __DIR__ . '/modal_cliente.php';
                         <span>Produto</span><span style="text-align:right">Preço</span><span>Quantidade</span><span></span>
                     </div>
                     <div id="pedItens"></div>
+                    <button type="button" class="btn-adicionar-item-fim" id="pedAddItemAbaixo">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                        Adicionar outro produto ao pedido
+                    </button>
                 </section>
 
                 <section class="secao-form">
