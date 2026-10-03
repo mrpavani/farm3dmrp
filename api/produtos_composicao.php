@@ -185,6 +185,24 @@ if ($method === 'GET') {
 
     $diag = diagnosticoPecas($pdo, $paiId, $meta);
 
+    $qtdEstoque = max(0, (int) ($produto['estoque'] ?? 0));
+    $coresEstoque = [];
+    if (!empty($diag['resumo_1un']['cores'])) {
+        foreach ($diag['resumo_1un']['cores'] as $c) {
+            $coresEstoque[] = [
+                'cor' => $c['cor'],
+                'peso_gramas' => round($c['peso_gramas'] * $qtdEstoque, 2),
+            ];
+        }
+    }
+    $resumoEstoque = [
+        'unidades' => $qtdEstoque,
+        'peso_total_gramas' => round(($diag['resumo_1un']['peso_total_gramas'] ?? 0.0) * $qtdEstoque, 2),
+        'tempo_total_segundos' => ($diag['resumo_1un']['tempo_total_segundos'] ?? 0) * $qtdEstoque,
+        'tempo_formatado' => formatarTempoHHMMSS(($diag['resumo_1un']['tempo_total_segundos'] ?? 0) * $qtdEstoque),
+        'cores' => $coresEstoque,
+    ];
+
     jsonResponse([
         'produto' => $produto,
         'capacidade_maxima' => $diag['capacidade_maxima'],
@@ -193,6 +211,7 @@ if ($method === 'GET') {
         'gargalos' => $diag['gargalos'],
         'pecas' => $diag['pecas'],
         'resumo_1un' => $diag['resumo_1un'],
+        'resumo_estoque' => $resumoEstoque,
         'resumo_meta' => $diag['resumo_meta'],
     ]);
 }

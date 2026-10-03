@@ -18,13 +18,22 @@ require __DIR__ . '/includes/header.php';
         </div>
         <div class="dash-botoes-topo">
             <span id="dashDataAtualizacao" class="dash-badge-tempo">Atualizado agora</span>
-            <button type="button" id="btnAtualizarDash" class="secundario pequeno" title="Recarregar indicadores">
+            <button type="button" id="btnAtualizarDash" class="botao secundario pequeno" title="Recarregar indicadores">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
                 Atualizar
             </button>
-            <a href="produtos.php" class="secundario pequeno">📦 Catálogo</a>
-            <a href="filamentos.php" class="secundario pequeno">🧵 Filamentos</a>
-            <a href="pedidos.php" class="primario pequeno">+ Pedidos</a>
+            <a href="produtos.php" class="botao secundario pequeno">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.3 7 12 12l8.7-5M12 22V12"/></svg>
+                Catálogo
+            </a>
+            <a href="filamentos.php" class="botao secundario pequeno">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M12 3a9 9 0 0 1 9 9"/><path d="M3 12a9 9 0 0 0 9 9"/></svg>
+                Filamentos
+            </a>
+            <a href="pedidos.php" class="botao primario pequeno">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="width:14px;height:14px;"><path d="M12 5v14M5 12h14"/></svg>
+                Novo Pedido
+            </a>
         </div>
     </div>
 
@@ -176,7 +185,7 @@ require __DIR__ . '/includes/header.php';
                         Estoque por cor, carretéis disponíveis e valor médio ponderado por kg.
                     </p>
                 </div>
-                <a href="filamentos.php" class="secundario pequeno" style="text-decoration:none;">Gerenciar Filamentos ↗</a>
+                <a href="filamentos.php" class="botao secundario pequeno">Gerenciar Filamentos ↗</a>
             </div>
 
             <div class="tabela-rolagem" style="max-height: 340px; overflow-y: auto;">
@@ -208,7 +217,7 @@ require __DIR__ . '/includes/header.php';
                         Pedidos com prazo vencido ou entrega imediata que demandam atenção da gestão.
                     </p>
                 </div>
-                <a href="pedidos.php" class="secundario pequeno" style="text-decoration:none;">Ver Pedidos ↗</a>
+                <a href="pedidos.php" class="botao secundario pequeno">Ver Pedidos ↗</a>
             </div>
 
             <div class="tabela-rolagem" style="max-height: 340px; overflow-y: auto;">

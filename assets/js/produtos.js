@@ -1182,14 +1182,25 @@ function renderizarDiagnosticoBOM(data) {
     $('kpiCapacidadeQtd').textContent = cap;
     $('kpiEstoquePronto').textContent = data.produto.estoque || 0;
 
+    // Atualiza KPIs de Estoque Pronto com detalhe de filamento
+    if ($('kpiEstoqueProntoSub')) {
+        const re = data.resumo_estoque;
+        if (re && Number(re.unidades) > 0) {
+            const coresEstStr = (re.cores || []).filter(c => Number(c.peso_gramas) > 0).map(c => `${esc(c.cor)}: ${c.peso_gramas}g`).join(', ');
+            $('kpiEstoqueProntoSub').innerHTML = `<strong style="color:var(--text);">${re.peso_total_gramas}g</strong> no estoque${coresEstStr ? `<br><span style="font-size:10.5px;color:var(--text-3);">${coresEstStr}</span>` : ''}`;
+        } else {
+            $('kpiEstoqueProntoSub').textContent = '0 un prontas';
+        }
+    }
+
     // Atualiza KPIs de Peso e Tempo
     if ($('kpiPeso1un')) {
         $('kpiPeso1un').textContent = (data.resumo_1un?.peso_total_gramas || 0) + ' g';
     }
     if ($('kpiCores1un')) {
         const coresArr = data.resumo_1un?.cores || [];
-        $('kpiCores1un').textContent = coresArr.length
-            ? coresArr.map(c => `${c.cor}: ${c.peso_gramas}g`).join(', ')
+        $('kpiCores1un').innerHTML = coresArr.length
+            ? coresArr.map(c => `<span style="display:inline-block;margin:1px 4px 1px 0;"><b>${esc(c.cor)}</b>: ${c.peso_gramas}g</span>`).join('· ')
             : 'Soma das peças';
     }
     if ($('kpiTempo1un')) {

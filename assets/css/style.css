@@ -224,7 +224,7 @@ label.check input { width: 16px; }
 .acoes-form { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 20px; }
 
 /* ---------- Botões ---------- */
-button, a.botao {
+button, a.botao, .btn, a.secundario, a.primario, a.sucesso, a.alerta {
     display: inline-flex; align-items: center; justify-content: center; gap: 6px;
     font: inherit; font-weight: 600; font-size: 14px; line-height: 1;
     min-height: 40px; padding: 0 16px;
@@ -235,20 +235,29 @@ button, a.botao {
     box-shadow: var(--shadow-sm);
     transition: background .15s, border-color .15s, color .15s, box-shadow .15s, transform .05s;
 }
-button:hover, a.botao:hover { background: var(--primary-hover); }
-button:active, a.botao:active { transform: translateY(1px); }
+button:hover, a.botao:hover, .btn:hover, a.primario:hover { background: var(--primary-hover); color: #fff; text-decoration: none; }
+button:active, a.botao:active, .btn:active, a.secundario:active, a.primario:active { transform: translateY(1px); }
 button:disabled { opacity: .55; cursor: not-allowed; transform: none; }
-button svg, a.botao svg { width: 16px; height: 16px; }
+button svg, a.botao svg, .btn svg, a.secundario svg, a.primario svg { width: 16px; height: 16px; }
 
-.pequeno, button.pequeno, a.botao.pequeno { min-height: 32px; padding: 0 11px; font-size: 13px; }
+.pequeno, button.pequeno, a.botao.pequeno, a.pequeno { min-height: 32px; padding: 0 11px; font-size: 13px; }
 
-button.secundario, a.botao.secundario, .secundario {
-    background: var(--surface); color: var(--text); border-color: var(--border-strong);
+button.primario, a.botao.primario, a.primario, .primario {
+    background: var(--primary); color: #fff; border-color: var(--primary); text-decoration: none;
 }
-button.secundario:hover, a.botao.secundario:hover { background: var(--surface-3); border-color: #b6bfcf; }
+button.primario:hover, a.botao.primario:hover, a.primario:hover {
+    background: var(--primary-hover); color: #fff; border-color: var(--primary-hover); text-decoration: none;
+}
 
-button.sucesso, a.botao.sucesso { background: var(--success-solid); color: #fff; }
-button.sucesso:hover, a.botao.sucesso:hover { background: #047857; }
+button.secundario, a.botao.secundario, a.secundario, .secundario {
+    background: var(--surface); color: var(--text); border-color: var(--border-strong); text-decoration: none;
+}
+button.secundario:hover, a.botao.secundario:hover, a.secundario:hover, .secundario:hover {
+    background: var(--surface-3); border-color: #b6bfcf; color: var(--text); text-decoration: none;
+}
+
+button.sucesso, a.botao.sucesso, a.sucesso { background: var(--success-solid); color: #fff; text-decoration: none; }
+button.sucesso:hover, a.botao.sucesso:hover, a.sucesso:hover { background: #047857; color: #fff; text-decoration: none; }
 
 button.alerta, a.botao.alerta { background: var(--warning-bg); color: var(--warning); border-color: var(--warning-bd); box-shadow: none; }
 button.alerta:hover { background: #fef3c7; }

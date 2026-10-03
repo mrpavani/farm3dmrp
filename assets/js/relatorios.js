@@ -432,6 +432,37 @@ function renderResultadoEvento(res) {
             ];
         })
     );
+
+    // Tabela Detalhada por Produto no Lote
+    const elTabProd = $('tabelaProdutosEvento');
+    if (elTabProd && res.produtos) {
+        if (!res.produtos.length) {
+            elTabProd.innerHTML = '<p class="vazio">Nenhum produto no lote.</p>';
+        } else {
+            elTabProd.innerHTML = tabela(
+                [['Produto & Lote'], ['Qtd.', 1], ['Tempo Total', 1], ['Filamento Total', 1], ['Consumo de Filamento por Cor (Lote e Unitário)']],
+                res.produtos.map(p => {
+                    const cores = (p.cores || []);
+                    const chipsHtml = cores.length
+                        ? cores.map(c => `
+                            <span class="chip-cor-diag" style="display:inline-flex;align-items:center;gap:4px;margin:2px 4px 2px 0;padding:2px 8px;border-radius:12px;background:var(--surface-2);border:1px solid var(--border);font-size:11.5px;">
+                                <strong>${esc(c.cor)}:</strong> ${fmtInt.format(c.gramas_total)}g
+                                <small style="color:var(--text-3);">(${c.gramas_1un}g/un)</small>
+                            </span>
+                          `).join('')
+                        : '<span class="vazio">—</span>';
+
+                    return [
+                        [`<strong>${esc(p.nome)}</strong>`],
+                        [`<b>${fmtInt.format(p.quantidade)}</b> un`, 1],
+                        [`${p.tempo_formatado || '00:00:00'}`, 1],
+                        [`<strong>${fmtInt.format(p.peso_total_gramas)} g</strong>`, 1],
+                        [chipsHtml]
+                    ];
+                })
+            );
+        }
+    }
 }
 
 // ---------- Por pedido, expansível até o valor de cada item ----------
@@ -678,6 +709,11 @@ window.removerLinhaEvento = removerLinhaEvento;
         popular('api/clientes.php', $('relCliente'), c => [c.id, c.nome]),
     ]);
     definirPeriodo('mes');
-    mostrarAba('entregas');
+    const hashAba = window.location.hash ? window.location.hash.replace('#', '') : '';
+    if (hashAba && ['planejador', 'filamento', 'entregas', 'fabricar', 'pedidos', 'produtos', 'clientes', 'producao'].includes(hashAba)) {
+        mostrarAba(hashAba);
+    } else {
+        mostrarAba('entregas');
+    }
     gerar();
 })();

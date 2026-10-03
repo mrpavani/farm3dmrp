@@ -23,7 +23,11 @@ require __DIR__ . '/includes/header.php';
             <option value="componente">⚙️ Peça Avulsa / Componente</option>
         </select>
 
-        <a href="dashboard.php" class="secundario" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;font-weight:600;white-space:nowrap;" title="Ver visão geral de produtos prontos, filamentos e pedidos para tomada de decisões">
+        <a href="relatorios.php#planejador" class="botao secundario" style="text-decoration:none;white-space:nowrap;" title="Planejar grandes quantidades com múltiplos produtos e ver consumo total de filamento por cor">
+            <span style="font-size:15px;">🎪</span> Planejar Lote / Evento
+        </a>
+
+        <a href="dashboard.php" class="botao secundario" style="text-decoration:none;white-space:nowrap;" title="Ver visão geral de produtos prontos, filamentos e pedidos para tomada de decisões">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
             Painel Gerencial
         </a>
@@ -404,7 +408,7 @@ require __DIR__ . '/includes/header.php';
             <div class="bom-kpi-item">
                 <span class="lbl">Estoque Pronto</span>
                 <div class="val" id="kpiEstoquePronto">0</div>
-                <span style="font-size:11px;color:var(--text-3);">Unidades finalizadas</span>
+                <span id="kpiEstoqueProntoSub" style="font-size:11px;color:var(--text-3);">Unidades finalizadas</span>
             </div>
             <div class="bom-kpi-item">
                 <span class="lbl">Filamento / un</span>

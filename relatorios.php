@@ -168,8 +168,16 @@ require __DIR__ . '/includes/header.php';
 
                 <div id="alertaGeralEvento" style="margin-bottom: 14px;"></div>
 
-                <h3 class="sub-secao">Diagnóstico de Filamento por Cor para o Evento</h3>
+                <h3 class="sub-secao">🧵 Diagnóstico Consolidado de Filamento por Cor</h3>
                 <div class="tabela-rolagem" id="tabelaCoresEvento" style="margin-bottom: 16px;"></div>
+
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-top: 24px; margin-bottom: 10px;">
+                    <div>
+                        <h3 class="sub-secao" style="margin:0;">📦 Detalhamento do Consumo por Produto no Lote</h3>
+                        <p style="margin:2px 0 0 0; font-size:12px; color:var(--text-3);">Veja exatamente quanto de cada cor e quanto tempo cada produto vai gastar no lote solicitado.</p>
+                    </div>
+                </div>
+                <div class="tabela-rolagem" id="tabelaProdutosEvento" style="margin-bottom: 16px;"></div>
             </div>
         </section>
 
