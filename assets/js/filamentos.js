@@ -117,7 +117,7 @@ function renderizar() {
                     <button type="button" class="btn-icone primario" onclick="abrirEntradaLotePara(${f.id})" title="Adicionar Entrada de Rolos / Compra">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
                     </button>
-                    <button type="button" class="btn-icone" onclick="abrirAjusteBalança(${f.id})" title="Ajuste / Conferência na Balança">
+                    <button type="button" class="btn-icone" onclick="abrirAjusteBalanca(${f.id})" title="Ajuste / Conferência na Balança">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="M7 21h10"/><path d="M12 3v18"/><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/></svg>
                     </button>
                     <button type="button" class="btn-icone" onclick="abrirDetalhesLotes(${f.id})" title="Ver Lotes PEPS e Extrato">
@@ -304,7 +304,7 @@ async function salvarEntradaLote(ev) {
 // -------------------------------------------------------------------------
 // Modal Ajuste Manual de Balança
 // -------------------------------------------------------------------------
-function abrirAjusteBalança(filId) {
+function abrirAjusteBalanca(filId) {
     const f = filamentos.find(x => x.id === filId);
     if (!f) return;
     $('ajusteFilamentoId').value = f.id;
@@ -365,11 +365,11 @@ async function abrirDetalhesLotes(filId) {
         $('detTituloModal').textContent = `${info.cor} (${info.tipo} · ${info.marca})`;
         $('detSubModal').textContent = `Lotes ordenados por data de compra (regra PEPS / FIFO)`;
 
-        $('detSaldoGramas').textContent = `${Number(info.estoque_gramas).toLocaleString('pt-BR')} g`;
-        $('detSaldoRolos').textContent = `${Number(info.estoque_rolos).toFixed(2)} rolos`;
-        $('detCustoMedio').textContent = `${App.moeda(info.custo_medio_kg)} / kg`;
-        $('detCustoPeps').textContent = `${App.moeda(info.custo_peps_kg)} / kg`;
-        $('detValorTotal').textContent = App.moeda(info.valor_total_estoque);
+        $('detSaldoGramas').textContent = `${Number(info.estoque_gramas || 0).toLocaleString('pt-BR')} g`;
+        $('detSaldoRolos').textContent = `${Number(info.estoque_rolos || 0).toFixed(2)} rolos`;
+        $('detCustoMedio').textContent = `${App.moeda(info.custo_medio_kg || 0)} / kg`;
+        $('detCustoPeps').textContent = `${App.moeda(info.custo_peps_kg || 0)} / kg`;
+        $('detValorTotal').textContent = App.moeda(info.valor_total_estoque || 0);
 
         // Lotes
         const tbodyLotes = $('tabelaLotesDetalhes');
@@ -388,11 +388,11 @@ async function abrirDetalhesLotes(filId) {
                         <b>#${lt.id}</b>
                         ${ehAtivoPeps ? '<span class="tag-status pronto" style="font-size:10px; margin-left:4px;">PEPS Atual</span>' : ''}
                     </td>
-                    <td>${lt.data_compra ? App.dataHora.format(new Date(lt.data_compra + 'T12:00:00')).split(' ')[0] : '—'}</td>
+                    <td>${App.data(lt.data_compra)}</td>
                     <td class="num">${lt.quantidade_rolos} un</td>
                     <td class="num">${App.moeda(lt.preco_rolo)}</td>
-                    <td class="num">R$ ${Number(lt.preco_por_grama).toFixed(4)}/g</td>
-                    <td class="num">${Number(lt.peso_total_gramas).toLocaleString('pt-BR')} g</td>
+                    <td class="num">R$ ${Number(lt.preco_por_grama || 0).toFixed(4)}/g</td>
+                    <td class="num">${Number(lt.peso_total_gramas || 0).toLocaleString('pt-BR')} g</td>
                     <td class="num" style="font-weight: 700; color: ${esgotado ? 'var(--text-3)' : 'var(--sucesso)'};">
                         ${saldo.toLocaleString('pt-BR')} g
                     </td>
@@ -417,10 +417,10 @@ async function abrirDetalhesLotes(filId) {
 
                 return `
                 <tr>
-                    <td style="font-size:12px;">${App.dataHora.format(new Date(m.criado_em.replace(' ', 'T')))}</td>
+                    <td style="font-size:12px;">${App.dataHora(m.criado_em)}</td>
                     <td><span class="badge-tipo ${m.tipo === 'compra' ? 'simples' : (m.tipo === 'ajuste' ? 'componente' : 'composto')}" style="font-size:10.5px;">${esc(m.tipo)}</span></td>
                     <td class="num" style="font-weight: 700; color: ${corNum};">${sinal} g</td>
-                    <td class="num">${Number(m.saldo_posterior_gramas).toLocaleString('pt-BR')} g</td>
+                    <td class="num">${Number(m.saldo_posterior_gramas || 0).toLocaleString('pt-BR')} g</td>
                     <td class="num">${App.moeda(m.custo_total)}</td>
                     <td style="font-size:12px;">${esc(m.observacoes || '—')}</td>
                     <td style="font-size:12px; color:var(--text-3);">${esc(m.usuario_nome || '—')}</td>
@@ -449,7 +449,8 @@ $('filtroStatus')?.addEventListener('change', renderizar);
 
 // Globais para onclick inline
 window.abrirEntradaLotePara = abrirEntradaLotePara;
-window.abrirAjusteBalança = abrirAjusteBalança;
+window.abrirAjusteBalanca = abrirAjusteBalanca;
+window.abrirAjusteBalança = abrirAjusteBalanca;
 window.abrirDetalhesLotes = abrirDetalhesLotes;
 window.editarFilamento = editarFilamento;
 
