@@ -212,11 +212,79 @@ window.App = (() => {
     }
 
     // Normaliza texto para busca (sem acento, minúsculo)
-    const normalizar = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    const normalizar = s => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+    // Formatação de telefone (99) 99999-9999 ou (99) 9999-9999
+    function formatarTelefone(v) {
+        if (!v) return '';
+        const d = String(v).replace(/\D/g, '').slice(0, 11);
+        if (!d) return '';
+        if (d.length <= 2) return `(${d}`;
+        if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
+        if (d.length <= 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+        return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7, 11)}`;
+    }
+
+    // Aplica máscara contínua e impede digitação de letras em campos de telefone
+    function mascaraTelefone(input) {
+        if (!input || input._temMascaraTel) return;
+        input._temMascaraTel = true;
+        input.setAttribute('maxlength', '15');
+        input.setAttribute('inputmode', 'numeric');
+
+        // Bloqueia letras e caracteres não numéricos
+        input.addEventListener('keydown', e => {
+            if (e.ctrlKey || e.metaKey || e.altKey) return;
+            if (['Backspace', 'Delete', 'Tab', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'Enter'].includes(e.key)) {
+                return;
+            }
+            if (!/^\d$/.test(e.key)) {
+                e.preventDefault();
+            }
+        });
+
+        // Aplica a máscara e posiciona o cursor adequadamente
+        input.addEventListener('input', () => {
+            const pos = input.selectionStart || 0;
+            const anterior = input.value;
+            const digitosAntes = anterior.slice(0, pos).replace(/\D/g, '').length;
+
+            const formatado = formatarTelefone(anterior);
+            input.value = formatado;
+
+            let novoPos = 0;
+            let digitosAteAgora = 0;
+            for (let i = 0; i < formatado.length; i++) {
+                if (/\d/.test(formatado[i])) {
+                    digitosAteAgora++;
+                }
+                if (digitosAteAgora === digitosAntes) {
+                    novoPos = i + 1;
+                    break;
+                }
+            }
+            if (novoPos === 0 && formatado.length > 0) novoPos = formatado.length;
+            input.setSelectionRange(novoPos, novoPos);
+        });
+
+        // Trata colar texto removendo letras
+        input.addEventListener('paste', e => {
+            e.preventDefault();
+            const colado = (e.clipboardData || window.clipboardData).getData('text') || '';
+            const nums = colado.replace(/\D/g, '');
+            input.value = formatarTelefone(nums);
+        });
+
+        // Formata valor inicial se já existir
+        if (input.value) {
+            input.value = formatarTelefone(input.value);
+        }
+    }
 
     return {
         fmtInt, fmtMoeda, moeda: v => fmtMoeda.format(Number(v) || 0), num, esc, isoEmDias, hoje: () => isoEmDias(0), data, dataHora, diasAte, etiquetaPrazo,
         api, icone, botaoIcone, modal, confirmar, toast, estadoVazio, normalizar,
+        formatarTelefone, mascaraTelefone,
     };
 })();
 
@@ -247,4 +315,26 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.addEventListener('click', () => alternar(!document.body.classList.contains('menu-aberto')));
     fundo.addEventListener('click', () => alternar(false));
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && !window.App.modal.topo()) alternar(false); });
+});
+
+// Ativação automática de máscara de telefone em inputs tel
+document.addEventListener('DOMContentLoaded', () => {
+    const ativarMascaras = (ctx = document) => {
+        ctx.querySelectorAll('input[type="tel"], input.mascara-telefone').forEach(App.mascaraTelefone);
+    };
+    ativarMascaras();
+    if (document.body) {
+        new MutationObserver(mutations => {
+            mutations.forEach(m => {
+                m.addedNodes.forEach(node => {
+                    if (node.nodeType === 1) {
+                        if (node.matches && node.matches('input[type="tel"], input.mascara-telefone')) {
+                            App.mascaraTelefone(node);
+                        }
+                        if (node.querySelectorAll) ativarMascaras(node);
+                    }
+                });
+            });
+        }).observe(document.body, { childList: true, subtree: true });
+    }
 });

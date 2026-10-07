@@ -33,7 +33,14 @@ function acoes(p) {
         </button>
     `);
 
-    // 2. Ações de Mudança de Status Rápido
+    // 2. Botão Imprimir / Folha de Conferência (sempre presente)
+    b.push(`
+        <button type="button" class="btn-acao imprimir" data-tip="Imprimir folha de conferência do pedido" aria-label="Imprimir pedido" onclick="imprimirPedido(${p.id})">
+            ${App.icone('imprimir')}
+        </button>
+    `);
+
+    // 3. Ações de Mudança de Status Rápido
     if (p.status === 'pronto') {
         const dica = estoque ? 'Concluir (enviar ao estoque)' : 'Marcar como entregue';
         b.push(`
@@ -298,7 +305,7 @@ async function verDetalhes(id) {
         $('detConteudoCliente').innerHTML = `
             <div style="font-size:15px;font-weight:700;color:var(--text);">${App.esc(p.cliente_nome || '—')}</div>
             <div style="display:flex;flex-direction:column;gap:3px;margin-top:6px;font-size:12.5px;color:var(--text-2);">
-                ${p.cliente_telefone ? `<div>📞 <b>Telefone:</b> <a href="tel:${App.esc(p.cliente_telefone)}" style="color:var(--primary);text-decoration:none;">${App.esc(p.cliente_telefone)}</a></div>` : ''}
+                ${p.cliente_telefone ? `<div>📞 <b>Telefone:</b> <a href="tel:${App.esc(p.cliente_telefone.replace(/[^\d+]/g, ''))}" style="color:var(--primary);text-decoration:none;">${App.esc(App.formatarTelefone(p.cliente_telefone))}</a></div>` : ''}
                 ${p.cliente_email ? `<div>✉️ <b>E-mail:</b> <a href="mailto:${App.esc(p.cliente_email)}" style="color:var(--primary);text-decoration:none;">${App.esc(p.cliente_email)}</a></div>` : ''}
                 ${cidadeUf ? `<div>📍 <b>Cidade:</b> ${App.esc(cidadeUf)}</div>` : ''}
                 ${p.cliente_descricao ? `<div style="font-size:11.5px;color:var(--text-3);margin-top:2px;">Obs.: ${App.esc(p.cliente_descricao)}</div>` : ''}
@@ -442,10 +449,16 @@ async function verDetalhes(id) {
         $('detBtnExcluir').hidden = true;
     }
 
-    $('detBtnImprimir').onclick = () => window.print();
+    $('detBtnImprimir').onclick = () => imprimirPedido(p.id);
 
     App.modal.abrir('modalDetalhesPedido');
 }
+
+function imprimirPedido(id) {
+    if (!id) return;
+    window.open(`imprimir_pedido.php?id=${id}&auto=1`, '_blank');
+}
+window.imprimirPedido = imprimirPedido;
 
 function novo(clienteId = null) {
     FormPedido.abrir({ clienteId, aoSalvar: carregar });

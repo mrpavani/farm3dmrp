@@ -22,7 +22,7 @@
                 <div class="linha">
                     <div>
                         <label for="cliTelefone">Telefone</label>
-                        <input type="tel" id="cliTelefone" maxlength="30" placeholder="(11) 90000-0000">
+                        <input type="tel" id="cliTelefone" maxlength="15" placeholder="(99) 99999-9999" inputmode="numeric" autocomplete="tel">
                     </div>
                     <div>
                         <label for="cliEmail">E-mail</label>

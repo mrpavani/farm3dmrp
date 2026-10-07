@@ -155,7 +155,7 @@ if ($method === 'GET') {
         if (!$pedido) jsonError('Pedido não encontrado.', 404);
 
         $itensStmt = $pdo->prepare("
-            SELECT pi.*, pr.nome AS produto_nome, {$sqlDisponibilidade}, {$sqlProduzidoPor}
+            SELECT pi.*, pr.nome AS produto_nome, pr.foto AS produto_foto, {$sqlDisponibilidade}, {$sqlProduzidoPor}
             FROM pedido_itens pi
             JOIN produtos pr ON pr.id = pi.produto_id
             WHERE pi.pedido_id = :id
@@ -205,7 +205,7 @@ if ($method === 'GET') {
         $ids = array_column($pedidos, 'id');
         $in = implode(',', array_fill(0, count($ids), '?'));
         $itensStmt = $pdo->prepare("
-            SELECT pi.*, pr.nome AS produto_nome, {$sqlDisponibilidade}, {$sqlProduzidoPor}
+            SELECT pi.*, pr.nome AS produto_nome, pr.foto AS produto_foto, {$sqlDisponibilidade}, {$sqlProduzidoPor}
             FROM pedido_itens pi
             JOIN produtos pr ON pr.id = pi.produto_id
             WHERE pi.pedido_id IN ($in)

@@ -60,7 +60,7 @@ window.FormPedido = (() => {
         const el = $('pedClienteInfo');
         const c = clientes.find(x => String(x.id) === $('pedCliente').value);
         const local = c && c.cidade ? c.cidade + (c.estado ? '/' + c.estado : '') : '';
-        const partes = c ? [['Tel.', c.telefone], ['E-mail', c.email], ['Cidade', local], ['Obs.', c.descricao]].filter(([, v]) => v) : [];
+        const partes = c ? [['Tel.', App.formatarTelefone(c.telefone)], ['E-mail', c.email], ['Cidade', local], ['Obs.', c.descricao]].filter(([, v]) => v) : [];
         el.innerHTML = partes.map(([r, v]) => `<span><span class="vazio">${r}</span> ${App.esc(v)}</span>`).join('');
         el.hidden = partes.length === 0;
     }

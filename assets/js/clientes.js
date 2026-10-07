@@ -27,7 +27,8 @@ function renderizar() {
     }
 
     $('tabelaClientes').innerHTML = lista.map(c => {
-        const tel = c.telefone ? `<a href="tel:${App.esc(c.telefone.replace(/[^\d+]/g, ''))}">${App.esc(c.telefone)}</a>` : '';
+        const telFormatado = c.telefone ? App.formatarTelefone(c.telefone) : '';
+        const tel = telFormatado ? `<a href="tel:${App.esc(c.telefone.replace(/[^\d+]/g, ''))}">${App.esc(telFormatado)}</a>` : '';
         const email = c.email ? `<a href="mailto:${App.esc(c.email)}">${App.esc(c.email)}</a>` : '';
         const local = c.cidade ? `${c.cidade}${c.estado ? '/' + c.estado : ''}` : (c.estado || '—');
         const usado = Number(c.qtd_pedidos) > 0;

@@ -19,7 +19,11 @@ window.FormCliente = (() => {
         editandoId = cliente ? cliente.id : null;
         callback = aoSalvar;
         $('formCliente').reset();
-        Object.entries(campos).forEach(([k, id]) => { $(id).value = cliente ? (cliente[k] || '') : ''; });
+        Object.entries(campos).forEach(([k, id]) => {
+            let val = cliente ? (cliente[k] || '') : '';
+            if (k === 'telefone') val = App.formatarTelefone(val);
+            $(id).value = val;
+        });
         $('cliTituloModal').textContent = cliente ? 'Editar cliente' : 'Novo cliente';
         $('cliSubModal').textContent = cliente ? cliente.nome : 'Preencha os dados do cliente.';
         $('btnSalvarCliente').textContent = cliente ? 'Salvar alterações' : 'Cadastrar cliente';
@@ -30,6 +34,9 @@ window.FormCliente = (() => {
         ev.preventDefault();
         const payload = {};
         Object.entries(campos).forEach(([k, id]) => { payload[k] = $(id).value.trim(); });
+        if (payload.telefone) {
+            payload.telefone = App.formatarTelefone(payload.telefone);
+        }
         if (!payload.nome) {
             App.toast('Informe o nome do cliente.', 'erro');
             $('cliNome').focus();
@@ -63,6 +70,7 @@ window.FormCliente = (() => {
 
     $('formCliente').addEventListener('submit', salvar);
     $('cliEstado').addEventListener('input', e => { e.target.value = e.target.value.toUpperCase(); });
+    if ($('cliTelefone')) App.mascaraTelefone($('cliTelefone'));
 
     return { abrir };
 })();

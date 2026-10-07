@@ -87,9 +87,10 @@ function dadosCliente(array $b): array {
     }
 
     $estado = $texto('estado', 2);
+    $telefone = formatarTelefone($texto('telefone', 30));
     return [
         'nome' => $nome,
-        'telefone' => $texto('telefone', 30),
+        'telefone' => $telefone,
         'email' => $email,
         'cidade' => $texto('cidade', 100),
         'estado' => $estado === null ? null : mb_strtoupper($estado),
@@ -97,17 +98,33 @@ function dadosCliente(array $b): array {
     ];
 }
 
+function formatarTelefone(?string $tel): ?string {
+    if ($tel === null) return null;
+    $d = preg_replace('/\D/', '', $tel);
+    if ($d === '') return null;
+    if (strlen($d) > 11) $d = substr($d, 0, 11);
+
+    if (strlen($d) === 11) {
+        return sprintf('(%s) %s-%s', substr($d, 0, 2), substr($d, 2, 5), substr($d, 7, 4));
+    }
+    if (strlen($d) === 10) {
+        return sprintf('(%s) %s-%s', substr($d, 0, 2), substr($d, 2, 4), substr($d, 6, 4));
+    }
+    if (strlen($d) > 6) {
+        return sprintf('(%s) %s-%s', substr($d, 0, 2), substr($d, 2, 4), substr($d, 6));
+    }
+    if (strlen($d) > 2) {
+        return sprintf('(%s) %s', substr($d, 0, 2), substr($d, 2));
+    }
+    return "($d";
+}
+
 function emailDuplicado(PDO $pdo, ?string $email, int $ignorarId = 0): bool {
-    if ($email === null) return false;
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM clientes WHERE email = :email AND id <> :id");
-    $stmt->execute(['email' => $email, 'id' => $ignorarId]);
-    return (int) $stmt->fetchColumn() > 0;
+    // Permitido mais de um cliente com o mesmo e-mail
+    return false;
 }
 
 function inserirCliente(PDO $pdo, array $dados): int {
-    if (emailDuplicado($pdo, $dados['email'])) {
-        throw new Exception('Já existe um cliente com esse e-mail.');
-    }
     $stmt = $pdo->prepare("
         INSERT INTO clientes (nome, telefone, email, cidade, estado, descricao)
         VALUES (:nome, :telefone, :email, :cidade, :estado, :descricao)

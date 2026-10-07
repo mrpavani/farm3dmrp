@@ -71,7 +71,6 @@ if ($method === 'PUT') {
         jsonError($e->getMessage());
     }
     if (!clienteExiste($pdo, $id)) jsonError('Cliente não encontrado.', 404);
-    if (emailDuplicado($pdo, $d['email'], $id)) jsonError('Já existe outro cliente com esse e-mail.');
 
     $stmt = $pdo->prepare("
         UPDATE clientes SET nome = :nome, telefone = :telefone, email = :email,
