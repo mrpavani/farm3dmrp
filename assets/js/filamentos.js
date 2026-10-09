@@ -60,25 +60,30 @@ function renderizarCores(cores) {
             : `Todas as ${totalCores} cores com estoque em dia`;
     }
 
+    const termoAtual = App.normalizar($('buscaFilamento')?.value || '').trim();
+
     elGrade.innerHTML = cores.map(c => {
         const hex = c.cor_hex || '#6366f1';
         const gramas = Number(c.estoque_gramas) || 0;
+        const normCor = App.normalizar(c.cor).trim();
+        const estaAtiva = termoAtual !== '' && (termoAtual === normCor || termoAtual.includes(normCor));
+
         let badgeCor = '';
         if (c.status === 'zerado') {
-            badgeCor = '<span style="font-size:10px; font-weight:700; color:#ef4444; background:rgba(239,68,68,0.12); padding:1px 6px; border-radius:10px;">ZERADO</span>';
+            badgeCor = '<span class="pill-cor-badge zerado">ZERADO</span>';
         } else if (c.status === 'baixo') {
-            badgeCor = '<span style="font-size:10px; font-weight:700; color:#f59e0b; background:rgba(245,158,11,0.12); padding:1px 6px; border-radius:10px;">BAIXO</span>';
+            badgeCor = '<span class="pill-cor-badge baixo">BAIXO</span>';
         } else {
-            badgeCor = '<span style="font-size:10px; font-weight:700; color:#10b981; background:rgba(16,185,129,0.12); padding:1px 6px; border-radius:10px;">OK</span>';
+            badgeCor = '<span class="pill-cor-badge ok">OK</span>';
         }
 
         return `
-        <div class="pill-cor-estoque" onclick="filtrarPorCor('${esc(c.cor)}')" style="display:inline-flex; align-items:center; gap:8px; padding:6px 12px; background:var(--bg-card, #1e293b); border:1px solid var(--border, #334155); border-radius:20px; cursor:pointer; transition:all 0.15s ease;" title="Filtrar carretéis da cor ${esc(c.cor)} (Tipos: ${esc(c.tipos)})">
-            <span style="width:14px; height:14px; border-radius:50%; background:${esc(hex)}; border:1px solid rgba(0,0,0,0.2); flex-shrink:0;"></span>
-            <span style="font-size:13px; font-weight:600; color:var(--text);">${esc(c.cor)}</span>
-            <span style="font-size:12px; color:var(--text-2); font-weight:500;">${App.fmtInt.format(gramas)}g</span>
+        <button type="button" class="pill-cor-estoque ${estaAtiva ? 'ativa' : ''}" onclick="filtrarPorCor('${esc(c.cor)}')" title="Filtrar filamentos da cor ${esc(c.cor)} (${esc(c.tipos || 'Todos')})">
+            <span class="pill-cor-swatch" style="background-color:${esc(hex)};"></span>
+            <span class="pill-cor-nome">${esc(c.cor)}</span>
+            <span class="pill-cor-peso">${App.fmtInt.format(gramas)}g</span>
             ${badgeCor}
-        </div>
+        </button>
         `;
     }).join('');
 }
@@ -86,11 +91,14 @@ function renderizarCores(cores) {
 function filtrarPorCor(nomeCor) {
     const input = $('buscaFilamento');
     if (!input) return;
-    if (input.value.trim().toLowerCase() === nomeCor.trim().toLowerCase()) {
+    const normInput = App.normalizar(input.value || '').trim();
+    const normCor = App.normalizar(nomeCor || '').trim();
+    if (normInput === normCor) {
         input.value = '';
     } else {
         input.value = nomeCor;
     }
+    renderizarCores(coresFilamentos);
     renderizar();
 }
 
@@ -513,7 +521,10 @@ $('formFilamento')?.addEventListener('submit', salvarFilamento);
 $('formEntradaLote')?.addEventListener('submit', salvarEntradaLote);
 $('formAjusteFilamento')?.addEventListener('submit', salvarAjuste);
 
-$('buscaFilamento')?.addEventListener('input', renderizar);
+$('buscaFilamento')?.addEventListener('input', () => {
+    renderizarCores(coresFilamentos);
+    renderizar();
+});
 $('filtroTipo')?.addEventListener('change', renderizar);
 $('filtroStatus')?.addEventListener('change', renderizar);
 
@@ -523,5 +534,6 @@ window.abrirAjusteBalanca = abrirAjusteBalanca;
 window.abrirAjusteBalança = abrirAjusteBalanca;
 window.abrirDetalhesLotes = abrirDetalhesLotes;
 window.editarFilamento = editarFilamento;
+window.filtrarPorCor = filtrarPorCor;
 
 carregar();

@@ -3494,4 +3494,89 @@ td.contato a:hover { color: var(--primary); }
     }
 }
 
+/* Painel de Estoque Consolidado por Cor */
+.grade-cores-estoque {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.pill-cor-estoque {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    background: #ffffff;
+    border: 1px solid var(--border, #e4e7ee);
+    border-radius: 20px;
+    cursor: pointer;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    transition: all 0.15s ease;
+    user-select: none;
+    font-family: inherit;
+    text-align: left;
+}
+
+.pill-cor-estoque:hover {
+    background: var(--surface-2, #f8fafc);
+    border-color: var(--border-strong, #cfd5e1);
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08);
+    transform: translateY(-1px);
+}
+
+.pill-cor-estoque.ativa {
+    background: var(--primary-soft, #eef2ff);
+    border-color: var(--primary, #4f46e5);
+    box-shadow: 0 0 0 2px var(--primary-ring, rgba(79, 70, 229, 0.2));
+}
+
+.pill-cor-swatch {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(15, 23, 42, 0.18);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    flex-shrink: 0;
+}
+
+.pill-cor-nome {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text, #0f172a);
+}
+
+.pill-cor-peso {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-2, #475569);
+}
+
+.pill-cor-badge {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 10px;
+    letter-spacing: 0.02em;
+    line-height: 1.2;
+}
+
+.pill-cor-badge.ok {
+    background: #dcfce7;
+    color: #15803d;
+    border: 1px solid #bbf7d0;
+}
+
+.pill-cor-badge.baixo {
+    background: #fef3c7;
+    color: #b45309;
+    border: 1px solid #fde68a;
+}
+
+.pill-cor-badge.zerado {
+    background: #fee2e2;
+    color: #b91c1c;
+    border: 1px solid #fecaca;
+}
+
+
 

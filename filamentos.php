@@ -48,7 +48,7 @@ require __DIR__ . '/includes/header.php';
             </div>
             <span id="resumoCoresTexto" style="font-size: 12px; color: var(--text-2);"></span>
         </div>
-        <div id="gradeCoresEstoque" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
+        <div id="gradeCoresEstoque" class="grade-cores-estoque"></div>
     </div>
 
     <!-- Barra de Ações & Filtros -->
@@ -77,7 +77,7 @@ require __DIR__ . '/includes/header.php';
 
             <button type="button" class="primario" id="btnEntradaLote" style="display: inline-flex; align-items: center; gap: 6px;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" style="width:16px;height:16px;"><path d="M12 5v14M5 12h14"/></svg>
-                + Entrada de Rolos
+                Entrada de Rolos
             </button>
 
             <button type="button" class="secundario" id="btnNovoFilamento" style="display: inline-flex; align-items: center; gap: 6px;">
