@@ -43,6 +43,7 @@ require __DIR__ . '/includes/header.php';
             <table>
                 <thead>
                     <tr>
+                        <th style="width: 48px; text-align: center;">Foto</th>
                         <th>Produto</th>
                         <th class="num">Estoque</th>
                         <th class="num">Pedidos</th>
@@ -84,19 +85,34 @@ require __DIR__ . '/includes/header.php';
                         <h3>Identificação do Produto</h3>
                     </div>
 
-                    <div class="prod-grid-topo">
-                        <div class="campo-nome">
-                            <label for="prodNome">Nome do Produto <span class="obrigatorio">*</span></label>
-                            <input type="text" id="prodNome" maxlength="150" required placeholder="Ex.: Helicóptero, Suporte Articulado, Vaso...">
+                    <div class="prod-foto-e-nome-wrap" style="display: flex; gap: 14px; align-items: flex-start; margin-bottom: 12px;">
+                        <div style="flex: none; display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                            <label style="margin: 0; font-size: 12px; font-weight: 600;">Foto</label>
+                            <div id="prodFotoPreview" class="prod-foto-preview" style="width: 72px; height: 72px; border-radius: 10px; background: var(--surface-3); border: 1px dashed var(--border); display: flex; align-items: center; justify-content: center; overflow: hidden; cursor: pointer; position: relative;" title="Clique para enviar a foto do produto">
+                                <span style="font-size: 22px; color: var(--text-3);">📷</span>
+                            </div>
+                            <input type="hidden" id="prodFoto" value="">
+                            <div style="display: flex; gap: 4px; justify-content: center;">
+                                <button type="button" class="secundario pequeno" id="btnUploadFotoProdModal" style="padding: 2px 8px; font-size: 11px;">Enviar</button>
+                                <button type="button" class="secundario pequeno perigo" id="btnRemoverFotoProdModal" style="padding: 2px 6px; font-size: 11px; display: none;" title="Remover foto">✕</button>
+                            </div>
                         </div>
-                        <div class="campo-tipo">
-                            <label for="prodTipo">Estrutura do Produto <span class="obrigatorio">*</span></label>
-                            <select id="prodTipo">
-                                <option value="simples" selected>🔹 Produto Simples (Peça única, monocor ou multicor)</option>
-                                <option value="composto">🧩 Produto Composto (Montagem de Peças / Componentes)</option>
-                                <option value="componente">⚙️ Peça Avulsa / Reposição</option>
-                            </select>
-                            <div id="prodTipoExplicacao" class="prod-tipo-dica"></div>
+                        <div style="flex: 1; display: flex; flex-direction: column; gap: 8px;">
+                            <div class="prod-grid-topo" style="margin: 0;">
+                                <div class="campo-nome">
+                                    <label for="prodNome">Nome do Produto <span class="obrigatorio">*</span></label>
+                                    <input type="text" id="prodNome" maxlength="150" required placeholder="Ex.: Helicóptero, Suporte Articulado, Vaso...">
+                                </div>
+                                <div class="campo-tipo">
+                                    <label for="prodTipo">Estrutura do Produto <span class="obrigatorio">*</span></label>
+                                    <select id="prodTipo">
+                                        <option value="simples" selected>🔹 Produto Simples (Peça única, monocor ou multicor)</option>
+                                        <option value="composto">🧩 Produto Composto (Montagem de Peças / Componentes)</option>
+                                        <option value="componente">⚙️ Peça Avulsa / Reposição</option>
+                                    </select>
+                                    <div id="prodTipoExplicacao" class="prod-tipo-dica"></div>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -496,6 +512,7 @@ require __DIR__ . '/includes/header.php';
     </div>
 </div>
 
+<input type="file" id="inputFotoProdutoCadastro" accept="image/png,image/jpeg,image/webp" style="display:none;">
 <input type="file" id="inputFotoPecaProdutos" accept="image/png,image/jpeg,image/webp" style="display:none;">
 <datalist id="listaCoresFilamentosSugestoes"></datalist>
 

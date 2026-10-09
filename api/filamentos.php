@@ -16,24 +16,28 @@ if ($method === 'GET') {
 
     // Resumo consolidado para dashboards e relatórios
     if (!empty($_GET['resumo'])) {
+        $resumoCores = obterResumoEstoqueCores($pdo);
+        $qtdAlertas = 0;
+        foreach ($resumoCores as $c) {
+            if ($c['status'] !== 'ok') {
+                $qtdAlertas++;
+            }
+        }
+
         $stmt = $pdo->query("SELECT id FROM filamentos WHERE ativo = 1 ORDER BY cor ASC");
         $filIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
         $totalGramas = 0.0;
         $totalValor = 0.0;
         $totalRolos = 0.0;
-        $qtdAlertas = 0;
         $filamentosList = [];
 
         foreach ($filIds as $fId) {
-            $info = obterResumoFilamento($pdo, (int) $fId);
+            $info = obterResumoFilamento($pdo, (int) $fId, $resumoCores);
             if ($info) {
                 $totalGramas += (float) $info['estoque_gramas'];
                 $totalValor += (float) $info['valor_total_estoque'];
                 $totalRolos += (float) $info['estoque_rolos'];
-                if ($info['status'] !== 'ok') {
-                    $qtdAlertas++;
-                }
                 $filamentosList[] = $info;
             }
         }
@@ -43,6 +47,7 @@ if ($method === 'GET') {
         jsonResponse([
             'resumo' => [
                 'total_filamentos' => count($filamentosList),
+                'total_cores' => count($resumoCores),
                 'total_gramas' => round($totalGramas, 2),
                 'total_kg' => round($totalGramas / 1000, 2),
                 'total_rolos' => round($totalRolos, 2),
@@ -50,6 +55,7 @@ if ($method === 'GET') {
                 'custo_medio_geral_kg' => round($custoMedioGeralKg, 2),
                 'qtd_alertas' => $qtdAlertas,
             ],
+            'cores' => array_values($resumoCores),
             'filamentos' => $filamentosList,
         ]);
     }
@@ -106,12 +112,13 @@ if ($method === 'GET') {
     }
 
     // Listagem geral de todos os filamentos
+    $resumoCores = obterResumoEstoqueCores($pdo);
     $stmt = $pdo->query("SELECT id FROM filamentos ORDER BY ativo DESC, cor ASC, tipo ASC");
     $filIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
     $lista = [];
     foreach ($filIds as $fId) {
-        $info = obterResumoFilamento($pdo, (int) $fId);
+        $info = obterResumoFilamento($pdo, (int) $fId, $resumoCores);
         if ($info) {
             $lista[] = $info;
         }
@@ -287,6 +294,17 @@ if ($method === 'POST') {
             ]);
         }
 
+        // Sincroniza estoque mínimo entre todos os filamentos da mesma cor
+        $stmtSync = $pdo->prepare("
+            UPDATE filamentos 
+            SET estoque_minimo_gramas = :minimo 
+            WHERE LOWER(TRIM(cor)) = LOWER(TRIM(:cor))
+        ");
+        $stmtSync->execute([
+            'minimo' => $estoqueMinimo,
+            'cor' => $cor,
+        ]);
+
         $pdo->commit();
         jsonResponse(obterResumoFilamento($pdo, $filId), 201);
     } catch (Exception $e) {
@@ -330,6 +348,17 @@ if ($method === 'PUT') {
         'minimo' => $estoqueMinimo,
         'ativo' => $ativo,
         'id' => $id,
+    ]);
+
+    // Sincroniza estoque mínimo entre todos os filamentos da mesma cor
+    $stmtSync = $pdo->prepare("
+        UPDATE filamentos 
+        SET estoque_minimo_gramas = :minimo 
+        WHERE LOWER(TRIM(cor)) = LOWER(TRIM(:cor))
+    ");
+    $stmtSync->execute([
+        'minimo' => $estoqueMinimo,
+        'cor' => $cor,
     ]);
 
     jsonResponse(obterResumoFilamento($pdo, $id));

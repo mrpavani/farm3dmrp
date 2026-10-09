@@ -6,7 +6,7 @@ $pdo = getDB();
 $method = $_SERVER['REQUEST_METHOD'];
 
 // Valida e normaliza os campos enviados no cadastro/edição
-function dadosProduto(array $b): array {
+function dadosProduto(array $b, ?array $atual = null): array {
     $nome = trim($b['nome'] ?? '');
     if ($nome === '') jsonError('Nome do produto é obrigatório.');
     if (mb_strlen($nome) > 150) jsonError('O nome do produto deve ter no máximo 150 caracteres.');
@@ -42,9 +42,14 @@ function dadosProduto(array $b): array {
     if ($preco < 0) jsonError('Preço inválido.');
 
     $descricao = trim($b['descricao'] ?? '');
+    $foto = array_key_exists('foto', $b)
+        ? (trim((string)$b['foto']) !== '' ? trim((string)$b['foto']) : null)
+        : ($atual['foto'] ?? null);
+
     return [
         'nome' => $nome,
         'tipo' => $tipo,
+        'foto' => $foto,
         'descricao' => $descricao === '' ? null : $descricao,
         'preco' => $preco,
         'estoque' => (int) ($b['estoque'] ?? 0),
@@ -215,7 +220,7 @@ if ($method === 'GET') {
         jsonResponse($prods);
     }
 
-    $stmt = $pdo->query("SELECT id, nome, tipo, descricao, preco, estoque, peso_gramas, tempo_producao_segundos, tem_embalagem, valor_embalagem, valor_outros, margem_lucro, custo_filamento, custo_total FROM produtos WHERE ativo = 1 ORDER BY nome");
+    $stmt = $pdo->query("SELECT id, nome, tipo, foto, descricao, preco, estoque, peso_gramas, tempo_producao_segundos, tem_embalagem, valor_embalagem, valor_outros, margem_lucro, custo_filamento, custo_total FROM produtos WHERE ativo = 1 ORDER BY nome");
     $prods = $stmt->fetchAll();
     foreach ($prods as &$p) {
         $p['tempo_producao_formatado'] = formatarTempoHHMMSS((int) ($p['tempo_producao_segundos'] ?? 0));
@@ -319,9 +324,9 @@ if ($method === 'POST') {
     try {
         $stmt = $pdo->prepare("
             INSERT INTO produtos 
-                (nome, tipo, descricao, preco, estoque, peso_gramas, tempo_producao_segundos, tem_embalagem, valor_embalagem, valor_outros, margem_lucro, custo_filamento, custo_total, ativo)
+                (nome, tipo, foto, descricao, preco, estoque, peso_gramas, tempo_producao_segundos, tem_embalagem, valor_embalagem, valor_outros, margem_lucro, custo_filamento, custo_total, ativo)
             VALUES 
-                (:nome, :tipo, :descricao, :preco, :estoque, :peso_gramas, :tempo_producao_segundos, :tem_embalagem, :valor_embalagem, :valor_outros, :margem_lucro, :custo_filamento, :custo_total, :ativo)
+                (:nome, :tipo, :foto, :descricao, :preco, :estoque, :peso_gramas, :tempo_producao_segundos, :tem_embalagem, :valor_embalagem, :valor_outros, :margem_lucro, :custo_filamento, :custo_total, :ativo)
         ");
         $stmt->execute($d);
         $novoId = (int) $pdo->lastInsertId();
@@ -464,7 +469,7 @@ if ($method === 'PUT') {
         ]);
     }
 
-    $d = dadosProduto($raw);
+    $d = dadosProduto($raw, $atual);
     if (nomeDuplicado($pdo, $d['nome'], $id)) jsonError('Já existe outro produto com esse nome.');
 
     // Verifica se já existem peças cadastradas no banco
@@ -568,7 +573,7 @@ if ($method === 'PUT') {
     try {
         $stmt = $pdo->prepare("
             UPDATE produtos 
-            SET nome = :nome, tipo = :tipo, descricao = :descricao, preco = :preco, estoque = :estoque,
+            SET nome = :nome, tipo = :tipo, foto = :foto, descricao = :descricao, preco = :preco, estoque = :estoque,
                 peso_gramas = :peso_gramas, tempo_producao_segundos = :tempo_producao_segundos,
                 tem_embalagem = :tem_embalagem, valor_embalagem = :valor_embalagem, valor_outros = :valor_outros,
                 margem_lucro = :margem_lucro, custo_filamento = :custo_filamento, custo_total = :custo_total,

@@ -1,5 +1,6 @@
 // Módulo de Filamentos: Controle de Estoque, Lotes PEPS e Custo Médio
 let filamentos = [];
+let coresFilamentos = [];
 let filamentoEditandoId = null;
 let filamentoSelecionado = null;
 
@@ -10,11 +11,14 @@ async function carregar() {
     try {
         const res = await App.api('api/filamentos.php?resumo=1');
         filamentos = res.filamentos || [];
+        coresFilamentos = res.cores || [];
         renderizarKpis(res.resumo || {});
+        renderizarCores(coresFilamentos);
         renderizar();
     } catch (e) {
         App.toast(e.message, 'erro');
         filamentos = [];
+        coresFilamentos = [];
         renderizar();
     }
 }
@@ -27,8 +31,9 @@ function renderizarKpis(kpi) {
     if ($('kpiCustoMedioKg')) $('kpiCustoMedioKg').textContent = `${App.moeda(kpi.custo_medio_geral_kg || 0)} / kg`;
     if ($('kpiCustoMedioG')) $('kpiCustoMedioG').textContent = `R$ ${((kpi.custo_medio_geral_kg || 0) / 1000).toFixed(4)} / g`;
     if ($('kpiAlertasQtd')) {
-        $('kpiAlertasQtd').textContent = kpi.qtd_alertas || 0;
-        if (kpi.qtd_alertas > 0) {
+        const qtd = kpi.qtd_alertas || 0;
+        $('kpiAlertasQtd').textContent = qtd;
+        if (qtd > 0) {
             $('kpiAlertasQtd').style.color = 'var(--perigo)';
         } else {
             $('kpiAlertasQtd').style.color = 'var(--sucesso)';
@@ -36,10 +41,75 @@ function renderizarKpis(kpi) {
     }
 }
 
-function badgeStatus(status) {
-    if (status === 'zerado') return '<span class="tag-status atrasado">Zerado</span>';
-    if (status === 'baixo') return '<span class="tag-status parcial">Estoque Baixo</span>';
-    return '<span class="tag-status pronto">Em Estoque</span>';
+function renderizarCores(cores) {
+    const elGrade = $('gradeCoresEstoque');
+    const elTexto = $('resumoCoresTexto');
+    if (!elGrade) return;
+
+    if (!cores || !cores.length) {
+        elGrade.innerHTML = '<span style="font-size:12px; color:var(--text-3);">Nenhuma cor ativa cadastrada.</span>';
+        if (elTexto) elTexto.textContent = '';
+        return;
+    }
+
+    const totalCores = cores.length;
+    const emAlerta = cores.filter(c => c.status !== 'ok').length;
+    if (elTexto) {
+        elTexto.textContent = emAlerta > 0
+            ? `${emAlerta} de ${totalCores} cores com alerta de reposição`
+            : `Todas as ${totalCores} cores com estoque em dia`;
+    }
+
+    elGrade.innerHTML = cores.map(c => {
+        const hex = c.cor_hex || '#6366f1';
+        const gramas = Number(c.estoque_gramas) || 0;
+        let badgeCor = '';
+        if (c.status === 'zerado') {
+            badgeCor = '<span style="font-size:10px; font-weight:700; color:#ef4444; background:rgba(239,68,68,0.12); padding:1px 6px; border-radius:10px;">ZERADO</span>';
+        } else if (c.status === 'baixo') {
+            badgeCor = '<span style="font-size:10px; font-weight:700; color:#f59e0b; background:rgba(245,158,11,0.12); padding:1px 6px; border-radius:10px;">BAIXO</span>';
+        } else {
+            badgeCor = '<span style="font-size:10px; font-weight:700; color:#10b981; background:rgba(16,185,129,0.12); padding:1px 6px; border-radius:10px;">OK</span>';
+        }
+
+        return `
+        <div class="pill-cor-estoque" onclick="filtrarPorCor('${esc(c.cor)}')" style="display:inline-flex; align-items:center; gap:8px; padding:6px 12px; background:var(--bg-card, #1e293b); border:1px solid var(--border, #334155); border-radius:20px; cursor:pointer; transition:all 0.15s ease;" title="Filtrar carretéis da cor ${esc(c.cor)} (Tipos: ${esc(c.tipos)})">
+            <span style="width:14px; height:14px; border-radius:50%; background:${esc(hex)}; border:1px solid rgba(0,0,0,0.2); flex-shrink:0;"></span>
+            <span style="font-size:13px; font-weight:600; color:var(--text);">${esc(c.cor)}</span>
+            <span style="font-size:12px; color:var(--text-2); font-weight:500;">${App.fmtInt.format(gramas)}g</span>
+            ${badgeCor}
+        </div>
+        `;
+    }).join('');
+}
+
+function filtrarPorCor(nomeCor) {
+    const input = $('buscaFilamento');
+    if (!input) return;
+    if (input.value.trim().toLowerCase() === nomeCor.trim().toLowerCase()) {
+        input.value = '';
+    } else {
+        input.value = nomeCor;
+    }
+    renderizar();
+}
+
+function badgeStatus(f) {
+    const status = f.status;
+    const estG = Number(f.estoque_gramas) || 0;
+    const saldoCor = Number(f.saldo_cor_total || estG);
+    const minCor = Number(f.estoque_minimo_cor || f.estoque_minimo_gramas || 500);
+
+    if (status === 'zerado') {
+        return `<span class="tag-status atrasado" title="Sem estoque da cor ${esc(f.cor)} em nenhum tipo">Zerado (Cor)</span>`;
+    }
+    if (status === 'baixo') {
+        return `<span class="tag-status parcial" title="Estoque total da cor ${esc(f.cor)} está baixo: ${App.fmtInt.format(saldoCor)}g (mínimo: ${App.fmtInt.format(minCor)}g)">Estoque Baixo (${App.fmtInt.format(saldoCor)}g)</span>`;
+    }
+    if (estG <= 0) {
+        return `<span class="tag-status pronto" style="background:rgba(16,185,129,0.12); color:#059669; border:1px solid rgba(16,185,129,0.25);" title="Este carretel específico está zerado, mas a cor ${esc(f.cor)} possui saldo total de ${App.fmtInt.format(saldoCor)}g em outros carretéis">Em Estoque (${App.fmtInt.format(saldoCor)}g na cor)</span>`;
+    }
+    return `<span class="tag-status pronto" title="Cor com estoque suficiente (Total da cor: ${App.fmtInt.format(saldoCor)}g)">Em Estoque</span>`;
 }
 
 function renderizar() {
@@ -110,7 +180,7 @@ function renderizar() {
                 ${App.moeda(valTotal)}
             </td>
             <td>
-                ${badgeStatus(f.status)}
+                ${badgeStatus(f)}
             </td>
             <td class="col-acoes">
                 <div class="acoes-icones">

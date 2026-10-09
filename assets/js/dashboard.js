@@ -49,7 +49,7 @@ function renderizarKPIs() {
     const alertasTag = $('kpiFilamentosAlertasTag');
     if (alertasTag) {
         if (k.filamentos_alertas > 0) {
-            alertasTag.textContent = `⚠️ ${k.filamentos_alertas} em alerta`;
+            alertasTag.textContent = `⚠️ ${k.filamentos_alertas} ${k.filamentos_alertas === 1 ? 'cor em alerta' : 'cores em alerta'}`;
             alertasTag.className = 'kpi-tag-status perigo';
         } else {
             alertasTag.textContent = '🟢 Estoque OK';
@@ -223,10 +223,14 @@ function renderizarFilamentos() {
         const precoKg = Number(f.custo_medio_kg || f.custo_peps_kg || 0);
 
         let statusHtml = '<span class="tag-status sucesso">Normal</span>';
-        if (f.status === 'zerado' || estG <= 0) {
-            statusHtml = '<span class="tag-status perigo">Zerado</span>';
+        if (f.status === 'zerado') {
+            statusHtml = '<span class="tag-status perigo" title="Sem estoque desta cor em nenhum tipo">Zerado</span>';
         } else if (f.status === 'baixo') {
-            statusHtml = '<span class="tag-status alerta">Baixo</span>';
+            const saldoCor = Number(f.saldo_cor_total || estG);
+            statusHtml = `<span class="tag-status alerta" title="Estoque total da cor está baixo: ${App.fmtInt.format(saldoCor)}g">Baixo (${App.fmtInt.format(saldoCor)}g)</span>`;
+        } else if (estG <= 0) {
+            const saldoCor = Number(f.saldo_cor_total || 0);
+            statusHtml = `<span class="tag-status pronto" style="background:rgba(16,185,129,0.12); color:#059669; border:1px solid rgba(16,185,129,0.25);" title="Carretel vazio, mas a cor está disponível em outros tipos (Total: ${App.fmtInt.format(saldoCor)}g)">Cor OK</span>`;
         }
 
         return `

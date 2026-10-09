@@ -50,8 +50,15 @@ function renderizar() {
     $('tabelaProdutos').innerHTML = lista.map(p => {
         const ativo = Number(p.ativo) === 1;
         const usado = Number(p.qtd_pedidos) > 0;
+        const fotoHtml = p.foto
+            ? `<img src="${esc(p.foto)}" alt="${esc(p.nome)}" style="width:36px;height:36px;object-fit:cover;border-radius:6px;border:1px solid var(--border);" loading="lazy">`
+            : `<div style="width:36px;height:36px;border-radius:6px;background:var(--surface-3);border:1px dashed var(--border);display:flex;align-items:center;justify-content:center;font-size:15px;color:var(--text-3);" title="Sem foto">📷</div>`;
+
         return `
         <tr class="${usado ? '' : 'linha-inativa'}">
+            <td style="text-align:center;cursor:pointer;" onclick="uploadFotoProdutoRapido(${p.id})" title="Clique para enviar/trocar a foto deste produto">
+                ${fotoHtml}
+            </td>
             <td>
                 <strong>${esc(p.nome)}</strong>
                 ${badgeTipo(p.tipo)}
@@ -887,6 +894,8 @@ async function abrirModal(p = null) {
     if ($('prodTempo')) $('prodTempo').value = p ? (p.tempo_producao_formatado || (p.tempo_producao_segundos ? formatarSegundosHHMMSS(p.tempo_producao_segundos) : '')) : '';
     $('prodAtivo').value = p ? String(p.ativo) : '1';
     $('prodDescricao').value = p ? (p.descricao || '') : '';
+    if ($('prodFoto')) $('prodFoto').value = p && p.foto ? p.foto : '';
+    atualizarPreviewFotoModal(p && p.foto ? p.foto : null);
 
     // Campos de Precificação
     if ($('prodTemEmbalagem')) $('prodTemEmbalagem').value = p && Number(p.tem_embalagem) === 1 ? '1' : '0';
@@ -1015,6 +1024,7 @@ async function salvar(ev) {
         margem_lucro: parseFloat($('prodMargemLucro')?.value) || 0,
         custo_filamento: parseFloat($('prodCustoFilamento')?.value) || 0,
         ativo: $('prodAtivo').value === '1',
+        foto: $('prodFoto') ? $('prodFoto').value.trim() : null,
         descricao: $('prodDescricao').value.trim(),
     };
 
@@ -1714,5 +1724,91 @@ window.adicionarCoresIniciaisPeca = adicionarCoresIniciaisPeca;
 window.adicionarCorPecaModal = adicionarCorPecaModal;
 window.removerCorPecaModal = removerCorPecaModal;
 window.atualizarCorPecaModal = atualizarCorPecaModal;
+window.uploadFotoProdutoRapido = uploadFotoProdutoRapido;
+
+// ---------- Upload de Foto do Produto no Modal e Lista ----------
+let uploadRapidoProdutoId = null;
+
+function atualizarPreviewFotoModal(url) {
+    const preview = $('prodFotoPreview');
+    const btnRemover = $('btnRemoverFotoProdModal');
+    if (!preview) return;
+    if (url) {
+        preview.innerHTML = `<img src="${esc(url)}" style="width:100%;height:100%;object-fit:cover;">`;
+        if (btnRemover) btnRemover.style.display = 'inline-block';
+    } else {
+        preview.innerHTML = `<span style="font-size:22px;color:var(--text-3);">📷</span>`;
+        if (btnRemover) btnRemover.style.display = 'none';
+    }
+}
+
+function uploadFotoProdutoRapido(id) {
+    uploadRapidoProdutoId = id;
+    const input = $('inputFotoProdutoCadastro');
+    if (input) {
+        input.value = '';
+        input.click();
+    }
+}
+
+$('btnUploadFotoProdModal')?.addEventListener('click', () => {
+    uploadRapidoProdutoId = null;
+    const input = $('inputFotoProdutoCadastro');
+    if (input) {
+        input.value = '';
+        input.click();
+    }
+});
+
+$('prodFotoPreview')?.addEventListener('click', () => {
+    uploadRapidoProdutoId = null;
+    const input = $('inputFotoProdutoCadastro');
+    if (input) {
+        input.value = '';
+        input.click();
+    }
+});
+
+$('btnRemoverFotoProdModal')?.addEventListener('click', () => {
+    if ($('prodFoto')) $('prodFoto').value = '';
+    atualizarPreviewFotoModal(null);
+});
+
+$('inputFotoProdutoCadastro')?.addEventListener('change', async function(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('foto', file);
+    const prodIdAlvo = uploadRapidoProdutoId || editandoId;
+    if (prodIdAlvo) formData.append('produto_id', prodIdAlvo);
+
+    try {
+        App.toast('Enviando foto do produto...');
+        const res = await fetch('api/upload_foto.php', { method: 'POST', body: formData });
+        const json = await res.json();
+        if (!res.ok || !json.ok) throw new Error(json.erro || 'Falha no upload da foto.');
+        
+        if ($('prodFoto')) $('prodFoto').value = json.foto;
+        atualizarPreviewFotoModal(json.foto);
+        App.toast('Foto anexada com sucesso!');
+
+        if (uploadRapidoProdutoId) {
+            const p = produtos.find(x => x.id === uploadRapidoProdutoId);
+            if (p) {
+                p.foto = json.foto;
+                renderizar();
+            } else {
+                carregar();
+            }
+            uploadRapidoProdutoId = null;
+        } else if (editandoId) {
+            const p = produtos.find(x => x.id === editandoId);
+            if (p) p.foto = json.foto;
+        }
+    } catch (err) {
+        App.toast(err.message, 'erro');
+    }
+});
 
 carregar();

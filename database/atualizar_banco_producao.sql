@@ -421,6 +421,9 @@ PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 SET @s = (SELECT IF((SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'filamentos' AND INDEX_NAME = 'idx_filamento_tipo') > 0, 'SELECT 1', 'CREATE INDEX idx_filamento_tipo ON filamentos(tipo)'));
 PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
+SET @s = (SELECT IF((SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'filamentos' AND INDEX_NAME = 'idx_filamento_ativo_cor') > 0, 'SELECT 1', 'CREATE INDEX idx_filamento_ativo_cor ON filamentos(ativo, cor)'));
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
 -- filamento_lotes (filamento_id + gramas_saldo, data_compra)
 SET @s = (SELECT IF((SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'filamento_lotes' AND INDEX_NAME = 'idx_lote_filamento_saldo') > 0, 'SELECT 1', 'CREATE INDEX idx_lote_filamento_saldo ON filamento_lotes(filamento_id, gramas_saldo)'));
 PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
@@ -529,7 +532,38 @@ SET `custo_filamento` = ROUND(`peso_gramas` * 0.09, 2),
     `preco` = ROUND(((`peso_gramas` * 0.09) + IF(`tem_embalagem` = 1, COALESCE(`valor_embalagem`, 0), 0) + COALESCE(`valor_outros`, 0)) * (1 + (COALESCE(`margem_lucro`, 100) / 100)), 2)
 WHERE `peso_gramas` > 50 AND `custo_filamento` < 1.0;
 
--- 5. Criação ou atualização do Usuário Administrador Padrão
+-- 5. Normalização de cores e sincronização de estoque mínimo por cor (migração 017)
+UPDATE `filamentos` SET `cor` = TRIM(`cor`) WHERE `cor` LIKE ' %' OR `cor` LIKE '% ';
+
+UPDATE `filamentos` f
+JOIN (
+    SELECT LOWER(TRIM(`cor`)) AS `cor_norm`, MAX(`estoque_minimo_gramas`) AS `max_minimo`
+    FROM `filamentos`
+    GROUP BY LOWER(TRIM(`cor`))
+) sub ON LOWER(TRIM(f.`cor`)) = sub.`cor_norm`
+SET f.`estoque_minimo_gramas` = sub.`max_minimo`
+WHERE f.`estoque_minimo_gramas` < sub.`max_minimo`;
+
+-- 6. View de estoque e alertas consolidados por cor (migração 017)
+CREATE OR REPLACE VIEW `vw_estoque_filamentos_cores` AS
+SELECT 
+    TRIM(cor) AS cor,
+    COALESCE(MAX(cor_hex), '#6366f1') AS cor_hex,
+    COALESCE(SUM(estoque_gramas), 0.00) AS estoque_gramas,
+    COALESCE(MAX(estoque_minimo_gramas), 500.00) AS estoque_minimo_gramas,
+    COUNT(*) AS total_filamentos,
+    GROUP_CONCAT(DISTINCT tipo ORDER BY tipo SEPARATOR ', ') AS tipos,
+    GROUP_CONCAT(DISTINCT marca ORDER BY marca SEPARATOR ', ') AS marcas,
+    CASE
+        WHEN COALESCE(SUM(estoque_gramas), 0.00) <= 0 THEN 'zerado'
+        WHEN COALESCE(SUM(estoque_gramas), 0.00) <= COALESCE(MAX(estoque_minimo_gramas), 500.00) THEN 'baixo'
+        ELSE 'ok'
+    END AS status
+FROM filamentos
+WHERE ativo = 1
+GROUP BY TRIM(cor);
+
+-- 7. Criação ou atualização do Usuário Administrador Padrão
 -- Login: admin@mail.com | Senha padrão: A123456 (troque no primeiro acesso em Perfil)
 INSERT INTO `usuarios` (`id`, `nome`, `login`, `senha_hash`, `admin`, `ativo`)
 VALUES (1, 'Administrador', 'admin@mail.com', '$2y$12$c9jgI75ewT6lyFbhBP0z6O0MVaa2sO6A3wPjO8Ml3mMY1P.CwH8fG', 1, 1)
@@ -540,7 +574,7 @@ ON DUPLICATE KEY UPDATE `admin` = 1, `ativo` = 1;
 -- ============================================================
 SET FOREIGN_KEY_CHECKS = 1;
 
--- Verificação da integridade das 14 tabelas principais
+-- Verificação da integridade das 14 tabelas principais e view
 SELECT 'Verificação concluída!' AS `Status`,
        (SELECT COUNT(*) FROM `usuarios`) AS `usuarios`,
        (SELECT COUNT(*) FROM `clientes`) AS `clientes`,
@@ -549,4 +583,5 @@ SELECT 'Verificação concluída!' AS `Status`,
        (SELECT COUNT(*) FROM `produto_pecas_cores`) AS `pecas_cores`,
        (SELECT COUNT(*) FROM `produto_cores`) AS `produto_cores`,
        (SELECT COUNT(*) FROM `filamentos`) AS `filamentos`,
+       (SELECT COUNT(*) FROM `vw_estoque_filamentos_cores`) AS `cores_filamentos`,
        (SELECT COUNT(*) FROM `pedidos`) AS `pedidos`;

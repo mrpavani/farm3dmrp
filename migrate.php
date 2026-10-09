@@ -364,7 +364,43 @@ try {
     echo "<div class='msg ok'>✅ Custos base e estimativas PEPS sincronizados nos produtos.</div>";
 } catch (PDOException $e) {}
 
-// 14. Administrador padrão
+// 14. Alertas e Estoque por Cor (migração 017)
+execSafe($pdo, "UPDATE filamentos SET cor = TRIM(cor) WHERE cor LIKE ' %' OR cor LIKE '% '", "Cores de filamento normalizadas.", "Cores já normalizadas.");
+execSafe($pdo, "CREATE INDEX idx_filamento_ativo_cor ON filamentos(ativo, cor)", "Índice de cor e status ativo criado em filamentos.", "Índice idx_filamento_ativo_cor já existe.");
+try {
+    $pdo->exec("
+        UPDATE filamentos f
+        JOIN (
+            SELECT LOWER(TRIM(cor)) AS cor_norm, MAX(estoque_minimo_gramas) AS max_minimo
+            FROM filamentos
+            GROUP BY LOWER(TRIM(cor))
+        ) sub ON LOWER(TRIM(f.cor)) = sub.cor_norm
+        SET f.estoque_minimo_gramas = sub.max_minimo
+        WHERE f.estoque_minimo_gramas < sub.max_minimo
+    ");
+    $pdo->exec("
+        CREATE OR REPLACE VIEW vw_estoque_filamentos_cores AS
+        SELECT 
+            TRIM(cor) AS cor,
+            COALESCE(MAX(cor_hex), '#6366f1') AS cor_hex,
+            COALESCE(SUM(estoque_gramas), 0.00) AS estoque_gramas,
+            COALESCE(MAX(estoque_minimo_gramas), 500.00) AS estoque_minimo_gramas,
+            COUNT(*) AS total_filamentos,
+            GROUP_CONCAT(DISTINCT tipo ORDER BY tipo SEPARATOR ', ') AS tipos,
+            GROUP_CONCAT(DISTINCT marca ORDER BY marca SEPARATOR ', ') AS marcas,
+            CASE
+                WHEN COALESCE(SUM(estoque_gramas), 0.00) <= 0 THEN 'zerado'
+                WHEN COALESCE(SUM(estoque_gramas), 0.00) <= COALESCE(MAX(estoque_minimo_gramas), 500.00) THEN 'baixo'
+                ELSE 'ok'
+            END AS status
+        FROM filamentos
+        WHERE ativo = 1
+        GROUP BY TRIM(cor)
+    ");
+    echo "<div class='msg ok'>✅ View de estoque consolidado e alertas por cor sincronizada (migração 017).</div>";
+} catch (PDOException $e) {}
+
+// 15. Administrador padrão
 try {
     $pdo->exec("
         INSERT INTO usuarios (id, nome, login, senha_hash, admin, ativo)

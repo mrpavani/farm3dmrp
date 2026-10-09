@@ -185,13 +185,18 @@ if ($method === 'POST') {
             $pdo->prepare("UPDATE produto_pecas_cores SET estoque = :e WHERE peca_id = :id")
                 ->execute(['e' => $novoSaldo, 'id' => $pecaId]);
 
+            $motivo = trim($b['motivo'] ?? '');
+            $obs = $motivo !== ''
+                ? "Inventário da peça \"{$peca['peca_nome']}\" ({$saldoAntes} → {$novoSaldo}): {$motivo}"
+                : "Ajuste manual de saldo da peça {$peca['peca_nome']}, de {$saldoAntes} para {$novoSaldo}.";
+
             registrarMovimento($pdo, 'peca_ajuste', [
                 'produto_id'   => (int) $peca['produto_id'],
                 'peca_id'      => $pecaId,
                 'quantidade'   => $novoSaldo - $saldoAntes,
                 'saldo_depois' => $novoSaldo,
                 'usuario_id'   => $usuario['id'],
-                'observacoes'  => "Ajuste manual de saldo da peça {$peca['peca_nome']}, de {$saldoAntes} para {$novoSaldo}.",
+                'observacoes'  => $obs,
             ]);
 
             $capacidade = capacidadeMontagem($pdo, (int) $peca['produto_id']);
@@ -199,8 +204,11 @@ if ($method === 'POST') {
 
             jsonResponse([
                 'ok' => true,
+                'mensagem' => "Ajuste de inventário da peça \"{$peca['peca_nome']}\" gravado com sucesso! Novo saldo: {$novoSaldo} un.",
                 'peca_id' => $pecaId,
+                'saldo_anterior' => $saldoAntes,
                 'novo_estoque' => $novoSaldo,
+                'delta' => $novoSaldo - $saldoAntes,
                 'produto_id' => (int) $peca['produto_id'],
                 'montavel' => $capacidade['capacidade'],
                 'gargalos' => $capacidade['gargalos'],

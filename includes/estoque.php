@@ -618,14 +618,69 @@ function buscarFilamentoPorCor(PDO $pdo, string $cor, ?string $tipo = null): ?ar
 }
 
 /**
+ * Retorna o resumo consolidado de estoque agrupado exclusivamente por COR.
+ * Alertas de estoque ('zerado', 'baixo', 'ok') são avaliados pela soma
+ * de todas as gramas disponíveis na cor, independente do tipo ou marca do filamento.
+ */
+function obterResumoEstoqueCores(PDO $pdo): array {
+    $sql = "
+        SELECT 
+            TRIM(cor) AS cor,
+            COALESCE(MAX(cor_hex), '#6366f1') AS cor_hex,
+            COALESCE(SUM(estoque_gramas), 0.00) AS estoque_gramas,
+            COALESCE(MAX(estoque_minimo_gramas), 500.00) AS estoque_minimo_gramas,
+            COUNT(*) AS total_filamentos,
+            GROUP_CONCAT(DISTINCT tipo ORDER BY tipo SEPARATOR ', ') AS tipos,
+            GROUP_CONCAT(DISTINCT marca ORDER BY marca SEPARATOR ', ') AS marcas
+        FROM filamentos
+        WHERE ativo = 1
+        GROUP BY TRIM(cor)
+        ORDER BY cor ASC
+    ";
+    $stmt = $pdo->query($sql);
+    $linhas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $cores = [];
+    foreach ($linhas as $r) {
+        $corNome = trim($r['cor']);
+        $gramas = (float) $r['estoque_gramas'];
+        $minimo = (float) $r['estoque_minimo_gramas'];
+
+        $status = 'ok';
+        if ($gramas <= 0.0) {
+            $status = 'zerado';
+        } elseif ($gramas <= $minimo) {
+            $status = 'baixo';
+        }
+
+        $chave = mb_strtoupper($corNome, 'UTF-8');
+        $cores[$chave] = [
+            'cor' => $corNome,
+            'cor_hex' => $r['cor_hex'] ?: '#6366f1',
+            'estoque_gramas' => round($gramas, 2),
+            'estoque_rolos' => round($gramas / 1000.0, 2),
+            'estoque_minimo_gramas' => round($minimo, 2),
+            'total_filamentos' => (int) $r['total_filamentos'],
+            'tipos' => $r['tipos'] ?: '',
+            'marcas' => $r['marcas'] ?: '',
+            'status' => $status,
+            'em_alerta' => ($status !== 'ok'),
+        ];
+    }
+
+    return $cores;
+}
+
+/**
  * Retorna os dados consolidados do filamento com:
  * - Saldo em gramas e rolos
  * - Custo Médio Ponderado (R$/kg e R$/g)
  * - Custo PEPS / Lote Atual Ativo (R$/kg e R$/g)
  * - Valor total em estoque
  * - Lotes ativos
+ * - Status de alerta ('zerado', 'baixo', 'ok') AVALIADO ESTRITAMENTE POR COR
  */
-function obterResumoFilamento(PDO $pdo, int $filamentoId): array {
+function obterResumoFilamento(PDO $pdo, int $filamentoId, ?array $coresCache = null): array {
     $stmt = $pdo->prepare("SELECT * FROM filamentos WHERE id = :id");
     $stmt->execute(['id' => $filamentoId]);
     $fil = $stmt->fetch();
@@ -676,12 +731,51 @@ function obterResumoFilamento(PDO $pdo, int $filamentoId): array {
     }
     $custoPepsKg = $custoPepsG * 1000.0;
 
-    $status = 'ok';
-    if ($estoqueGramas <= 0) {
-        $status = 'zerado';
-    } elseif ($estoqueGramas <= (float) $fil['estoque_minimo_gramas']) {
-        $status = 'baixo';
+    // REGRA DE NEGÓCIO: O alerta de baixa ou zerado é SEMPRE por COR e nunca por tipo/marca isolado
+    $corNome = trim($fil['cor'] ?? '');
+    $chaveCor = mb_strtoupper($corNome, 'UTF-8');
+    $corInfo = null;
+
+    if ($coresCache !== null && isset($coresCache[$chaveCor])) {
+        $corInfo = $coresCache[$chaveCor];
+    } else {
+        $stmtCor = $pdo->prepare("
+            SELECT 
+                COALESCE(SUM(estoque_gramas), 0.00) AS total_gramas,
+                COALESCE(MAX(estoque_minimo_gramas), 500.00) AS minimo_gramas,
+                COUNT(*) AS total_itens
+            FROM filamentos
+            WHERE ativo = 1 AND LOWER(TRIM(cor)) = LOWER(TRIM(:cor))
+        ");
+        $stmtCor->execute(['cor' => $corNome]);
+        $rowCor = $stmtCor->fetch(PDO::FETCH_ASSOC);
+        if ($rowCor) {
+            $gCor = (float) $rowCor['total_gramas'];
+            $mCor = (float) $rowCor['minimo_gramas'];
+            $stCor = 'ok';
+            if ($gCor <= 0.0) {
+                $stCor = 'zerado';
+            } elseif ($gCor <= $mCor) {
+                $stCor = 'baixo';
+            }
+            $corInfo = [
+                'cor' => $corNome,
+                'estoque_gramas' => $gCor,
+                'estoque_minimo_gramas' => $mCor,
+                'status' => $stCor,
+                'total_filamentos' => (int) $rowCor['total_itens'],
+                'em_alerta' => ($stCor !== 'ok'),
+            ];
+        }
     }
+
+    $statusCor = $corInfo['status'] ?? 'ok';
+    $saldoCorTotal = $corInfo ? (float)$corInfo['estoque_gramas'] : $estoqueGramas;
+    $minimoCor = $corInfo ? (float)$corInfo['estoque_minimo_gramas'] : (float)$fil['estoque_minimo_gramas'];
+    $totalFilamentosMesmaCor = $corInfo ? (int)$corInfo['total_filamentos'] : 1;
+
+    // O status do filamento segue a situação DA COR
+    $status = $statusCor;
 
     return [
         'id' => (int) $fil['id'],
@@ -693,7 +787,12 @@ function obterResumoFilamento(PDO $pdo, int $filamentoId): array {
         'estoque_gramas' => round($estoqueGramas, 2),
         'estoque_rolos' => round($estoqueGramas / 1000.0, 2),
         'estoque_minimo_gramas' => (float) $fil['estoque_minimo_gramas'],
+        'saldo_cor_total' => round($saldoCorTotal, 2),
+        'estoque_minimo_cor' => round($minimoCor, 2),
+        'total_filamentos_mesma_cor' => $totalFilamentosMesmaCor,
+        'status_cor' => $statusCor,
         'status' => $status,
+        'alerta_cor' => ($statusCor !== 'ok'),
         'valor_total_estoque' => round($valorTotalEstoque, 2),
         'custo_medio_g' => round($custoMedioGramas, 4),
         'custo_medio_kg' => round($custoMedioKg, 2),
@@ -1043,23 +1142,46 @@ function planejarConsumoFilamento(PDO $pdo, array $itensDemanda): array {
     $rolosParaComprarTotal = 0;
 
     foreach ($demandaPorCor as $cor => $gNecessaria) {
-        $fil = buscarFilamentoPorCor($pdo, $cor);
-        $filId = $fil ? (int) $fil['id'] : null;
-        $estoqueAtual = 0.0;
-        $corHex = '#6366f1';
-        $lotes = [];
-        $precoMedioG = 0.0900;
-        $tipo = 'PLA';
-        $marca = 'Genérica';
+        $corLimpa = trim($cor);
 
-        if ($fil) {
+        // Busca estoque consolidado de todos os filamentos desta cor (independente de tipo/marca)
+        $stmtCor = $pdo->prepare("
+            SELECT 
+                COALESCE(SUM(estoque_gramas), 0.00) AS total_gramas,
+                COALESCE(MAX(cor_hex), '#6366f1') AS cor_hex,
+                COALESCE(MAX(tipo), 'PLA') AS tipo_exemplo,
+                COALESCE(MAX(marca), 'Genérica') AS marca_exemplo,
+                COALESCE(MAX(id), 0) AS fil_id_exemplo
+            FROM filamentos
+            WHERE ativo = 1 AND LOWER(TRIM(cor)) = LOWER(TRIM(:cor))
+        ");
+        $stmtCor->execute(['cor' => $corLimpa]);
+        $dadosCor = $stmtCor->fetch(PDO::FETCH_ASSOC);
+
+        $filCadastrado = ($dadosCor && (int)$dadosCor['fil_id_exemplo'] > 0);
+        $estoqueAtual = $dadosCor ? (float)$dadosCor['total_gramas'] : 0.0;
+        $corHex = ($dadosCor && !empty($dadosCor['cor_hex'])) ? $dadosCor['cor_hex'] : '#6366f1';
+        $filId = $dadosCor ? (int)$dadosCor['fil_id_exemplo'] : null;
+        $tipo = $dadosCor['tipo_exemplo'] ?? 'PLA';
+        $marca = $dadosCor['marca_exemplo'] ?? 'Genérica';
+
+        // Busca lotes com saldo de todos os filamentos desta cor em ordem cronológica (PEPS/FIFO)
+        $stmtLotesCor = $pdo->prepare("
+            SELECT l.* 
+            FROM filamento_lotes l
+            JOIN filamentos f ON f.id = l.filamento_id
+            WHERE f.ativo = 1 AND LOWER(TRIM(f.cor)) = LOWER(TRIM(:cor)) AND l.gramas_saldo > 0
+            ORDER BY l.data_compra ASC, l.id ASC
+        ");
+        $stmtLotesCor->execute(['cor' => $corLimpa]);
+        $lotes = $stmtLotesCor->fetchAll(PDO::FETCH_ASSOC);
+
+        $precoMedioG = 0.0900;
+        if (!empty($lotes)) {
+            $precoMedioG = (float) $lotes[0]['preco_por_grama'];
+        } elseif ($filId) {
             $resumoFil = obterResumoFilamento($pdo, $filId);
-            $estoqueAtual = (float) $resumoFil['estoque_gramas'];
-            $corHex = $resumoFil['cor_hex'] ?: '#6366f1';
-            $lotes = $resumoFil['lotes_ativos'] ?? [];
             $precoMedioG = (float) ($resumoFil['custo_medio_g'] ?: ($resumoFil['custo_peps_g'] ?: 0.0900));
-            $tipo = $resumoFil['tipo'];
-            $marca = $resumoFil['marca'];
         }
 
         // Simula o consumo PEPS dos lotes para apurar o custo

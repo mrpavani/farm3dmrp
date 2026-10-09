@@ -612,7 +612,7 @@ function linhaTabelaBancada(p) {
         <tr class="linha-bancada-produto ${p.montavel > 0 ? 'produto-pode-montar' : ''}" data-produto-id="${p.id}">
             <td>
                 <div class="bancada-produto-celula">
-                    <div class="bancada-thumb">${fotoProd}</div>
+                    <div class="bancada-thumb clicavel" onclick="abrirUploadFotoProduto(${p.id})" title="Clique para adicionar ou trocar a foto deste produto" style="cursor:pointer;">${fotoProd}</div>
                     <div class="bancada-prod-info">
                         <span class="bancada-prod-nome">${esc(p.nome)}</span>
                         <span class="bancada-prod-sub">${p.pecas.length} peças · ${fmtInt.format(p.total_pecas_por_unidade)} un por montagem${p.tempo_un_formatado ? ` · ⏱️ ${p.tempo_un_formatado}/un` : ''}${p.peso_un_gramas > 0 ? ` · ⚖️ ${(App.num ? App.num(p.peso_un_gramas, 1) : Number(p.peso_un_gramas).toFixed(1))}g` : ''}</span>
@@ -677,6 +677,9 @@ function renderizarModalGerenciarPecas(p) {
         : `<div class="bancada-thumb-placeholder">Sem foto</div>`;
 
     $('modalGerenciarPecasFoto').innerHTML = fotoProd;
+    $('modalGerenciarPecasFoto').onclick = () => abrirUploadFotoProduto(p.id);
+    $('modalGerenciarPecasFoto').title = 'Clique para adicionar ou trocar a foto deste produto';
+    $('modalGerenciarPecasFoto').style.cursor = 'pointer';
     $('modalGerenciarPecasTitulo').textContent = `Peças: ${p.nome}`;
     $('modalGerenciarPecasSub').textContent = `${p.pecas.length} tipos de peça cadastrados · Total ${fmtInt.format(p.total_pecas_por_unidade)} un por montagem`;
 
@@ -735,6 +738,7 @@ function renderizarModalGerenciarPecas(p) {
                                title="Estoque físico da peça">
                         <button type="button" class="btn-step mais" onclick="ajustarPeca(${peca.peca_id}, 1)" title="Adicionar 1">+</button>
                     </div>
+                    <button type="button" class="btn-peca-acao" onclick="abrirModalAjusteInventarioPeca(${peca.peca_id}, ${p.id})" title="Ajuste de inventário físico / contagem">⚖️ Inventário</button>
                     <button type="button" class="btn-peca-acao" onclick="abrirModalProduzirPeca(${peca.peca_id}, ${p.id})" title="Registrar lote maior">+ Lote</button>
                     <button type="button" class="btn-peca-acao" onclick="abrirModalNovaCor(${peca.peca_id}, ${p.id})" title="Adicionar cor/filamento">+ Cor</button>
                 </div>
@@ -1132,6 +1136,138 @@ $('inputUploadFotoPeca').addEventListener('change', async function(e) {
     }
 });
 
+// Upload de foto do produto principal
+let produtoUploadFotoAtualId = null;
+
+function abrirUploadFotoProduto(prodId) {
+    if (!prodId) return;
+    produtoUploadFotoAtualId = prodId;
+    const input = $('inputUploadFotoProduto');
+    if (input) {
+        input.value = '';
+        input.click();
+    }
+}
+
+$('inputUploadFotoProduto')?.addEventListener('change', async function(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file || !produtoUploadFotoAtualId) return;
+
+    const formData = new FormData();
+    formData.append('foto', file);
+    formData.append('produto_id', produtoUploadFotoAtualId);
+
+    try {
+        App.toast('Enviando foto do produto...');
+        const res = await fetch('api/upload_foto.php', {
+            method: 'POST',
+            body: formData
+        });
+        const json = await res.json();
+        if (!res.ok || !json.ok) throw new Error(json.erro || 'Falha ao salvar foto do produto.');
+        App.toast('Foto do produto atualizada com sucesso!');
+        
+        const p = (dadosPecasCarregados?.produtos || []).find(x => x.id === produtoUploadFotoAtualId);
+        if (p) {
+            p.foto = json.foto;
+            atualizarLinhaProduto(p);
+            if (produtoAtualGerenciarPecasId === p.id) {
+                $('modalGerenciarPecasFoto').innerHTML = `<img src="${esc(json.foto)}" alt="${esc(p.nome)}">`;
+            }
+        } else {
+            carregarPecasFabrica();
+        }
+    } catch (err) {
+        App.toast(err.message, 'erro');
+    }
+});
+
+// ---------- Modal: Ajuste de Inventário Físico de Peça ----------
+let pecaAjusteInventarioAtualId = null;
+let pecaAjusteInventarioProdId = null;
+
+function abrirModalAjusteInventarioPeca(pecaId, prodId) {
+    pecaAjusteInventarioAtualId = pecaId;
+    pecaAjusteInventarioProdId = prodId;
+    const p = (dadosPecasCarregados?.produtos || []).find(x => x.id === prodId);
+    if (!p) return;
+    const peca = p.pecas.find(x => x.peca_id === pecaId);
+    if (!peca) return;
+
+    $('ajustePecaId').value = pecaId;
+    $('ajustePecaProdutoId').value = prodId;
+    $('modalAjustePecaTitulo').textContent = `Inventário: ${peca.nome}`;
+    $('modalAjustePecaSub').textContent = `Produto: ${p.nome} · Conferência de estoque físico`;
+    $('ajustePecaSaldoAtualTexto').textContent = `${fmtInt.format(peca.estoque)} un.`;
+    
+    const inputNovo = $('ajustePecaNovoSaldo');
+    inputNovo.value = peca.estoque;
+    atualizarDiferencaAjustePeca(peca.estoque);
+
+    App.modal.abrir('modalAjusteInventarioPeca', '#ajustePecaNovoSaldo');
+}
+
+function atualizarDiferencaAjustePeca(saldoAtual) {
+    const inputNovo = $('ajustePecaNovoSaldo');
+    const difInput = $('ajustePecaDiferenca');
+    if (!inputNovo || !difInput) return;
+
+    const novo = parseInt(inputNovo.value, 10);
+    if (isNaN(novo) || novo < 0) {
+        difInput.value = '—';
+        difInput.style.color = 'var(--text)';
+        return;
+    }
+    const delta = novo - saldoAtual;
+    if (delta > 0) {
+        difInput.value = `+${delta} un. (sobra / ajuste positivo)`;
+        difInput.style.color = '#059669';
+    } else if (delta < 0) {
+        difInput.value = `${delta} un. (falta / perda / descarte)`;
+        difInput.style.color = '#dc2626';
+    } else {
+        difInput.value = '0 un. (sem alteração)';
+        difInput.style.color = 'var(--text-3)';
+    }
+}
+
+$('ajustePecaNovoSaldo')?.addEventListener('input', () => {
+    const info = pecaPorId(pecaAjusteInventarioAtualId);
+    if (info) atualizarDiferencaAjustePeca(info.peca.estoque);
+});
+
+$('formAjusteInventarioPeca')?.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    if (!pecaAjusteInventarioAtualId) return;
+
+    const novo = parseInt($('ajustePecaNovoSaldo').value, 10);
+    if (isNaN(novo) || novo < 0) {
+        App.toast('Informe um saldo válido (maior ou igual a 0).', 'erro');
+        $('ajustePecaNovoSaldo').focus();
+        return;
+    }
+
+    const motivo = $('ajustePecaMotivo').value.trim() || 'Conferência de inventário físico';
+    const btn = $('btnSalvarAjustePeca');
+    btn.disabled = true;
+
+    try {
+        const r = await App.api('api/fabrica_pecas.php?acao=ajustar_saldo_peca', 'POST', {
+            peca_id: pecaAjusteInventarioAtualId,
+            estoque: novo,
+            motivo: motivo
+        });
+        App.toast(r.mensagem || 'Ajuste de inventário gravado com sucesso!');
+        App.modal.fechar('modalAjusteInventarioPeca');
+        aplicarNovoSaldoPeca(pecaAjusteInventarioAtualId, r.novo_estoque);
+        await carregarPecasFabrica();
+    } catch (err) {
+        App.toast(err.message, 'erro');
+    } finally {
+        btn.disabled = false;
+    }
+});
+
 // Modal de Produção Rápida de Peças (lote maior da peça física)
 let pecaProduzirAtualId = null;
 
@@ -1320,6 +1456,8 @@ if ($('modalMontarProduto')) {
 // Tornar funções globais para onclick nos botões da tabela e modais
 window.abrirUploadFotoCor = abrirUploadFotoCor;
 window.abrirUploadFotoPecaDirect = abrirUploadFotoPecaDirect;
+window.abrirUploadFotoProduto = abrirUploadFotoProduto;
+window.abrirModalAjusteInventarioPeca = abrirModalAjusteInventarioPeca;
 window.abrirModalProduzirPeca = abrirModalProduzirPeca;
 window.abrirModalNovaCor = abrirModalNovaCor;
 window.removerCorDaPeca = removerCorDaPeca;

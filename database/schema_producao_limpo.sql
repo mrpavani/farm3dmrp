@@ -236,6 +236,26 @@ CREATE INDEX idx_lote_data ON filamento_lotes(data_compra);
 CREATE INDEX idx_mov_filamento ON filamento_movimentacoes(filamento_id);
 CREATE INDEX idx_mov_fil_data ON filamento_movimentacoes(criado_em);
 CREATE INDEX idx_mov_fil_tipo ON filamento_movimentacoes(tipo);
+CREATE INDEX idx_filamento_ativo_cor ON filamentos(ativo, cor);
+
+-- View Consolidada de Estoque e Alertas por Cor
+CREATE OR REPLACE VIEW `vw_estoque_filamentos_cores` AS
+SELECT 
+    TRIM(cor) AS cor,
+    COALESCE(MAX(cor_hex), '#6366f1') AS cor_hex,
+    COALESCE(SUM(estoque_gramas), 0.00) AS estoque_gramas,
+    COALESCE(MAX(estoque_minimo_gramas), 500.00) AS estoque_minimo_gramas,
+    COUNT(*) AS total_filamentos,
+    GROUP_CONCAT(DISTINCT tipo ORDER BY tipo SEPARATOR ', ') AS tipos,
+    GROUP_CONCAT(DISTINCT marca ORDER BY marca SEPARATOR ', ') AS marcas,
+    CASE
+        WHEN COALESCE(SUM(estoque_gramas), 0.00) <= 0 THEN 'zerado'
+        WHEN COALESCE(SUM(estoque_gramas), 0.00) <= COALESCE(MAX(estoque_minimo_gramas), 500.00) THEN 'baixo'
+        ELSE 'ok'
+    END AS status
+FROM filamentos
+WHERE ativo = 1
+GROUP BY TRIM(cor);
 
 -- Administrador inicial padrão (login: admin@mail.com / senha: A123456)
 INSERT INTO `usuarios` (`id`, `nome`, `login`, `senha_hash`, `admin`, `ativo`)

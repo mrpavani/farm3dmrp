@@ -379,16 +379,15 @@ window.FormPedido = (() => {
                 <select data-role="produto" aria-label="Produto" ${produzido > 0 ? 'disabled' : ''}>${opcoes}</select>
                 <span class="preco-item" data-role="preco" style="text-align:right;font-weight:600;">—</span>
                 <input type="number" data-role="quantidade" aria-label="Quantidade" inputmode="numeric"
-                       min="${Math.max(1, prodFabrica)}" value="${item ? item.quantidade : 1}">
+                       min="1" value="${item ? item.quantidade : 1}">
                 <div style="display:flex;align-items:center;gap:4px;">
                     ${badges.length ? `<span class="info-produzido" title="Já atendido">${badges.join(' e ')}</span>` : ''}
                     <button type="button" class="btn-icone secundario btn-duplicar-item" data-tip="Duplicar este item (mesmo produto)" aria-label="Duplicar item">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="13" height="13" x="9" y="9" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                     </button>
-                    ${prodFabrica === 0 ? `
-                    <button type="button" class="btn-icone perigo btn-remover-item" data-tip="Remover produto" aria-label="Remover produto">
+                    <button type="button" class="btn-icone perigo btn-remover-item" data-tip="Remover produto do pedido" aria-label="Remover produto">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/></svg>
-                    </button>` : ''}
+                    </button>
                 </div>
             </div>
             <div class="item-variacao-box" data-role="variacao-box"></div>`;
@@ -441,7 +440,17 @@ window.FormPedido = (() => {
 
         const remover = div.querySelector('.btn-remover-item');
         if (remover) {
-            remover.addEventListener('click', () => {
+            remover.addEventListener('click', async () => {
+                if (produzido > 0) {
+                    const selProd = div.querySelector('[data-role="produto"]');
+                    const p = produtos.find(x => String(x.id) === selProd.value);
+                    const nomeProd = p ? p.nome : 'este produto';
+                    const ok = await App.confirmar(
+                        `Este item possui ${produzido} unidade(s) já atendida(s)/produzida(s). Ao remover, essas unidades serão devolvidas ao estoque de produtos acabados.\n\nDeseja remover "${nomeProd}" deste pedido?`,
+                        { titulo: 'Remover produto do pedido', botao: 'Sim, remover e devolver ao estoque', perigo: true }
+                    );
+                    if (!ok) return;
+                }
                 div.remove();
                 if (!$('pedItens').children.length) adicionarItem();
                 atualizarResumo();

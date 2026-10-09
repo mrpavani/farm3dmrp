@@ -39,6 +39,18 @@ require __DIR__ . '/includes/header.php';
         </div>
     </div>
 
+    <!-- Painel de Estoque Consolidado por Cor -->
+    <div class="card" id="painelEstoqueCores" style="margin-bottom: 18px; padding: 14px 18px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <strong style="font-size: 14px; color: var(--text);">Estoque Consolidado por Cor</strong>
+                <span class="sub-linha" style="font-size: 12px; color: var(--text-3);">(Alertas de reposição calculados exclusivamente pelo saldo total da cor)</span>
+            </div>
+            <span id="resumoCoresTexto" style="font-size: 12px; color: var(--text-2);"></span>
+        </div>
+        <div id="gradeCoresEstoque" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
+    </div>
+
     <!-- Barra de Ações & Filtros -->
     <div class="barra-lista" style="gap: 10px; flex-wrap: wrap;">
         <label class="busca" style="flex: 1; min-width: 240px;">

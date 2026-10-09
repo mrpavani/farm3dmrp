@@ -394,26 +394,20 @@ if ($method === 'PUT') {
                 throw new Exception("O item \"{$atual['produto_nome']}\" já tem produção registrada; o produto não pode ser trocado.");
             }
             if ($qtd < $produzido) {
-                // The new quantity is less than what was produced.
-                // If it's just stock, we can return the stock. If factory produced it, we error.
-                $prodFabrica = $produzido - (int) $atual['quantidade_estoque'];
-                if ($qtd < $prodFabrica) {
-                    throw new Exception("A quantidade de \"{$atual['produto_nome']}\" não pode ser menor que o já produzido pela fábrica ($prodFabrica).");
-                }
-                
-                // Return difference to stock
+                // A nova quantidade é menor que o total já produzido/reservado.
+                // Como o pedido ainda não foi entregue, as unidades excedentes são devolvidas ao estoque do produto acabado.
                 $devolver = $produzido - $qtd;
                 if ($devolver > 0) {
                     $pdo->prepare("UPDATE produtos SET estoque = estoque + :dev WHERE id = :id")
                         ->execute(['dev' => $devolver, 'id' => $atual['produto_id']]);
-                    $pdo->prepare("UPDATE pedido_itens SET quantidade_estoque = quantidade_estoque - :dev, quantidade_produzida = quantidade_produzida - :dev WHERE id = :id")
-                        ->execute(['dev' => $devolver, 'id' => $itemId]);
+                    $pdo->prepare("UPDATE pedido_itens SET quantidade_estoque = LEAST(quantidade_estoque, :qtd), quantidade_produzida = :qtd WHERE id = :id")
+                        ->execute(['qtd' => $qtd, 'id' => $itemId]);
                     registrarMovimento($pdo, 'pedido_estorno', [
                         'produto_id'     => (int) $atual['produto_id'],
                         'pedido_item_id' => $itemId,
                         'quantidade'     => $devolver,
                         'usuario_id'     => $usuario['id'],
-                        'observacoes'    => "Quantidade reduzida no pedido #$id",
+                        'observacoes'    => "Quantidade reduzida no pedido #$id (excedente de {$devolver} un. devolvido ao estoque)",
                     ]);
                 }
             }
@@ -443,20 +437,19 @@ if ($method === 'PUT') {
         foreach ($atuais as $itemId => $atual) {
             if (isset($mantidos[$itemId])) continue;
             
-            $prodFabrica = (int) $atual['quantidade_produzida'] - (int) $atual['quantidade_estoque'];
-            if ($prodFabrica > 0) {
-                throw new Exception("O item \"{$atual['produto_nome']}\" já tem produção registrada pela fábrica e não pode ser removido.");
-            }
-            
-            if ((int) $atual['quantidade_estoque'] > 0) {
+            // O produto vinculado foi removido do pedido.
+            // Como o pedido não foi entregue, quaisquer unidades já produzidas ou reservadas
+            // são estornadas e retornam ao estoque físico de produtos acabados.
+            $totalEstornar = (int) $atual['quantidade_produzida'];
+            if ($totalEstornar > 0) {
                 $pdo->prepare("UPDATE produtos SET estoque = estoque + :dev WHERE id = :id")
-                    ->execute(['dev' => $atual['quantidade_estoque'], 'id' => $atual['produto_id']]);
+                    ->execute(['dev' => $totalEstornar, 'id' => $atual['produto_id']]);
                 registrarMovimento($pdo, 'pedido_estorno', [
                     'produto_id'     => (int) $atual['produto_id'],
                     'pedido_item_id' => $itemId,
-                    'quantidade'     => (int) $atual['quantidade_estoque'],
+                    'quantidade'     => $totalEstornar,
                     'usuario_id'     => $usuario['id'],
-                    'observacoes'    => "Item removido do pedido #$id",
+                    'observacoes'    => "Item \"{$atual['produto_nome']}\" removido do pedido #$id (unidades produzidas devolvidas ao estoque)",
                 ]);
             }
             $delStmt->execute(['id' => $itemId]);

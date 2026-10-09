@@ -225,6 +225,56 @@ require __DIR__ . '/includes/header.php';
     </div>
 </div>
 
+<!-- Modal: Ajuste de Inventário Físico de Peça Produzida -->
+<div id="modalAjusteInventarioPeca" class="modal" hidden>
+    <div class="card modal-caixa modal-pequeno" role="dialog" aria-modal="true" aria-labelledby="modalAjustePecaTitulo">
+        <form id="formAjusteInventarioPeca" autocomplete="off" novalidate>
+            <input type="hidden" id="ajustePecaId">
+            <input type="hidden" id="ajustePecaProdutoId">
+            <div class="modal-cabecalho">
+                <div>
+                    <h2 id="modalAjustePecaTitulo">Ajuste de Inventário de Peça</h2>
+                    <p id="modalAjustePecaSub" class="modal-sub"></p>
+                </div>
+                <button type="button" class="btn-icone" data-fechar-modal aria-label="Fechar">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <div class="modal-corpo">
+                <div style="background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 14px; margin-bottom: 12px; font-size: 13px;">
+                    <div>Saldo registrado no sistema: <b id="ajustePecaSaldoAtualTexto">0 un.</b></div>
+                </div>
+
+                <div>
+                    <label for="ajustePecaNovoSaldo">Novo saldo físico contado (un.) <span class="obrigatorio">*</span></label>
+                    <input type="number" id="ajustePecaNovoSaldo" min="0" step="1" required style="font-size: 22px; font-weight: 700; height: 48px; text-align: center;">
+                </div>
+
+                <div style="margin-top: 10px;">
+                    <label for="ajustePecaDiferenca">Diferença / Variação no Estoque</label>
+                    <input type="text" id="ajustePecaDiferenca" readonly style="background: var(--surface-3); font-weight: 700; text-align: center;">
+                </div>
+
+                <div style="margin-top: 10px;">
+                    <label for="ajustePecaMotivo">Motivo do Ajuste de Inventário</label>
+                    <input type="text" id="ajustePecaMotivo" placeholder="Ex.: Conferência física, perda, peça avariada..." list="listaMotivosAjustePeca" value="Conferência de inventário físico">
+                    <datalist id="listaMotivosAjustePeca">
+                        <option value="Conferência de inventário físico">
+                        <option value="Peça danificada / avaria">
+                        <option value="Perda de material / defeito">
+                        <option value="Sobra de produção / acerto">
+                        <option value="Contagem física de bancada">
+                    </datalist>
+                </div>
+            </div>
+            <div class="modal-rodape">
+                <button type="button" class="secundario" data-fechar-modal>Cancelar</button>
+                <button type="submit" id="btnSalvarAjustePeca" class="primario">Gravar Ajuste</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <!-- Modal: cadastrar uma nova cor de uma peça já existente, direto da bancada -->
 <div id="modalNovaCor" class="modal" hidden>
     <div class="card modal-caixa modal-pequeno" role="dialog" aria-modal="true" aria-labelledby="modalNovaCorTitulo">
@@ -309,8 +359,9 @@ require __DIR__ . '/includes/header.php';
     </div>
 </div>
 
-<!-- Input oculto para envio de foto de peça com 1 clique -->
+<!-- Inputs ocultos para envio de foto de peça e de produto com 1 clique -->
 <input type="file" id="inputUploadFotoPeca" accept="image/png,image/jpeg,image/webp" style="display:none;">
+<input type="file" id="inputUploadFotoProduto" accept="image/png,image/jpeg,image/webp" style="display:none;">
 
 
 <?php require_once __DIR__ . '/includes/modal_pedido.php'; ?>

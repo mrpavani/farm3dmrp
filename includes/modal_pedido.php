@@ -41,7 +41,7 @@ require_once __DIR__ . '/modal_cores_item.php';
                         <button type="button" class="fantasma pequeno" id="pedAddItem">+ Adicionar produto</button>
                     </h3>
                     <p class="vazio" id="pedNotaItens" hidden style="margin:0 0 8px;">
-                        Itens com produção registrada não podem ser removidos nem trocar de produto, e a quantidade não pode ficar abaixo do já produzido.
+                        💡 Enquanto o pedido não for entregue, produtos podem ser removidos ou ter quantidades alteradas. Unidades já produzidas retornam automaticamente ao estoque de produtos prontos.
                     </p>
                     <div class="cabecalho-itens" aria-hidden="true">
                         <span>Produto</span><span style="text-align:right">Preço</span><span>Quantidade</span><span></span>

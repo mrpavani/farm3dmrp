@@ -69,15 +69,20 @@ try {
     $qtdAlertasFil = 0;
     $filamentosLista = [];
 
+    // Pre-calcula resumo das cores ativas para apurar alertas estritamente por COR
+    $resumoCores = obterResumoEstoqueCores($pdo);
+    foreach ($resumoCores as $c) {
+        if ($c['status'] !== 'ok') {
+            $qtdAlertasFil++;
+        }
+    }
+
     foreach ($filIds as $fId) {
-        $info = obterResumoFilamento($pdo, (int) $fId);
+        $info = obterResumoFilamento($pdo, (int) $fId, $resumoCores);
         if ($info) {
             $totalGramasFil += (float) $info['estoque_gramas'];
             $totalValorFil += (float) $info['valor_total_estoque'];
             $totalRolosFil += (float) $info['estoque_rolos'];
-            if ($info['status'] !== 'ok') {
-                $qtdAlertasFil++;
-            }
             $filamentosLista[] = $info;
         }
     }
@@ -184,6 +189,7 @@ try {
         'produtos_prontos' => $produtosComEstoque,
         'todos_produtos' => $todosProdutos,
         'filamentos' => $filamentosLista,
+        'cores_filamentos' => array_values($resumoCores),
         'pedidos_criticos' => array_slice($pedidosCriticosLista, 0, 10),
     ]);
 
