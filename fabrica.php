@@ -288,10 +288,14 @@ require __DIR__ . '/includes/header.php';
             </button>
         </div>
         <div class="modal-corpo">
-            <label for="modalNovaCorNome">Nome da cor / filamento</label>
-            <input type="text" id="modalNovaCorNome" placeholder="Ex.: Branco, Cinza..." maxlength="50">
-            <label for="modalNovaCorPeso">Filamento gasto desta cor por peça (g)</label>
-            <input type="number" id="modalNovaCorPeso" min="0" step="0.1" placeholder="0.0 g">
+            <label for="modalNovaCorNome">Cor do filamento</label>
+            <select id="modalNovaCorNome" style="width:100%; font-size:13px;"></select>
+            <input type="text" id="modalNovaCorCustom" placeholder="Digitar outra cor..." style="display:none; margin-top:6px; width:100%; font-size:13px;" maxlength="50">
+            <label for="modalNovaCorPeso" style="margin-top:10px;">Filamento gasto desta cor por peça (g)</label>
+            <div class="input-com-unidade">
+                <input type="number" id="modalNovaCorPeso" min="0" step="0.1" placeholder="0.0">
+                <span class="unidade">g</span>
+            </div>
         </div>
         <div class="modal-rodape">
             <button type="button" class="secundario" data-fechar-modal>Cancelar</button>

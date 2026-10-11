@@ -1,0 +1,534 @@
+<title>Filamenta</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700&family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: mesa de impressão — uma coluna editorial, com uma "ficha técnica" de peça como elemento-assinatura e a calculadora como demo ao vivo */
+:root{
+  --paper:#F2F3EF;      /* PLA branco fosco */
+  --surface:#FFFFFF;
+  --ink:#16191D;        /* grafite */
+  --ink-2:#4A5059;
+  --line:#D9DCD4;
+  --cobalt:#2340D9;     /* acento: filamento azul cobalto */
+  --cobalt-soft:#E3E8FF;
+  --amber:#E9A800;      /* cores de filamento, só em dados */
+  --red:#D93A2B;
+  --teal:#0E8C7B;
+  --ok:#0E8C7B;
+  --warn:#B86E00;
+  --f-display:"Unbounded","Arial Black",system-ui,sans-serif;
+  --f-body:"Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --paper:#111316;--surface:#1A1D22;--ink:#ECEEE8;--ink-2:#A7ADB6;--line:#2C3138;
+  --cobalt:#7E93FF;--cobalt-soft:#1E2550;--amber:#F2BE2E;--red:#F06A5C;--teal:#3CC2AD;--ok:#3CC2AD;--warn:#F2BE2E;color-scheme:dark}}
+:root[data-theme="dark"]{
+  --paper:#111316;--surface:#1A1D22;--ink:#ECEEE8;--ink-2:#A7ADB6;--line:#2C3138;
+  --cobalt:#7E93FF;--cobalt-soft:#1E2550;--amber:#F2BE2E;--red:#F06A5C;--teal:#3CC2AD;--ok:#3CC2AD;--warn:#F2BE2E;color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--paper);color:var(--ink);font-family:var(--f-body);font-size:17px;line-height:1.6;padding-inline:20px}
+.wrap{max-width:1120px;margin-inline:auto}
+a{color:var(--cobalt)}
+h1,h2,h3{font-family:var(--f-display);font-weight:700;letter-spacing:-.02em;line-height:1.1;text-wrap:balance;margin:0}
+h2{font-size:clamp(28px,4vw,42px)}
+h3{font-size:19px;font-weight:500;letter-spacing:-.01em}
+p{margin:0}
+.eyebrow{font-family:var(--f-mono);font-size:12.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2)}
+.mono{font-family:var(--f-mono)}
+.num{font-variant-numeric:tabular-nums}
+:focus-visible{outline:3px solid var(--cobalt);outline-offset:2px;border-radius:4px}
+
+/* nav */
+nav.top{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-block:22px;flex-wrap:wrap}
+.logo{display:flex;align-items:center;gap:10px;font-family:var(--f-display);font-weight:700;font-size:21px;color:var(--ink);text-decoration:none}
+.logo-mark{width:30px;height:30px;border-radius:50%;background:
+  radial-gradient(circle at center,var(--paper) 0 5px,transparent 5.5px),
+  repeating-radial-gradient(circle at center,var(--cobalt) 0 2px,var(--ink) 2px 3px);}
+.nav-links{display:flex;gap:22px;align-items:center;flex-wrap:wrap}
+.nav-links a{color:var(--ink-2);text-decoration:none;font-weight:500;font-size:15px}
+.nav-links a:hover{color:var(--ink)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-family:var(--f-body);font-weight:700;font-size:16px;border-radius:999px;padding:13px 24px;text-decoration:none;border:2px solid transparent;cursor:pointer}
+.btn-primary{background:var(--cobalt);color:#fff}
+:root[data-theme="dark"] .btn-primary{color:#0B0E2A}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .btn-primary{color:#0B0E2A}}
+.btn-primary:hover{filter:brightness(1.08)}
+.btn-ghost{border-color:var(--ink);color:var(--ink);background:transparent}
+.btn-sm{padding:9px 18px;font-size:14.5px}
+
+/* hero */
+.hero{display:grid;grid-template-columns:1.1fr .9fr;gap:56px;align-items:center;padding-block:40px 72px}
+.hero h1{font-size:clamp(38px,6.2vw,74px);margin-block:16px 22px}
+.hero h1 em{font-style:normal;color:var(--cobalt)}
+.hero .lede{font-size:20px;color:var(--ink-2);max-width:34ch}
+.hero-ctas{display:flex;gap:12px;flex-wrap:wrap;margin-top:30px}
+.hero-note{margin-top:14px;font-size:14px;color:var(--ink-2)}
+.hero-art{position:relative;min-width:0}
+.ticket{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:22px 22px 18px;box-shadow:0 30px 60px -30px rgba(20,25,60,.35)}
+.ticket-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;border-bottom:1px dashed var(--line);padding-bottom:12px}
+.ticket-head strong{font-family:var(--f-display);font-weight:500;font-size:17px}
+.stack{display:flex;flex-direction:column-reverse;align-items:center;gap:2px;height:150px;justify-content:flex-start;margin-block:18px 14px}
+.stack i{display:block;height:6px;border-radius:3px;animation:lay .35s ease-out backwards}
+@keyframes lay{from{transform:scaleX(.2);opacity:0}to{transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){.stack i{animation:none}}
+.rows{display:grid;gap:7px;font-size:14.5px}
+.row{display:flex;justify-content:space-between;gap:12px}
+.row .k{display:flex;align-items:center;gap:8px;color:var(--ink-2)}
+.dot{width:11px;height:11px;border-radius:50%;flex:none;border:1px solid rgba(0,0,0,.15)}
+.row.total{border-top:1px solid var(--line);padding-top:9px;margin-top:4px;font-weight:700;color:var(--ink)}
+.row.price{font-family:var(--f-display);font-size:22px;font-weight:700;color:var(--cobalt)}
+.gcode{margin-top:14px;font-family:var(--f-mono);font-size:12px;color:var(--ink-2);background:var(--paper);border-radius:8px;padding:10px 12px;overflow-x:auto;white-space:pre}
+
+/* sections */
+section{padding-block:80px;border-top:1px solid var(--line)}
+.sec-head{display:grid;gap:14px;max-width:720px;margin-bottom:44px}
+.sec-head p{color:var(--ink-2);font-size:18.5px}
+
+/* pains */
+.pains{display:grid;grid-template-columns:repeat(3,1fr);gap:28px}
+.pain{display:grid;gap:10px;align-content:start}
+.pain .big{font-family:var(--f-display);font-size:40px;font-weight:700;color:var(--red);line-height:1}
+.pain p{color:var(--ink-2)}
+
+/* features */
+.features{display:grid;grid-template-columns:repeat(2,1fr);gap:20px}
+.feat{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:26px;display:grid;gap:10px;align-content:start}
+.feat .tag{font-family:var(--f-mono);font-size:12px;color:var(--cobalt);letter-spacing:.06em;text-transform:uppercase}
+.feat p{color:var(--ink-2);font-size:16px}
+.feat.wide{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:28px;align-items:center}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{display:inline-flex;align-items:center;gap:7px;font-family:var(--f-mono);font-size:13px;padding:6px 11px;border-radius:999px;background:var(--paper);border:1px solid var(--line)}
+
+/* steps (sequência real de uso) */
+.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;counter-reset:s}
+.step{display:grid;gap:8px;align-content:start;counter-increment:s}
+.step::before{content:counter(s);font-family:var(--f-display);font-weight:700;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;background:var(--cobalt-soft);color:var(--cobalt)}
+.step p{color:var(--ink-2);font-size:15.5px}
+
+/* calculator */
+.calc{display:grid;grid-template-columns:1.05fr .95fr;gap:24px;align-items:start}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:24px;min-width:0}
+.panel h3{margin-bottom:14px}
+fieldset{border:0;padding:0;margin:0 0 20px;display:grid;gap:12px}
+legend{font-family:var(--f-mono);font-size:12px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-2);margin-bottom:10px;padding:0}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+label{display:grid;gap:5px;font-size:13.5px;font-weight:600;color:var(--ink-2);min-width:0}
+input,select{font:inherit;font-size:15.5px;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:9px;padding:9px 11px;width:100%;min-width:0;font-variant-numeric:tabular-nums}
+input[type=color]{padding:3px;height:42px;cursor:pointer}
+.color-row{display:grid;grid-template-columns:46px 1.3fr 1fr 1fr;gap:10px;align-items:end}
+.result-price{font-family:var(--f-display);font-size:clamp(38px,5vw,52px);font-weight:700;color:var(--cobalt);line-height:1;margin-block:6px 4px}
+.bar{display:flex;height:14px;border-radius:7px;overflow:hidden;margin-block:16px 12px;background:var(--paper)}
+.bar span{display:block;height:100%}
+.legend-list{display:grid;gap:7px;font-size:14.5px}
+.scale{margin-top:20px;border-top:1px dashed var(--line);padding-top:18px}
+.scale table{width:100%;border-collapse:collapse;font-size:14.5px}
+.scale th,.scale td{text-align:left;padding:7px 4px;border-bottom:1px solid var(--line)}
+.scale th{font-family:var(--f-mono);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2);font-weight:500}
+.scale td.r,.scale th.r{text-align:right}
+.callout{margin-top:14px;font-size:14px;color:var(--ink-2);background:var(--paper);border-radius:9px;padding:11px 13px}
+.warn{color:var(--warn);font-weight:600}
+
+/* pricing */
+.plans{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+.plan{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:24px;display:flex;flex-direction:column;gap:14px}
+.plan.hl{border:2px solid var(--cobalt);position:relative}
+.plan.hl::after{content:"Mais escolhido";position:absolute;top:-12px;left:22px;background:var(--cobalt);color:var(--surface);font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px}
+.plan .p{font-family:var(--f-display);font-size:34px;font-weight:700}
+.plan .p small{font-family:var(--f-body);font-size:15px;font-weight:500;color:var(--ink-2)}
+.plan ul{list-style:none;padding:0;margin:0;display:grid;gap:8px;font-size:15px;flex:1}
+.plan li{padding-left:22px;position:relative}
+.plan li::before{content:"";position:absolute;left:2px;top:9px;width:10px;height:6px;border-left:2px solid var(--teal);border-bottom:2px solid var(--teal);transform:rotate(-45deg)}
+.plan .who{color:var(--ink-2);font-size:14.5px}
+.toggle{display:inline-flex;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:4px;margin-bottom:26px}
+.toggle button{font:inherit;font-weight:600;font-size:14.5px;border:0;background:transparent;color:var(--ink-2);padding:8px 16px;border-radius:999px;cursor:pointer}
+.toggle button[aria-pressed=true]{background:var(--ink);color:var(--paper)}
+
+/* devices */
+.devices{display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:center}
+.phone{width:230px;max-width:100%;margin-inline:auto;border:10px solid var(--ink);border-radius:34px;background:var(--surface);padding:16px 14px;display:grid;gap:10px}
+.phone .eyebrow{font-size:10.5px}
+.ph-card{border:1px solid var(--line);border-radius:10px;padding:10px;font-size:13px;display:grid;gap:5px}
+.ph-meter{height:6px;border-radius:3px;background:var(--paper);overflow:hidden}
+.ph-meter span{display:block;height:100%}
+
+/* faq */
+details{border-bottom:1px solid var(--line);padding-block:18px}
+summary{cursor:pointer;font-weight:700;font-size:18px;list-style:none;display:flex;justify-content:space-between;gap:16px}
+summary::after{content:"+";font-family:var(--f-display);color:var(--cobalt)}
+details[open] summary::after{content:"–"}
+details p{color:var(--ink-2);margin-top:10px;max-width:70ch}
+
+/* final cta */
+.final{background:var(--ink);color:var(--paper);border-radius:22px;padding:56px 40px;display:grid;gap:18px;justify-items:start;margin-block:20px 40px}
+.final h2{color:var(--paper);max-width:18ch}
+.final p{color:var(--paper);opacity:.75;max-width:52ch}
+.signup{display:flex;gap:10px;flex-wrap:wrap;width:100%;max-width:520px}
+.signup input{flex:1 1 220px;background:transparent;color:var(--paper);border-color:color-mix(in srgb,var(--paper) 35%,transparent)}
+.signup .btn-primary{color:#fff}
+.form-msg{font-size:14.5px;min-height:1.4em}
+footer{padding-block:28px 50px;color:var(--ink-2);font-size:14px;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+
+@media (max-width:980px){
+  .hero,.calc,.devices,.feat.wide{grid-template-columns:1fr}
+  .plans{grid-template-columns:1fr 1fr}
+  .steps{grid-template-columns:1fr 1fr}
+}
+@media (max-width:640px){
+  body{font-size:16px;padding-inline:16px}
+  .pains,.features,.plans,.steps{grid-template-columns:1fr}
+  .nav-links a:not(.btn){display:none}
+  .grid3{grid-template-columns:1fr 1fr}
+  .color-row{grid-template-columns:42px 1fr 1fr;}
+  .color-row .cname{grid-column:2/-1}
+  section{padding-block:60px}
+  .final{padding:40px 22px}
+}
+</style>
+
+<div class="wrap">
+<nav class="top" aria-label="Principal">
+  <a class="logo" href="#topo"><span class="logo-mark" aria-hidden="true"></span>Filamenta</a>
+  <div class="nav-links">
+    <a href="#recursos">Recursos</a>
+    <a href="#calculadora">Calculadora</a>
+    <a href="#planos">Planos</a>
+    <a href="#faq">Dúvidas</a>
+    <a class="btn btn-primary btn-sm" href="#comecar">Testar grátis</a>
+  </div>
+</nav>
+
+<header class="hero" id="topo">
+  <div>
+    <span class="eyebrow">Gestão e precificação para impressão 3D</span>
+    <h1>Saiba quanto custa <em>cada grama</em> que você imprime.</h1>
+    <p class="lede">Cadastre seus produtos e filamentos. A Filamenta calcula o preço certo, quanto de cada cor você vai gastar e quantos rolos comprar para a próxima leva.</p>
+    <div class="hero-ctas">
+      <a class="btn btn-primary" href="#comecar">Começar 14 dias grátis</a>
+      <a class="btn btn-ghost" href="#calculadora">Calcular uma peça agora</a>
+    </div>
+    <p class="hero-note">Sem cartão no teste · Pix, boleto ou cartão · Funciona no computador e no celular</p>
+  </div>
+  <div class="hero-art" aria-label="Exemplo de ficha de custo de um produto">
+    <div class="ticket">
+      <div class="ticket-head"><strong>Vaso Geométrico M</strong><span class="eyebrow">ficha #0142</span></div>
+      <div class="stack" id="stack" aria-hidden="true"></div>
+      <div class="rows num">
+        <div class="row"><span class="k"><span class="dot" style="background:#1E2A78"></span>PLA Azul Marinho · 112 g</span><span>R$ 10,08</span></div>
+        <div class="row"><span class="k"><span class="dot" style="background:#E9A800"></span>PLA Amarelo · 46 g</span><span>R$ 4,14</span></div>
+        <div class="row"><span class="k">Energia · 4h20</span><span>R$ 0,78</span></div>
+        <div class="row"><span class="k">Desgaste da impressora</span><span>R$ 1,73</span></div>
+        <div class="row"><span class="k">Embalagem</span><span>R$ 2,50</span></div>
+        <div class="row total"><span>Custo real</span><span>R$ 19,23</span></div>
+        <div class="row price"><span>Preço sugerido</span><span>R$ 49,90</span></div>
+      </div>
+      <div class="gcode">; filament used [g] = 112.04, 46.31
+; estimated printing time = 4h 20m 11s</div>
+    </div>
+  </div>
+</header>
+
+<section id="dor">
+  <div class="sec-head">
+    <span class="eyebrow">O problema</span>
+    <h2>Quem precifica no olho trabalha de graça sem perceber.</h2>
+  </div>
+  <div class="pains">
+    <div class="pain"><span class="big">R$ 0,09</span><h3>por grama não é o seu custo</h3><p>O rolo é só uma parte. Energia, desgaste do bico e da mesa, peças que falham e a taxa do marketplace somem com a margem.</p></div>
+    <div class="pain"><span class="big">3 cores</span><h3>e nenhuma conta de quanto usar</h3><p>Peça multicor exige saber quanto vai de cada filamento. Sem isso, o rolo amarelo acaba no meio do pedido de 40 unidades.</p></div>
+    <div class="pain"><span class="big">1 planilha</span><h3>que só você entende</h3><p>Quando entra o segundo funcionário ou a quinta impressora, a planilha vira gargalo e os pedidos começam a atrasar.</p></div>
+  </div>
+</section>
+
+<section id="como">
+  <div class="sec-head">
+    <span class="eyebrow">Como funciona</span>
+    <h2>Do arquivo fatiado ao preço de venda em quatro passos.</h2>
+  </div>
+  <div class="steps">
+    <div class="step"><h3>Cadastre seus filamentos</h3><p>Marca, tipo, cor e quanto pagou em cada rolo. O custo por grama é calculado pela ordem de compra (PEPS).</p></div>
+    <div class="step"><h3>Monte a ficha do produto</h3><p>Informe as peças e a gramatura de cada cor, ou importe direto do arquivo fatiado.</p></div>
+    <div class="step"><h3>Defina canal e margem</h3><p>Venda direta, loja própria ou marketplace. O preço já desconta taxas e impostos.</p></div>
+    <div class="step"><h3>Planeje a produção</h3><p>Diga quantas unidades quer fazer e veja filamento por cor, rolos a comprar e horas de máquina.</p></div>
+  </div>
+</section>
+
+<section id="calculadora">
+  <div class="sec-head">
+    <span class="eyebrow">Experimente agora</span>
+    <h2>Calcule o preço de uma peça.</h2>
+    <p>Esta é a mesma conta que a Filamenta faz para cada produto do seu catálogo. Os valores abaixo são um exemplo; troque pelos seus.</p>
+  </div>
+  <form class="calc" id="calcForm" novalidate>
+    <div class="panel">
+      <fieldset>
+        <legend>Filamento por cor (1 unidade)</legend>
+        <div class="color-row" id="c1">
+          <label>Cor<input type="color" id="c1hex" value="#1E2A78"></label>
+          <label class="cname">Filamento<input id="c1name" value="PLA Azul Marinho"></label>
+          <label>Gramas<input id="c1g" type="number" min="0" step="0.1" value="112"></label>
+          <label>R$/kg<input id="c1kg" type="number" min="0" step="1" value="90"></label>
+        </div>
+        <div class="color-row" id="c2">
+          <label>Cor<input type="color" id="c2hex" value="#E9A800"></label>
+          <label class="cname">Filamento<input id="c2name" value="PLA Amarelo"></label>
+          <label>Gramas<input id="c2g" type="number" min="0" step="0.1" value="46"></label>
+          <label>R$/kg<input id="c2kg" type="number" min="0" step="1" value="90"></label>
+        </div>
+        <div class="color-row" id="c3">
+          <label>Cor<input type="color" id="c3hex" value="#D93A2B"></label>
+          <label class="cname">Filamento<input id="c3name" value="PETG Vermelho"></label>
+          <label>Gramas<input id="c3g" type="number" min="0" step="0.1" value="0"></label>
+          <label>R$/kg<input id="c3kg" type="number" min="0" step="1" value="110"></label>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>Máquina e trabalho</legend>
+        <div class="grid3">
+          <label>Tempo de impressão (h)<input id="hours" type="number" min="0" step="0.05" value="4.33"></label>
+          <label>Consumo médio (W)<input id="watts" type="number" min="0" step="10" value="150"></label>
+          <label>Energia (R$/kWh)<input id="kwh" type="number" min="0" step="0.01" value="1.20"></label>
+          <label>Valor da impressora (R$)<input id="machine" type="number" min="0" step="100" value="4000"></label>
+          <label>Vida útil (horas)<input id="life" type="number" min="1" step="100" value="10000"></label>
+          <label>Taxa de falha (%)<input id="fail" type="number" min="0" max="80" step="1" value="5"></label>
+          <label>Acabamento (min)<input id="labor" type="number" min="0" step="1" value="0"></label>
+          <label>Sua hora (R$)<input id="hourly" type="number" min="0" step="1" value="25"></label>
+          <label>Embalagem (R$)<input id="pack" type="number" min="0" step="0.1" value="2.50"></label>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>Venda</legend>
+        <div class="grid3">
+          <label>Canal
+            <select id="channel">
+              <option value="0">Venda direta (0%)</option>
+              <option value="6">Loja própria (≈6%)</option>
+              <option value="20" selected>Marketplace (≈20%)</option>
+            </select>
+          </label>
+          <label>Imposto (%)<input id="tax" type="number" min="0" max="40" step="0.5" value="6"></label>
+          <label>Lucro desejado (%)<input id="margin" type="number" min="0" max="80" step="1" value="35"></label>
+        </div>
+      </fieldset>
+    </div>
+
+    <div class="panel" aria-live="polite">
+      <span class="eyebrow">Preço sugerido por unidade</span>
+      <div class="result-price num" id="outPrice">R$ 0,00</div>
+      <p style="color:var(--ink-2);font-size:15px" id="outSub"></p>
+      <div class="bar" id="outBar" aria-hidden="true"></div>
+      <div class="legend-list num" id="outLegend"></div>
+
+      <div class="scale">
+        <div class="grid2" style="margin-bottom:14px">
+          <label>Quantas unidades vai produzir?<input id="qty" type="number" min="1" step="1" value="40"></label>
+          <label>Impressoras disponíveis<input id="printers" type="number" min="1" step="1" value="3"></label>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="num">
+            <thead><tr><th>Filamento</th><th class="r">Total</th><th class="r">Rolos 1 kg</th></tr></thead>
+            <tbody id="outScale"></tbody>
+          </table>
+        </div>
+        <p class="callout" id="outPlan"></p>
+      </div>
+    </div>
+  </form>
+</section>
+
+<section id="recursos">
+  <div class="sec-head">
+    <span class="eyebrow">Recursos</span>
+    <h2>Tudo o que uma farm de impressão precisa, num lugar só.</h2>
+  </div>
+  <div class="features">
+    <div class="feat wide">
+      <div style="display:grid;gap:10px">
+        <span class="tag">Filamento por cor</span>
+        <h3>Estoque em gramas, com alerta antes de acabar</h3>
+        <p>Cada rolo entra com preço e data de compra. A produção dá baixa automática na cor certa, e o custo segue a ordem em que você comprou. Você vê o saldo de cada cor e recebe aviso quando chega no mínimo.</p>
+      </div>
+      <div class="chips" aria-label="Exemplo de saldo por cor">
+        <span class="chip"><span class="dot" style="background:#16191D"></span>Preto · 3.420 g</span>
+        <span class="chip"><span class="dot" style="background:#F2F3EF"></span>Branco · 2.150 g</span>
+        <span class="chip"><span class="dot" style="background:#1E2A78"></span>Azul Marinho · 880 g</span>
+        <span class="chip"><span class="dot" style="background:#E9A800"></span>Amarelo · <b class="warn">310 g</b></span>
+        <span class="chip"><span class="dot" style="background:#D93A2B"></span>Vermelho · 1.040 g</span>
+        <span class="chip"><span class="dot" style="background:#0E8C7B"></span>Verde Petróleo · 760 g</span>
+      </div>
+    </div>
+    <div class="feat"><span class="tag">Ficha técnica</span><h3>Produtos com peças, cores e kits</h3><p>Cadastre produtos simples, multicoloridos ou montados a partir de várias peças. O peso e o custo somam sozinhos.</p></div>
+    <div class="feat"><span class="tag">Precificação</span><h3>Preço que já desconta taxa e imposto</h3><p>Defina o lucro que quer ter no bolso. A conta considera filamento, energia, desgaste, falhas, embalagem, taxa do canal e imposto.</p></div>
+    <div class="feat"><span class="tag">Pedidos e fábrica</span><h3>Fila de produção por prazo</h3><p>Pedidos de clientes e ordens para estoque num painel só. Veja o que imprimir primeiro, registre o que saiu da máquina e quem produziu.</p></div>
+    <div class="feat"><span class="tag">Planejamento</span><h3>Quanto comprar para a próxima leva</h3><p>Some os pedidos abertos e veja quantos gramas de cada cor faltam, quantos rolos comprar e quantas horas de máquina você precisa.</p></div>
+    <div class="feat"><span class="tag">Relatórios</span><h3>Lucro por produto e por período</h3><p>Descubra quais peças dão dinheiro e quais só ocupam a impressora. Exporte em CSV para o contador.</p></div>
+    <div class="feat"><span class="tag">Equipe</span><h3>Vários usuários, cada um no seu papel</h3><p>Vendas cadastra pedido, a fábrica registra produção. Tudo fica registrado com nome e data.</p></div>
+  </div>
+</section>
+
+<section id="celular">
+  <div class="devices">
+    <div class="sec-head" style="margin:0">
+      <span class="eyebrow">Web e celular</span>
+      <h2>Abra no computador do escritório e no celular ao lado da impressora.</h2>
+      <p>A Filamenta funciona no navegador e pode ser instalada na tela inicial do celular como um aplicativo. Registre a produção quando a peça sai da mesa e consulte o estoque de filamento na loja de materiais.</p>
+    </div>
+    <div class="phone" aria-label="Exemplo da tela no celular">
+      <span class="eyebrow">Hoje · fila da fábrica</span>
+      <div class="ph-card"><b>Chaveiro Dragão × 40</b><span style="color:var(--ink-2)">Entrega amanhã · 26/40</span><div class="ph-meter"><span style="width:65%;background:var(--cobalt)"></span></div></div>
+      <div class="ph-card"><b>Vaso Geométrico M × 6</b><span style="color:var(--ink-2)">Entrega sex · 2/6</span><div class="ph-meter"><span style="width:33%;background:var(--amber)"></span></div></div>
+      <div class="ph-card"><b>Amarelo acabando</b><span class="warn">310 g · faltam 1.540 g</span></div>
+      <a class="btn btn-primary btn-sm" href="#comecar">Registrar produção</a>
+    </div>
+  </div>
+</section>
+
+<section id="planos">
+  <div class="sec-head">
+    <span class="eyebrow">Planos</span>
+    <h2>Comece grátis. Pague quando a farm crescer.</h2>
+    <p>Todos os planos pagos têm 14 dias de teste. Cancele quando quiser, sem multa.</p>
+  </div>
+  <div class="toggle" role="group" aria-label="Período de cobrança">
+    <button type="button" id="bMonthly" aria-pressed="true">Mensal</button>
+    <button type="button" id="bYearly" aria-pressed="false">Anual · 2 meses grátis</button>
+  </div>
+  <div class="plans">
+    <div class="plan"><h3>Calculadora</h3><div class="p num">Grátis</div><p class="who">Para quem está começando</p>
+      <ul><li>Até 10 produtos</li><li>Precificação completa</li><li>Até 5 filamentos</li><li>1 usuário</li></ul>
+      <a class="btn btn-ghost btn-sm" href="#comecar">Criar conta</a></div>
+    <div class="plan"><h3>Maker</h3><div class="p num" data-m="29" data-y="24">R$ 29<small>/mês</small></div><p class="who">Para quem vende online com 1 a 3 impressoras</p>
+      <ul><li>Produtos ilimitados</li><li>Estoque de filamento por cor</li><li>Pedidos e clientes</li><li>Importação do arquivo fatiado</li><li>1 usuário</li></ul>
+      <a class="btn btn-ghost btn-sm" href="#comecar">Testar 14 dias</a></div>
+    <div class="plan hl"><h3>Farm</h3><div class="p num" data-m="79" data-y="66">R$ 79<small>/mês</small></div><p class="who">Para farms de 4 a 15 impressoras</p>
+      <ul><li>Tudo do Maker</li><li>Painel da fábrica e fila por prazo</li><li>Planejamento de compra de filamento</li><li>Relatórios de lucro</li><li>Até 5 usuários</li></ul>
+      <a class="btn btn-primary btn-sm" href="#comecar">Testar 14 dias</a></div>
+    <div class="plan"><h3>Indústria</h3><div class="p num" data-m="199" data-y="166">R$ 199<small>/mês</small></div><p class="who">Para operações com equipe e várias unidades</p>
+      <ul><li>Tudo do Farm</li><li>Impressoras e usuários ilimitados</li><li>Integração com marketplaces</li><li>API e exportação contábil</li><li>Suporte prioritário</li></ul>
+      <a class="btn btn-ghost btn-sm" href="#comecar">Falar com a gente</a></div>
+  </div>
+</section>
+
+<section id="faq">
+  <div class="sec-head"><span class="eyebrow">Dúvidas</span><h2>Perguntas frequentes</h2></div>
+  <details><summary>Preciso instalar alguma coisa?</summary><p>Não. A Filamenta roda no navegador. No celular, abra o site e toque em "Adicionar à tela inicial" para usar como aplicativo.</p></details>
+  <details><summary>Funciona com qualquer impressora e fatiador?</summary><p>Sim. Você informa gramas e tempo de impressão, que todo fatiador mostra. Para arquivos 3MF do Bambu Studio e do OrcaSlicer, a importação lê automaticamente o peso de cada cor e o tempo.</p></details>
+  <details><summary>Como o custo do filamento é calculado?</summary><p>Cada compra de rolo vira um lote com preço por grama. A produção consome primeiro o lote mais antigo, então o custo acompanha o que você realmente pagou, mesmo quando o preço do filamento muda.</p></details>
+  <details><summary>A margem considera a taxa do marketplace?</summary><p>Sim. Você escolhe o canal de venda e o imposto, e o preço sugerido é calculado para que o lucro desejado sobre o preço final fique no seu bolso depois das taxas.</p></details>
+  <details><summary>Como funciona o pagamento?</summary><p>Assinatura mensal ou anual por Pix, boleto ou cartão de crédito. No plano anual você paga 10 meses e usa 12.</p></details>
+  <details><summary>Meus dados ficam seguros?</summary><p>Cada empresa tem seus dados separados, com backup diário e conexão criptografada. Você pode exportar tudo em CSV ou pedir a exclusão da conta a qualquer momento, conforme a LGPD.</p></details>
+</section>
+
+<div class="final" id="comecar">
+  <span class="eyebrow" style="color:var(--paper);opacity:.7">14 dias grátis · sem cartão</span>
+  <h2>Pare de adivinhar o preço das suas peças.</h2>
+  <p>Crie sua conta, cadastre o primeiro filamento e descubra em dez minutos quanto cada produto realmente custa.</p>
+  <form class="signup" id="signup" novalidate>
+    <label for="email" style="position:absolute;left:-9999px">Seu e-mail</label>
+    <input id="email" type="email" placeholder="seu@email.com.br" autocomplete="email">
+    <button class="btn btn-primary" type="submit">Criar conta grátis</button>
+  </form>
+  <p class="form-msg" id="formMsg" role="status"></p>
+</div>
+
+<footer>
+  <span>© 2026 Filamenta · Gestão e precificação para impressão 3D</span>
+  <span>Termos de uso · Privacidade (LGPD) · Contato</span>
+</footer>
+</div>
+
+<script>
+(function(){
+  // pilha de camadas do hero: perfil de um vaso, troca de cor no topo
+  const stack=document.getElementById('stack');
+  const N=22;
+  for(let i=0;i<N;i++){
+    const t=i/(N-1);
+    const w=48+Math.sin(t*Math.PI*1.15+0.2)*34+(i%2?2:0);
+    const el=document.createElement('i');
+    el.style.width=Math.round(w)+'%';
+    el.style.background=i>=15?'#E9A800':'#1E2A78';
+    el.style.animationDelay=(i*0.035)+'s';
+    stack.appendChild(el);
+  }
+
+  const $=id=>document.getElementById(id);
+  const n=id=>{const v=parseFloat($(id).value);return isFinite(v)?v:0};
+  const brl=v=>v.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+  const g=v=>v>=1000?(v/1000).toLocaleString('pt-BR',{maximumFractionDigits:2})+' kg':Math.round(v).toLocaleString('pt-BR')+' g';
+  const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+  function calc(){
+    const colors=[1,2,3].map(i=>({name:$('c'+i+'name').value||('Cor '+i),hex:$('c'+i+'hex').value,g:n('c'+i+'g'),kg:n('c'+i+'kg')})).filter(c=>c.g>0);
+    const h=n('hours'),fail=Math.min(n('fail'),80)/100;
+    const fil=colors.reduce((s,c)=>s+c.g*c.kg/1000,0);
+    const energy=n('watts')/1000*h*n('kwh');
+    const wear=n('life')>0?n('machine')/n('life')*h:0;
+    const labor=n('labor')/60*n('hourly');
+    const lossy=(fil+energy+wear)*fail;          // peças perdidas consomem filamento, energia e máquina
+    const pack=n('pack');
+    const cost=fil+energy+wear+labor+lossy+pack;
+    const fees=n('channel')/100,tax=n('tax')/100,margin=n('margin')/100;
+    const denom=1-fees-tax-margin;
+    let price=0,note='';
+    if(denom<=0.05){note='Taxas + imposto + lucro passam de 95% do preço. Reduza o lucro desejado.';}
+    else price=cost/denom;
+    const profit=price*margin;
+
+    $('outPrice').textContent=price?brl(price):'—';
+    $('outSub').innerHTML=price
+      ?`Custo real ${brl(cost)} · lucro no bolso ${brl(profit)} por unidade (${Math.round(margin*100)}% do preço)`
+      :`<span class="warn">${note}</span>`;
+
+    const parts=[
+      ...colors.map(c=>({label:`${esc(c.name)} · ${g(c.g)}`,v:c.g*c.kg/1000,color:c.hex})),
+      {label:'Energia',v:energy,color:'var(--teal)'},
+      {label:'Desgaste da impressora',v:wear,color:'var(--ink-2)'},
+      {label:'Perdas por falha',v:lossy,color:'var(--red)'},
+      {label:'Acabamento',v:labor,color:'var(--warn)'},
+      {label:'Embalagem',v:pack,color:'var(--line)'},
+      {label:'Taxa do canal + imposto',v:price*(fees+tax),color:'var(--cobalt-soft)'},
+      {label:'Seu lucro',v:profit,color:'var(--cobalt)'}
+    ].filter(p=>p.v>0.004);
+    const total=parts.reduce((s,p)=>s+p.v,0)||1;
+    $('outBar').innerHTML=parts.map(p=>`<span style="width:${(p.v/total*100).toFixed(2)}%;background:${p.color}"></span>`).join('');
+    $('outLegend').innerHTML=parts.map(p=>`<div class="row"><span class="k"><span class="dot" style="background:${p.color}"></span>${p.label}</span><span>${brl(p.v)}</span></div>`).join('');
+
+    // escala: filamento por cor para N unidades, considerando falhas
+    const qty=Math.max(1,Math.round(n('qty'))),printers=Math.max(1,Math.round(n('printers')));
+    const factor=qty*(1+fail);
+    $('outScale').innerHTML=colors.length?colors.map(c=>{
+      const tot=c.g*factor;
+      return `<tr><td><span class="k" style="display:inline-flex;align-items:center;gap:8px"><span class="dot" style="background:${c.hex}"></span>${esc(c.name)}</span></td><td class="r">${g(tot)}</td><td class="r">${Math.ceil(tot/1000)}</td></tr>`;
+    }).join(''):'<tr><td colspan="3">Informe as gramas de pelo menos uma cor.</td></tr>';
+    const hoursTot=h*factor;
+    const days=hoursTot/printers/20;
+    $('outPlan').innerHTML=`${qty} unidades = <b>${Math.round(hoursTot).toLocaleString('pt-BR')} h de máquina</b>. Com ${printers} impressora${printers>1?'s':''} rodando 20 h/dia, ficam prontas em cerca de <b>${Math.max(1,Math.ceil(days))} dia${Math.ceil(days)>1?'s':''}</b>. Faturamento previsto ${brl(price*qty)}, lucro ${brl(profit*qty)}.`;
+  }
+  $('calcForm').addEventListener('input',calc);
+  $('calcForm').addEventListener('submit',e=>e.preventDefault());
+  calc();
+
+  // alternância mensal / anual
+  function setBilling(yearly){
+    $('bMonthly').setAttribute('aria-pressed',String(!yearly));
+    $('bYearly').setAttribute('aria-pressed',String(yearly));
+    document.querySelectorAll('.plan .p[data-m]').forEach(el=>{
+      const v=yearly?el.dataset.y:el.dataset.m;
+      el.innerHTML=`R$ ${v}<small>/mês${yearly?' no anual':''}</small>`;
+    });
+  }
+  $('bMonthly').onclick=()=>setBilling(false);
+  $('bYearly').onclick=()=>setBilling(true);
+
+  $('signup').addEventListener('submit',e=>{
+    e.preventDefault();
+    const v=$('email').value.trim();
+    $('formMsg').textContent=/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)
+      ?'Esta é uma prévia do site. Na versão publicada, este botão leva ao cadastro com 14 dias grátis.'
+      :'Digite um e-mail válido, por exemplo voce@empresa.com.br.';
+  });
+})();
+</script>

@@ -281,10 +281,62 @@ window.App = (() => {
         }
     }
 
+    // ---------- Gerenciamento Centralizado de Cores Cadastradas ----------
+    let cacheCoresCadastradas = null;
+    async function obterCoresCadastradas(forcar = false) {
+        if (cacheCoresCadastradas && !forcar) return cacheCoresCadastradas;
+        try {
+            const res = await api('api/filamentos.php?cores=1');
+            const mapa = new Map();
+            (Array.isArray(res) ? res : []).forEach(c => {
+                const nome = (c.cor || '').trim();
+                if (nome) {
+                    const k = nome.toLowerCase();
+                    if (!mapa.has(k)) {
+                        mapa.set(k, { cor: nome, cor_hex: c.cor_hex || '#6366f1' });
+                    }
+                }
+            });
+            // Cores padrão base como fallback
+            ['Branco', 'Preto', 'Cinza', 'Vermelho', 'Azul', 'Amarelo', 'Verde', 'Laranja', 'Roxo', 'Rosa', 'Marrom', 'Dourado', 'Prata', 'Transparente', 'Bege'].forEach(padrao => {
+                const k = padrao.toLowerCase();
+                if (!mapa.has(k)) {
+                    mapa.set(k, { cor: padrao, cor_hex: '#6366f1' });
+                }
+            });
+            cacheCoresCadastradas = Array.from(mapa.values()).sort((a, b) => a.cor.localeCompare(b.cor, 'pt-BR'));
+        } catch (_) {
+            if (!cacheCoresCadastradas) {
+                cacheCoresCadastradas = ['Branco', 'Preto', 'Cinza', 'Vermelho', 'Azul', 'Amarelo', 'Verde', 'Laranja'].map(c => ({ cor: c, cor_hex: '#6366f1' }));
+            }
+        }
+        return cacheCoresCadastradas;
+    }
+
+    function gerarOpcoesCoresHtml(coresLista, corSelecionada = '', incluirOpcaoCustom = true) {
+        const selNorm = (corSelecionada || '').trim().toLowerCase();
+        let encontrou = false;
+        let html = '<option value="">Selecione a cor...</option>';
+        (coresLista || []).forEach(item => {
+            const nome = typeof item === 'string' ? item : item.cor;
+            const match = nome.trim().toLowerCase() === selNorm;
+            if (match) encontrou = true;
+            html += `<option value="${esc(nome)}" ${match ? 'selected' : ''}>${esc(nome)}</option>`;
+        });
+        if (corSelecionada && !encontrou && corSelecionada !== '_outra_' && corSelecionada !== '_custom_') {
+            html += `<option value="${esc(corSelecionada)}" selected>${esc(corSelecionada)}</option>`;
+        }
+        if (incluirOpcaoCustom) {
+            html += '<option value="_outra_">+ Digitar outra cor...</option>';
+        }
+        return html;
+    }
+
     return {
         fmtInt, fmtMoeda, moeda: v => fmtMoeda.format(Number(v) || 0), num, esc, isoEmDias, hoje: () => isoEmDias(0), data, dataHora, diasAte, etiquetaPrazo,
         api, icone, botaoIcone, modal, confirmar, toast, estadoVazio, normalizar,
         formatarTelefone, mascaraTelefone,
+        obterCoresCadastradas, gerarOpcoesCoresHtml,
     };
 })();
 

@@ -1329,22 +1329,38 @@ async function confirmarProducaoPeca() {
 }
 
 // Modal: adicionar cor à peça (com gramas de filamento por cor)
-function abrirModalNovaCor(pecaId, prodId) {
+async function abrirModalNovaCor(pecaId, prodId) {
     pecaNovaCorAtualId = pecaId;
     const p = (dadosPecasCarregados.produtos || []).find(x => x.id === prodId);
     const peca = p ? p.pecas.find(x => x.peca_id === pecaId) : null;
     $('modalNovaCorSub').textContent = peca ? `Peça: ${peca.nome}` : '';
-    $('modalNovaCorNome').value = '';
+
+    const cores = await App.obterCoresCadastradas();
+    const sel = $('modalNovaCorNome');
+    if (sel) {
+        sel.innerHTML = App.gerarOpcoesCoresHtml(cores, '', true);
+        sel.value = (cores && cores.length) ? cores[0].cor : '';
+    }
+    const inpCustom = $('modalNovaCorCustom');
+    if (inpCustom) {
+        inpCustom.value = '';
+        inpCustom.style.display = 'none';
+    }
     if ($('modalNovaCorPeso')) $('modalNovaCorPeso').value = '';
     App.modal.abrir('modalNovaCor', '#modalNovaCorNome');
 }
 
 async function confirmarNovaCor() {
     if (!pecaNovaCorAtualId) return;
-    const cor = $('modalNovaCorNome').value.trim();
+    const sel = $('modalNovaCorNome');
+    let cor = sel ? sel.value.trim() : '';
+    if (cor === '_outra_') {
+        cor = ($('modalNovaCorCustom')?.value || '').trim();
+    }
     if (!cor) {
-        App.toast('Informe o nome da cor.', 'erro');
-        $('modalNovaCorNome').focus();
+        App.toast('Informe ou selecione a cor.', 'erro');
+        if (sel && sel.value === '_outra_') $('modalNovaCorCustom')?.focus();
+        else sel?.focus();
         return;
     }
     const peso = parseFloat($('modalNovaCorPeso')?.value) || 0;
@@ -1431,7 +1447,18 @@ $('btnPecasLimpar').addEventListener('click', () => {
 $('btnConfirmarProducaoPeca').addEventListener('click', confirmarProducaoPeca);
 $('modalPecaQtd').addEventListener('keydown', e => { if (e.key === 'Enter') confirmarProducaoPeca(); });
 $('btnConfirmarNovaCor').addEventListener('click', confirmarNovaCor);
-$('modalNovaCorNome').addEventListener('keydown', e => { if (e.key === 'Enter') confirmarNovaCor(); });
+$('modalNovaCorNome')?.addEventListener('change', e => {
+    const inp = $('modalNovaCorCustom');
+    if (inp) {
+        if (e.target.value === '_outra_') {
+            inp.style.display = 'block';
+            inp.focus();
+        } else {
+            inp.style.display = 'none';
+        }
+    }
+});
+$('modalNovaCorCustom')?.addEventListener('keydown', e => { if (e.key === 'Enter') confirmarNovaCor(); });
 if ($('modalNovaCorPeso')) {
     $('modalNovaCorPeso').addEventListener('keydown', e => { if (e.key === 'Enter') confirmarNovaCor(); });
 }

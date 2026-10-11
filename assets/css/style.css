@@ -1317,11 +1317,34 @@ td.contato a:hover { color: var(--primary); }
 }
 .lista-cores-editor > button.secundario { align-self: flex-start; margin-top: 2px; }
 
-/* Linhas de Cores para Produto Sem Peças */
+/* Linhas de Cores para Produto Sem Peças (Multicor) */
 .linha-cor-produto {
-    display: grid; grid-template-columns: 1.2fr 100px 105px 34px; gap: 8px; align-items: center;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface-1);
+    margin-bottom: 8px;
+    transition: background 0.15s ease, border-color 0.15s ease;
 }
-.linha-cor-produto input { margin: 0 !important; }
+.linha-cor-produto:hover {
+    background: var(--surface-2);
+    border-color: var(--border-strong);
+}
+.linha-cor-produto select,
+.linha-cor-produto input {
+    margin: 0 !important;
+}
+.linha-cor-produto .col-cor {
+    flex: 1;
+    min-width: 0;
+}
+.linha-cor-produto .col-peso {
+    width: 125px;
+    flex-shrink: 0;
+}
 
 /* Item de Peça resumida no modalProduto */
 .bloco-peca-modal-prod {
@@ -2345,12 +2368,14 @@ td.contato a:hover { color: var(--primary); }
 .lista-cores-peca {
     display: flex; flex-direction: column; gap: 6px; padding: 8px;
 }
-.linha-cor-produto {
+.lista-cores-peca .linha-cor-peca,
+.linha-peca-legado {
     display: grid; grid-template-columns: 44px minmax(0,1fr) 132px 86px; gap: 14px; align-items: center;
     padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm);
     background: var(--surface-2); transition: background .1s;
 }
-.linha-cor-produto:hover { background: var(--surface-3); }
+.lista-cores-peca .linha-cor-peca:hover,
+.linha-peca-legado:hover { background: var(--surface-3); }
 .foto-miniatura {
     width: 40px; height: 40px; border-radius: 6px; overflow: hidden; cursor: pointer;
     background: var(--surface-3); display: flex; align-items: center; justify-content: center; flex: none;
@@ -2406,7 +2431,8 @@ td.contato a:hover { color: var(--primary); }
 .linha-montar input[type="checkbox"] { width: 16px; height: 16px; margin: 2px 0 0; flex: none; accent-color: var(--violet); }
 
 @media (max-width: 768px) {
-    .linha-cor-produto {
+    .lista-cores-peca .linha-cor-peca,
+    .linha-peca-legado {
         grid-template-columns: 44px 1fr auto; grid-template-rows: auto auto; gap: 8px 10px;
     }
     .info-cor { grid-column: 2 / 3; }

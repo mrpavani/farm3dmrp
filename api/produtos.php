@@ -150,7 +150,7 @@ if ($method === 'GET') {
             $produto['tem_multicor'] = count($coresProd) > 0;
             if (count($coresProd) > 0) {
                 $produto['peso_gramas'] = round($somaPeso, 2);
-                $produto['tempo_producao_segundos'] = $somaTempo;
+                // Em produto multicor a peça é única: o tempo é único do produto e não a soma das cores
             }
         }
 
@@ -313,10 +313,10 @@ if ($method === 'POST') {
             ];
         }
 
-        // Se tem cores cadastradas (multicor), o peso e o tempo DEVEM ser a soma das cores
+        // Se tem cores cadastradas (multicor), o peso é a soma das cores; o tempo é único da peça (definido no produto)
         if (!empty($coresValidas)) {
             $d['peso_gramas'] = round(array_sum(array_column($coresValidas, 'peso_gramas')), 2);
-            $d['tempo_producao_segundos'] = (int)array_sum(array_column($coresValidas, 'tempo_producao_segundos'));
+            // $d['tempo_producao_segundos'] já foi capturado diretamente do campo de tempo do produto
         }
     }
 
@@ -565,7 +565,7 @@ if ($method === 'PUT') {
 
         if (!empty($coresValidas)) {
             $d['peso_gramas'] = round(array_sum(array_column($coresValidas, 'peso_gramas')), 2);
-            $d['tempo_producao_segundos'] = (int)array_sum(array_column($coresValidas, 'tempo_producao_segundos'));
+            // $d['tempo_producao_segundos'] já foi capturado diretamente do campo de tempo do produto
         }
     }
 

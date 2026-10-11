@@ -14,6 +14,12 @@ $method = $_SERVER['REQUEST_METHOD'];
 if ($method === 'GET') {
     $id = (int) ($_GET['id'] ?? 0);
 
+    // Lista consolidada de cores cadastradas (sempre por cor, independente da marca)
+    if (!empty($_GET['cores'])) {
+        $resumoCores = obterResumoEstoqueCores($pdo);
+        jsonResponse(array_values($resumoCores));
+    }
+
     // Resumo consolidado para dashboards e relatórios
     if (!empty($_GET['resumo'])) {
         $resumoCores = obterResumoEstoqueCores($pdo);

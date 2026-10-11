@@ -157,14 +157,14 @@ require __DIR__ . '/includes/header.php';
                             <input type="checkbox" id="checkProdMulticor">
                             <span class="prod-toggle-texto">
                                 <strong>🎨 Produto Multicor (troca de cor na impressão / AMS)</strong>
-                                <small>Habilite para cadastrar o consumo e tempo por cada cor individualmente.</small>
+                                <small>Habilite para cadastrar o consumo de filamento por cada cor.</small>
                             </span>
                         </label>
                         <span id="resumoCoresProdBadge" class="prod-badge-resumo"></span>
                     </div>
                     <div id="conteudoMulticorProd" class="prod-multicor-corpo" style="display:none;">
                         <p class="prod-ajuda-texto">
-                            💡 Cadastre cada cor utilizada. O filamento total e o tempo do produto serão calculados automaticamente:
+                            💡 Cadastre cada cor utilizada e seu peso. O filamento total será calculado automaticamente (o tempo de impressão da peça é único e definido no campo acima):
                         </p>
                         <div id="listaCoresProduto" class="prod-lista-cores"></div>
                         <button type="button" id="btnAdicionarCorProd" class="secundario pequeno">+ Adicionar Cor</button>

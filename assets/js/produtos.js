@@ -385,27 +385,26 @@ function round2(num) {
 }
 
 let sugestoesCoresCache = [];
+let coresCadastradasCache = [];
 async function carregarSugestoesCores() {
     try {
-        const lista = await App.api('api/filamentos.php');
-        const coresSet = new Set();
-        mapaCustosPorCor = {};
-        (lista || []).forEach(f => {
-            if (f.cor && f.cor.trim()) {
-                const corTrim = f.cor.trim();
-                coresSet.add(corTrim);
-                const precoG = Number(f.custo_peps_g) || Number(f.custo_medio_g) || ((Number(f.preco_kg) || 90) / 1000);
-                if (precoG > 0) {
-                    mapaCustosPorCor[corTrim.toLowerCase()] = precoG;
-                }
-            }
-        });
-        ['Branco', 'Preto', 'Cinza', 'Vermelho', 'Azul', 'Amarelo', 'Verde', 'Laranja', 'Roxo', 'Rosa', 'Marrom', 'Dourado', 'Prata', 'Transparente', 'Bege'].forEach(c => coresSet.add(c));
-        sugestoesCoresCache = Array.from(coresSet).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+        coresCadastradasCache = await App.obterCoresCadastradas();
+        sugestoesCoresCache = (coresCadastradasCache || []).map(x => x.cor);
         const dl = $('listaCoresFilamentosSugestoes');
         if (dl) {
             dl.innerHTML = sugestoesCoresCache.map(c => `<option value="${esc(c)}">`).join('');
         }
+        const lista = await App.api('api/filamentos.php');
+        mapaCustosPorCor = {};
+        (lista || []).forEach(f => {
+            if (f.cor && f.cor.trim()) {
+                const corTrim = f.cor.trim().toLowerCase();
+                const precoG = Number(f.custo_peps_g) || Number(f.custo_medio_g) || ((Number(f.preco_kg) || 90) / 1000);
+                if (precoG > 0) {
+                    mapaCustosPorCor[corTrim] = precoG;
+                }
+            }
+        });
     } catch (_) {}
 }
 
@@ -541,27 +540,28 @@ function atualizarModoModalProduto() {
         if (conteudoMulti) conteudoMulti.style.display = ehMulticor ? 'block' : 'none';
 
         if (ehMulticor) {
-            if (inputTempo) { inputTempo.readOnly = true; inputTempo.classList.add('input-bloqueado-soma'); }
+            // PRODUTO MULTICOR:
+            // Filamento total somado automaticamente pelas cores cadastradas
             if (inputPeso) { inputPeso.readOnly = true; inputPeso.classList.add('input-bloqueado-soma'); }
-
-            if (tagTempo) { tagTempo.textContent = '🔒 Soma das cores'; tagTempo.style.display = 'inline-block'; }
             if (tagPeso) { tagPeso.textContent = '🔒 Soma das cores'; tagPeso.style.display = 'inline-block'; }
-            if (dicaTempo) { dicaTempo.textContent = 'Tempo calculado automaticamente pela soma das cores.'; dicaTempo.style.display = 'block'; }
             if (dicaPeso) { dicaPeso.textContent = 'Filamento calculado automaticamente pela soma das cores.'; dicaPeso.style.display = 'block'; }
 
-            // Recalcula soma das cores para 1 produto
+            // Tempo de impressão: A PEÇA É ÚNICA, O TEMPO É ÚNICO!
+            // Não bloqueia o tempo: o usuário digita o tempo único de impressão da peça
+            if (inputTempo) { inputTempo.readOnly = false; inputTempo.classList.remove('input-bloqueado-soma'); }
+            if (tagTempo) tagTempo.style.display = 'none';
+            if (dicaTempo) dicaTempo.style.display = 'none';
+
+            // Recalcula soma do peso das cores para 1 produto
             let somaPeso = 0;
-            let somaTempo = 0;
             modalProdCores.forEach(c => {
                 somaPeso += (parseFloat(c.peso_gramas) || 0);
-                somaTempo += (parseInt(c.tempo_producao_segundos) || 0);
             });
 
             if (inputPeso) inputPeso.value = somaPeso > 0 ? (Math.round(somaPeso * 10) / 10).toFixed(1) : (modalProdCores.length ? '0.0' : inputPeso.value);
-            if (inputTempo) inputTempo.value = somaTempo > 0 ? formatarSegundosHHMMSS(somaTempo) : (modalProdCores.length ? '00:00:00' : inputTempo.value);
 
             if ($('resumoCoresProdBadge')) {
-                $('resumoCoresProdBadge').textContent = `${modalProdCores.length} cor(es) · ${Math.round(somaPeso * 10) / 10}g · ${formatarSegundosHHMMSS(somaTempo)}`;
+                $('resumoCoresProdBadge').textContent = `${modalProdCores.length} cor(es) · ${Math.round(somaPeso * 10) / 10}g`;
             }
         } else {
             // PRODUTO SEM PEÇAS E MONOCOLOR: CAMPOS ABERTOS PARA DIGITAÇÃO LIVRE!
@@ -590,38 +590,84 @@ function renderizarCoresModalProduto() {
         return;
     }
 
-    container.innerHTML = modalProdCores.map((c, idx) => `
+    const cabecalho = `
+        <div class="cabecalho-cores-prod-linha" style="display:flex; gap:10px; font-size:11.5px; font-weight:600; color:var(--text-3); margin-bottom:6px; padding:0 4px;">
+            <span style="flex:1;">Cor do Filamento</span>
+            <span style="width:125px; text-align:center;">Consumo (g)</span>
+            <span style="width:34px;"></span>
+        </div>
+    `;
+
+    const linhas = modalProdCores.map((c, idx) => {
+        const hex = obterHexCor(c.cor);
+        const isCustom = c.is_custom || (c.cor && !coresCadastradasCache.some(x => x.cor.toLowerCase() === c.cor.trim().toLowerCase()));
+        return `
         <div class="linha-cor-produto">
-            <input type="text" placeholder="Nome da cor (ex: Preto, Branco, Azul...)"
-                   value="${esc(c.cor || '')}"
-                   oninput="atualizarCorModalProduto(${idx}, 'cor', this.value)"
-                   style="font-size:12.5px;">
-            <input type="number" min="0" step="0.1" placeholder="Filamento (g)"
-                   value="${c.peso_gramas !== '' && c.peso_gramas !== null && c.peso_gramas !== undefined ? c.peso_gramas : ''}"
-                   oninput="atualizarCorModalProduto(${idx}, 'peso', this.value)"
-                   title="Filamento gasto desta cor (em gramas)"
-                   style="font-size:12.5px; text-align:center;">
-            <input type="text" placeholder="00:00:00"
-                   value="${esc(c.tempo_formatado || '')}"
-                   onchange="atualizarCorModalProduto(${idx}, 'tempo', this.value)"
-                   title="Tempo de impressão desta cor (HH:mm:ss)"
-                   style="font-size:12.5px; text-align:center;">
+            <div class="col-cor">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span class="ponto-cor-indicador" style="background:${hex}; width:13px; height:13px; border-radius:50%; border:1px solid rgba(0,0,0,0.15); flex-shrink:0;"></span>
+                    <select class="select-cor-multicor" onchange="aoMudarSelectCorMulticor(${idx}, this.value)" style="flex:1; font-size:13px; padding:6px 10px;">
+                        ${App.gerarOpcoesCoresHtml(coresCadastradasCache, c.cor, true)}
+                    </select>
+                </div>
+                <input type="text" class="input-cor-custom" placeholder="Digitar nome da nova cor..."
+                       value="${isCustom ? esc(c.cor || '') : ''}"
+                       style="${isCustom ? 'display:block; margin-top:5px; width:100%; font-size:12px; padding:5px 8px;' : 'display:none;'}"
+                       oninput="atualizarCorCustomMulticor(${idx}, this.value)">
+            </div>
+            <div class="col-peso">
+                <div class="input-com-unidade">
+                    <input type="number" min="0" step="0.1" placeholder="0.0"
+                           value="${c.peso_gramas !== '' && c.peso_gramas !== null && c.peso_gramas !== undefined ? c.peso_gramas : ''}"
+                           oninput="atualizarCorModalProduto(${idx}, 'peso', this.value)"
+                           title="Filamento gasto desta cor (em gramas)"
+                           style="font-size:13px; text-align:center; padding:6px 8px; font-weight:600;">
+                    <span class="unidade">g</span>
+                </div>
+            </div>
             <button type="button" class="btn-icone perigo" onclick="removerCorModalProduto(${idx})"
-                    title="Remover cor" ${modalProdCores.length <= 1 ? 'disabled' : ''}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                    title="Remover cor" ${modalProdCores.length <= 1 ? 'disabled' : ''} style="width:34px; height:34px; flex-shrink:0;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:15px; height:15px;"><path d="M18 6 6 18M6 6l12 12"/></svg>
             </button>
         </div>
-    `).join('');
+        `;
+    }).join('');
 
+    container.innerHTML = cabecalho + linhas;
+    atualizarModoModalProduto();
+}
+
+function aoMudarSelectCorMulticor(idx, valor) {
+    const c = modalProdCores[idx];
+    if (!c) return;
+    if (valor === '_outra_') {
+        c.is_custom = true;
+        renderizarCoresModalProduto();
+        setTimeout(() => {
+            const inputs = $('listaCoresProduto')?.querySelectorAll('.input-cor-custom');
+            if (inputs && inputs[idx]) { inputs[idx].focus(); inputs[idx].select(); }
+        }, 30);
+    } else {
+        c.is_custom = false;
+        c.cor = valor;
+        renderizarCoresModalProduto();
+    }
+}
+
+function atualizarCorCustomMulticor(idx, valor) {
+    const c = modalProdCores[idx];
+    if (!c) return;
+    c.cor = valor;
     atualizarModoModalProduto();
 }
 
 function adicionarCorModalProduto() {
-    modalProdCores.push(novaCorModalProd());
+    const primeiraCor = (coresCadastradasCache && coresCadastradasCache.length > 0) ? coresCadastradasCache[0].cor : '';
+    modalProdCores.push({ id: 0, cor: primeiraCor, peso_gramas: '', tempo_producao_segundos: 0, tempo_formatado: '' });
     renderizarCoresModalProduto();
     setTimeout(() => {
-        const inputs = $('listaCoresProduto')?.querySelectorAll('input[type="text"]');
-        if (inputs && inputs.length) inputs[inputs.length - 2].focus();
+        const selects = $('listaCoresProduto')?.querySelectorAll('.select-cor-multicor');
+        if (selects && selects.length) selects[selects.length - 1].focus();
     }, 30);
 }
 
@@ -638,10 +684,6 @@ function atualizarCorModalProduto(cidx, campo, valor) {
         c.cor = valor;
     } else if (campo === 'peso') {
         c.peso_gramas = valor === '' ? '' : Math.max(0, parseFloat(valor) || 0);
-    } else if (campo === 'tempo') {
-        const segs = parseTempoParaSegundos(valor);
-        c.tempo_producao_segundos = segs;
-        c.tempo_formatado = formatarSegundosHHMMSS(segs);
     }
     atualizarModoModalProduto();
 }
@@ -651,37 +693,51 @@ function adicionarCoresIniciaisPeca(pecaIdx) {
     if (!pec) return;
     if (!pec.cores) pec.cores = [];
     const pesoAtual = parseFloat(pec.peso_gramas) || 0;
+    const cor1 = (coresCadastradasCache && coresCadastradasCache[0]) ? coresCadastradasCache[0].cor : 'Branco';
+    const cor2 = (coresCadastradasCache && coresCadastradasCache[1]) ? coresCadastradasCache[1].cor : 'Preto';
     if (pesoAtual > 0) {
-        pec.cores.push(novaLinhaCorPeca('Branco', (pesoAtual * 0.7).toFixed(2)));
-        pec.cores.push(novaLinhaCorPeca('Preto', (pesoAtual * 0.3).toFixed(2)));
+        pec.cores.push(novaLinhaCorPeca(cor1, (pesoAtual * 0.7).toFixed(2)));
+        pec.cores.push(novaLinhaCorPeca(cor2, (pesoAtual * 0.3).toFixed(2)));
     } else {
-        pec.cores.push(novaLinhaCorPeca('Branco', ''));
-        pec.cores.push(novaLinhaCorPeca('Preto', ''));
+        pec.cores.push(novaLinhaCorPeca(cor1, ''));
+        pec.cores.push(novaLinhaCorPeca(cor2, ''));
     }
     renderizarPecasModalProduto();
-    setTimeout(() => {
-        const bloco = $('listaPecasModalProd')?.querySelectorAll('.bloco-peca-modal-prod')[pecaIdx];
-        const inputCor = bloco?.querySelector('.grade-cores-peca input[type="text"]');
-        if (inputCor) {
-            inputCor.focus();
-            inputCor.select();
-        }
-    }, 40);
 }
 
 function adicionarCorPecaModal(pecaIdx, corNome = '', peso = '') {
     const pec = modalProdPecas[pecaIdx];
     if (!pec) return;
     if (!pec.cores) pec.cores = [];
-    pec.cores.push(novaLinhaCorPeca(corNome, peso));
+    const corDef = corNome || ((coresCadastradasCache && coresCadastradasCache.length) ? coresCadastradasCache[0].cor : '');
+    pec.cores.push(novaLinhaCorPeca(corDef, peso));
     renderizarPecasModalProduto();
     setTimeout(() => {
         const bloco = $('listaPecasModalProd')?.querySelectorAll('.bloco-peca-modal-prod')[pecaIdx];
-        const inputs = bloco?.querySelectorAll('.grade-cores-peca .input-cor-nome');
-        if (inputs && inputs.length) {
-            inputs[inputs.length - 1].focus();
+        const selects = bloco?.querySelectorAll('.grade-cores-peca .select-cor-peca');
+        if (selects && selects.length) {
+            selects[selects.length - 1].focus();
         }
     }, 40);
+}
+
+function aoMudarSelectCorPeca(idx, cidx, valor) {
+    const pec = modalProdPecas[idx];
+    if (!pec || !pec.cores || !pec.cores[cidx]) return;
+    const c = pec.cores[cidx];
+    if (valor === '_outra_') {
+        c.is_custom = true;
+        renderizarPecasModalProduto();
+        setTimeout(() => {
+            const bloco = $('listaPecasModalProd')?.querySelectorAll('.bloco-peca-modal-prod')[idx];
+            const inp = bloco?.querySelectorAll('.input-cor-custom')[cidx];
+            if (inp) { inp.focus(); inp.select(); }
+        }, 30);
+    } else {
+        c.is_custom = false;
+        c.cor = valor;
+        renderizarPecasModalProduto();
+    }
 }
 
 function removerCorPecaModal(pecaIdx, corIdx) {
@@ -761,14 +817,20 @@ function renderizarPecasModalProduto() {
             if (temCores) {
                 const linhasCores = pec.cores.map((c, cidx) => {
                     const hex = obterHexCor(c.cor);
+                    const isCustom = c.is_custom || (c.cor && !coresCadastradasCache.some(x => x.cor.toLowerCase() === c.cor.trim().toLowerCase()));
                     return `
                     <div class="item-cor-peca" style="display:flex; align-items:center; gap:6px; margin-bottom:6px;">
                         <span class="ponto-cor-indicador" style="background:${hex}; width:12px; height:12px; border-radius:50%; border:1px solid rgba(0,0,0,0.15); flex-shrink:0;"></span>
-                        <input type="text" list="listaCoresFilamentosSugestoes" class="input-cor-nome" placeholder="Cor (ex: Branco, Preto...)"
-                               value="${esc(c.cor || '')}"
-                               oninput="atualizarCorPecaModal(${idx}, ${cidx}, 'cor', this.value)"
-                               style="font-size:12px; flex:2; padding:4px 8px;">
-                        <div style="display:flex; align-items:center; gap:3px; flex:1;">
+                        <div style="flex:2; min-width:0;">
+                            <select class="select-cor-peca" onchange="aoMudarSelectCorPeca(${idx}, ${cidx}, this.value)" style="width:100%; font-size:12px; padding:4px 6px;">
+                                ${App.gerarOpcoesCoresHtml(coresCadastradasCache, c.cor, true)}
+                            </select>
+                            <input type="text" class="input-cor-custom" placeholder="Digitar outra cor..."
+                                   value="${isCustom ? esc(c.cor || '') : ''}"
+                                   style="${isCustom ? 'display:block; margin-top:3px; font-size:11.5px; padding:3px 6px; width:100%;' : 'display:none;'}"
+                                   oninput="atualizarCorPecaModal(${idx}, ${cidx}, 'cor', this.value)">
+                        </div>
+                        <div style="display:flex; align-items:center; gap:3px; width:95px; flex-shrink:0;">
                             <input type="number" min="0" step="0.01" class="input-cor-gramas" placeholder="0.00"
                                    value="${c.peso_gramas !== '' && c.peso_gramas !== null && c.peso_gramas !== undefined ? c.peso_gramas : ''}"
                                    oninput="atualizarCorPecaModal(${idx}, ${cidx}, 'peso', this.value)"
@@ -804,45 +866,38 @@ function renderizarPecasModalProduto() {
 
             return `
             <div class="bloco-peca-modal-prod">
-                <div class="linha-peca-modal-prod" style="display:flex; align-items:center; gap:8px;">
-                    <input type="text" placeholder="Ex: Golfinho, Base, Pino..."
+                <div class="linha-peca-modal-prod">
+                    <input type="text" placeholder="Nome da peça (ex: Base, Tampa...)"
                            value="${esc(pec.nome || '')}"
                            oninput="atualizarPecaModalProduto(${idx}, 'nome', this.value)"
-                           style="font-size:13px; font-weight:600; flex:2;">
-                    <div style="width:75px;">
-                        <input type="number" min="1" placeholder="1"
-                               value="${pec.quantidade || 1}"
-                               oninput="atualizarPecaModalProduto(${idx}, 'quantidade', this.value)"
-                               title="Quantidade desta peça necessária para 1 produto"
-                               style="font-size:13px; text-align:center; font-weight:700;">
-                    </div>
-                    <div style="width:115px;">
-                        <input type="text" placeholder="00:00:00"
-                               value="${esc(pec.tempo_formatado || '')}"
-                               oninput="atualizarPecaModalProduto(${idx}, 'tempo', this.value)"
-                               title="Tempo único de impressão desta peça (o tempo é um só)"
-                               style="font-size:12.5px; text-align:center;">
-                    </div>
-                    <div style="width:105px;" class="input-com-unidade">
-                        <input type="number" min="0" step="0.01" placeholder="0.00"
-                               value="${pec.peso_gramas !== '' && pec.peso_gramas !== null && pec.peso_gramas !== undefined ? pec.peso_gramas : ''}"
-                               ${temCores ? 'readonly title="Filamento calculado automaticamente pela soma das cores abaixo"' : 'title="Filamento gasto por unidade desta peça (em gramas)"'}
-                               oninput="atualizarPecaModalProduto(${idx}, 'peso', this.value)"
-                               class="col-peso-peca-input ${temCores ? 'input-bloqueado-soma' : ''}"
-                               style="font-size:12.5px; text-align:center; padding-right:20px !important;">
-                        <span class="unidade" style="right:6px; font-size:11px;">g</span>
-                    </div>
-                    <div class="peca-subtotal-info" style="width:130px; text-align:right;">
-                        <strong>${subtotalPeso}g</strong>
-                        <small>⏱️ ${subtotalTempo}</small>
+                           style="font-size:12.5px;">
+                    <input type="number" min="1" step="1" placeholder="1"
+                           value="${pec.quantidade || 1}"
+                           oninput="atualizarPecaModalProduto(${idx}, 'quantidade', this.value)"
+                           title="Quantidade desta peça gasta para montar 1 produto"
+                           style="font-size:12.5px; text-align:center;">
+                    <input type="text" placeholder="00:00:00"
+                           value="${esc(pec.tempo_formatado || '')}"
+                           onchange="atualizarPecaModalProduto(${idx}, 'tempo', this.value)"
+                           title="Tempo de impressão (HH:mm:ss) para 1 unidade desta peça"
+                           style="font-size:12.5px; text-align:center;">
+                    <input type="number" min="0" step="0.1" placeholder="0.0"
+                           value="${pec.peso_gramas !== '' && pec.peso_gramas !== null && pec.peso_gramas !== undefined ? pec.peso_gramas : ''}"
+                           oninput="atualizarPecaModalProduto(${idx}, 'peso', this.value)"
+                           class="col-peso-peca-input ${temCores ? 'input-bloqueado-soma' : ''}"
+                           ${temCores ? 'readonly title="Filamento calculado automaticamente pela soma das cores abaixo"' : 'title="Filamento gasto por unidade desta peça (em gramas)"'}
+                           style="font-size:12.5px; text-align:center;">
+                    <div class="peca-subtotal-info" style="font-size:11.5px; color:var(--text-3); text-align:right; white-space:nowrap;">
+                        <strong>${subtotalPeso}g</strong> · ${subtotalTempo}
                     </div>
                     <button type="button" class="btn-icone perigo" onclick="removerPecaModalProduto(${idx})"
-                            title="Remover peça">
+                            title="Remover peça" ${modalProdPecas.length <= 1 ? 'disabled' : ''}>
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
                     </button>
                 </div>
                 ${coresHtml}
-            </div>`;
+            </div>
+            `;
         }).join('')}
     `;
 
@@ -1408,20 +1463,26 @@ function renderizarEditorBOM() {
         const coresHtml = (linha.cores || []).map((cor, cidx) => {
             const hex = obterHexCor(cor.cor);
             const badgeCor = hex ? `<span class="ponto-cor-indicador" style="background:${hex}; width:14px; height:14px; border-radius:50%; border:1px solid rgba(0,0,0,0.15); flex-shrink:0;"></span>` : '';
+            const isCustom = cor.is_custom || (cor.cor && !coresCadastradasCache.some(x => x.cor.toLowerCase() === cor.cor.trim().toLowerCase()));
             return `
             <div class="linha-cor-editor" style="display:flex; align-items:center; gap:8px;">
                 ${badgeCor}
-                <input type="text" list="listaCoresFilamentosSugestoes" placeholder="Nome da cor (ex.: Branco, Preto...)"
-                       value="${esc(cor.cor || '')}"
-                       oninput="atualizarCorBOM(${idx}, ${cidx}, 'cor', this.value)"
-                       style="flex:2;">
-                <div style="display:flex; align-items:center; gap:4px; flex:1;">
+                <div style="flex:2; min-width:0;">
+                    <select class="select-cor-bom" onchange="aoMudarSelectCorBOM(${idx}, ${cidx}, this.value)" style="width:100%; font-size:12.5px; padding:5px 8px;">
+                        ${App.gerarOpcoesCoresHtml(coresCadastradasCache, cor.cor, true)}
+                    </select>
+                    <input type="text" class="input-cor-custom" placeholder="Digitar outra cor..."
+                           value="${isCustom ? esc(cor.cor || '') : ''}"
+                           style="${isCustom ? 'display:block; margin-top:3px; font-size:12px; padding:3px 6px; width:100%;' : 'display:none;'}"
+                           oninput="atualizarCorBOM(${idx}, ${cidx}, 'cor', this.value)">
+                </div>
+                <div style="display:flex; align-items:center; gap:4px; width:110px; flex-shrink:0;">
                     <input type="number" min="0" step="0.01"
                            placeholder="${linha.peso_gramas ? (linha.peso_gramas + 'g') : 'g desta cor'}"
                            value="${cor.peso_gramas !== null && cor.peso_gramas !== undefined ? cor.peso_gramas : ''}"
                            oninput="atualizarCorBOM(${idx}, ${cidx}, 'peso', this.value)"
                            title="Filamento em gramas desta cor para esta peça (tempo de impressão é único na peça)."
-                           class="peso-cor-editor" style="width:100%;">
+                           class="peso-cor-editor" style="width:100%; font-size:12.5px; text-align:center;">
                     <span style="font-size:12px; color:var(--texto-secundario);">g</span>
                 </div>
                 <button type="button" class="btn-icone perigo" onclick="removerCorBOM(${idx}, ${cidx})"
@@ -1542,13 +1603,33 @@ function atualizarLinhaBOM(idx, campo, valor) {
 
 function adicionarCorBOM(idx) {
     if (!bomLinhasEditor[idx]) return;
-    bomLinhasEditor[idx].cores.push(novaLinhaCor());
+    const corDef = (coresCadastradasCache && coresCadastradasCache.length) ? coresCadastradasCache[0].cor : 'Branco';
+    bomLinhasEditor[idx].cores.push(novaLinhaCor(corDef));
     renderizarEditorBOM();
     setTimeout(() => {
         const blocos = $('listaEditorBOM').querySelectorAll('.bloco-peca-editor');
-        const inputs = blocos[idx]?.querySelectorAll('.linha-cor-editor input[type="text"]');
-        if (inputs && inputs.length) inputs[inputs.length - 1].focus();
+        const selects = blocos[idx]?.querySelectorAll('.select-cor-bom');
+        if (selects && selects.length) selects[selects.length - 1].focus();
     }, 40);
+}
+
+function aoMudarSelectCorBOM(idx, cidx, valor) {
+    const linha = bomLinhasEditor[idx];
+    if (!linha || !linha.cores || !linha.cores[cidx]) return;
+    const c = linha.cores[cidx];
+    if (valor === '_outra_') {
+        c.is_custom = true;
+        renderizarEditorBOM();
+        setTimeout(() => {
+            const bloco = $('listaEditorBOM')?.querySelectorAll('.bloco-peca-editor')[idx];
+            const inp = bloco?.querySelectorAll('.input-cor-custom')[cidx];
+            if (inp) { inp.focus(); inp.select(); }
+        }, 30);
+    } else {
+        c.is_custom = false;
+        c.cor = valor;
+        renderizarEditorBOM();
+    }
 }
 
 function removerCorBOM(idx, cidx) {
@@ -1810,5 +1891,10 @@ $('inputFotoProdutoCadastro')?.addEventListener('change', async function(e) {
         App.toast(err.message, 'erro');
     }
 });
+
+window.aoMudarSelectCorMulticor = aoMudarSelectCorMulticor;
+window.atualizarCorCustomMulticor = atualizarCorCustomMulticor;
+window.aoMudarSelectCorPeca = aoMudarSelectCorPeca;
+window.aoMudarSelectCorBOM = aoMudarSelectCorBOM;
 
 carregar();
