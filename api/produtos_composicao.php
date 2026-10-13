@@ -184,6 +184,26 @@ if ($method === 'GET') {
     $produto['tempo_producao_formatado'] = formatarTempoHHMMSS((int) ($produto['tempo_producao_segundos'] ?? 0));
 
     $diag = diagnosticoPecas($pdo, $paiId, $meta);
+    $isSimples = ($produto['tipo'] === 'simples' || empty($diag['pecas']));
+
+    if ($isSimples && empty($diag['pecas'])) {
+        $pPeso = (float) ($produto['peso_gramas'] ?? 0);
+        $pTempo = (int) ($produto['tempo_producao_segundos'] ?? 0);
+        $diag['resumo_1un']['peso_total_gramas'] = $pPeso;
+        $diag['resumo_1un']['tempo_total_segundos'] = $pTempo;
+        $diag['resumo_1un']['tempo_formatado'] = formatarTempoHHMMSS($pTempo);
+
+        $stmtC = $pdo->prepare("SELECT id, cor, peso_gramas, tempo_producao_segundos FROM produto_cores WHERE produto_id = :id ORDER BY id ASC");
+        $stmtC->execute(['id' => $paiId]);
+        $coresProd = $stmtC->fetchAll();
+        if ($coresProd) {
+            $coresRes = [];
+            foreach ($coresProd as $cp) {
+                $coresRes[] = ['cor' => $cp['cor'], 'peso_gramas' => (float)$cp['peso_gramas']];
+            }
+            $diag['resumo_1un']['cores'] = $coresRes;
+        }
+    }
 
     $qtdEstoque = max(0, (int) ($produto['estoque'] ?? 0));
     $coresEstoque = [];
@@ -205,6 +225,7 @@ if ($method === 'GET') {
 
     jsonResponse([
         'produto' => $produto,
+        'is_simples' => $isSimples,
         'capacidade_maxima' => $diag['capacidade_maxima'],
         'meta' => $meta,
         'pode_atender_meta' => ($diag['capacidade_maxima'] >= $meta),

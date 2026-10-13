@@ -15,14 +15,17 @@ require __DIR__ . '/includes/header.php';
 
     <div class="card-titulo" style="margin-bottom:18px;">
         <div class="abas" role="tablist" style="margin:0;">
-            <button type="button" role="tab" class="aba" data-aba="pedidos" aria-selected="true" aria-controls="abaPedidos">
+            <button type="button" role="tab" class="aba" data-aba="imprimir" aria-selected="true" aria-controls="abaImprimir">
+                🖨️ O Que Imprimir <span class="contador" id="contadorImprimir" hidden></span>
+            </button>
+            <button type="button" role="tab" class="aba" data-aba="pedidos" aria-selected="false" aria-controls="abaPedidos">
                 Pedidos <span class="contador" id="contadorPedidos" hidden></span>
+            </button>
+            <button type="button" role="tab" class="aba" data-aba="pecas" aria-selected="false" aria-controls="abaPecas">
+                Linha de Montagem & Bancada <span class="contador" id="contadorPecas" hidden></span>
             </button>
             <button type="button" role="tab" class="aba" data-aba="fabricar" aria-selected="false" aria-controls="abaFabricar">
                 Visão por Produto <span class="contador" id="contadorFabricar" hidden></span>
-            </button>
-            <button type="button" role="tab" class="aba" data-aba="pecas" aria-selected="false" aria-controls="abaPecas">
-                Linha de Produção / Bancada <span class="contador" id="contadorPecas" hidden></span>
             </button>
         </div>
         <button type="button" id="btnNovaOrdemEstoque">
@@ -31,8 +34,91 @@ require __DIR__ . '/includes/header.php';
         </button>
     </div>
 
+    <!-- ===================== ABA O QUE IMPRIMIR (FILA DE IMPRESSÃO 3D) ===================== -->
+    <section id="abaImprimir" role="tabpanel">
+        <div class="card card-filtros-fabrica nao-imprimir">
+            <div class="filtros">
+                <div style="flex: 1.6; min-width: 210px;">
+                    <label for="imprimirBusca">Buscar peça ou produto</label>
+                    <div class="busca-input-wrap">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                        <input type="search" id="imprimirBusca" placeholder="Filtrar por nome de peça, produto ou cor…">
+                    </div>
+                </div>
+                <div style="min-width: 170px;">
+                    <label for="imprimirFiltroCor">Filamento / Cor</label>
+                    <select id="imprimirFiltroCor">
+                        <option value="">Todas as cores</option>
+                    </select>
+                </div>
+                <div style="min-width: 160px;">
+                    <label for="imprimirFiltroUrgencia">Prioridade / Prazo</label>
+                    <select id="imprimirFiltroUrgencia">
+                        <option value="">Todas as prioridades</option>
+                        <option value="atrasado">🚨 Atrasados (pedidos vencidos)</option>
+                        <option value="hoje">⚡ Urgentes (hoje / amanhã)</option>
+                        <option value="proximo">📅 Próximos dias</option>
+                        <option value="estoque">📦 Produção para estoque</option>
+                    </select>
+                </div>
+                <div style="min-width: 140px;">
+                    <label for="imprimirFiltroTipo">Estrutura</label>
+                    <select id="imprimirFiltroTipo">
+                        <option value="">Todos os tipos</option>
+                        <option value="peca">🧩 Peças de montagem</option>
+                        <option value="simples">🔹 Produtos simples</option>
+                    </select>
+                </div>
+                <div class="acoes">
+                    <button type="button" class="secundario" id="btnImprimirLimparFiltros">Limpar</button>
+                    <button type="button" class="secundario" id="btnImprimirGuiaFila" title="Imprimir ficha de produção para colocar na prancheta da fábrica">
+                        🖨️ Imprimir Ficha
+                    </button>
+                    <button type="button" class="secundario" id="btnImprimirAtualizar">Atualizar</button>
+                </div>
+            </div>
+
+            <!-- Filtros rápidos de 1 clique em pílulas -->
+            <div class="pills-filtros-rapidos" id="pillsFiltrosImprimir">
+                <button type="button" class="pill-filtro ativo" data-filtro-fila="">Tudo a Imprimir (<span id="countPillFilaTodas">0</span>)</button>
+                <button type="button" class="pill-filtro" data-filtro-fila="urgentes">🚨 Urgentes &amp; Atrasadas (<span id="countPillFilaUrgentes">0</span>)</button>
+                <button type="button" class="pill-filtro" data-filtro-fila="pecas">🧩 Peças de Compostos (<span id="countPillFilaPecas">0</span>)</button>
+                <button type="button" class="pill-filtro" data-filtro-fila="simples">🔹 Produtos Simples (<span id="countPillFilaSimples">0</span>)</button>
+            </div>
+        </div>
+
+        <!-- Banner cabeçalho de impressão (só aparece no papel ao imprimir) -->
+        <div class="guia-impressao-cabecalho" style="display:none;">
+            <h2>🖨️ Guia da Fábrica 3D — Fila de Impressão</h2>
+            <p>Gerado em: <?= date('d/m/Y H:i') ?> · Marque os itens conforme forem finalizados na impressora.</p>
+        </div>
+
+        <div class="resumo-grid" id="imprimirResumo"></div>
+
+        <!-- Tabela da Fila de Impressão -->
+        <section class="card card-lista" id="secaoFilaImpressaoCard">
+            <div class="tabela-rolagem">
+                <table class="tabela-bancada-fabrica tabela-fila-prod">
+                    <thead>
+                        <tr>
+                            <th style="width: 50px; text-align: center;">Item</th>
+                            <th style="min-width: 230px;">O Que Imprimir (Modelo / Peça)</th>
+                            <th style="min-width: 160px;">Cor &amp; Filamento</th>
+                            <th style="min-width: 160px;">Prazo &amp; Pedidos</th>
+                            <th style="width: 120px;" class="num">Tempo Total</th>
+                            <th style="width: 130px; text-align: center;">A Imprimir</th>
+                            <th style="width: 180px; text-align: right;" class="nao-imprimir">Ação</th>
+                        </tr>
+                    </thead>
+                    <tbody id="gridFilaImpressao"></tbody>
+                </table>
+            </div>
+            <div class="rodape-lista" id="rodapeFilaImpressao"></div>
+        </section>
+    </section>
+
     <!-- ===================== ABA PEDIDOS ===================== -->
-    <section id="abaPedidos" role="tabpanel">
+    <section id="abaPedidos" role="tabpanel" hidden>
         <div class="card card-filtros-fabrica">
             <div class="filtros">
                 <div>
@@ -359,6 +445,62 @@ require __DIR__ . '/includes/header.php';
         <div class="modal-rodape">
             <button type="button" class="secundario" data-fechar-modal>Cancelar</button>
             <button type="button" id="btnConfirmarMontarModal" class="sucesso">Confirmar Montagem</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Detalhe da Situação do Produto & O Que Falta -->
+<div id="modalDetalheSituacao" class="modal" hidden>
+    <div class="card modal-caixa modal-largo modal-situacao-dialog" role="dialog" aria-modal="true" aria-labelledby="modalSituacaoTitulo">
+        <div class="modal-cabecalho">
+            <div style="display:flex;align-items:center;gap:12px;">
+                <div id="modalSituacaoFoto" style="width:48px;height:48px;border-radius:8px;background:var(--surface-3);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;"></div>
+                <div>
+                    <h2 id="modalSituacaoTitulo" style="margin:0;font-size:18px;">Situação do Produto</h2>
+                    <p id="modalSituacaoSub" class="modal-sub" style="margin-top:2px;"></p>
+                </div>
+            </div>
+            <button type="button" class="btn-icone" data-fechar-modal aria-label="Fechar">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <div class="modal-corpo" style="display:flex;flex-direction:column;gap:14px;">
+            <!-- KPIs da Situação -->
+            <div id="modalSituacaoKpis" class="resumo-grid" style="grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));gap:10px;"></div>
+
+            <!-- Alerta / Diagnóstico de Gargalo -->
+            <div id="modalSituacaoDiagnosticoAlerta" style="padding:10px 14px;border-radius:var(--radius-sm);font-size:13px;font-weight:600;display:flex;align-items:center;gap:10px;"></div>
+
+            <!-- Tabela Detalhada de Peças/Componentes -->
+            <div style="border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;">
+                <div class="tabela-rolagem" style="max-height:360px;overflow-y:auto;">
+                    <table style="margin:0;width:100%;font-size:12.5px;">
+                        <thead style="position:sticky;top:0;background:var(--surface-2);z-index:2;">
+                            <tr>
+                                <th style="width:42px;text-align:center;">Foto</th>
+                                <th>Peça / Componente</th>
+                                <th>Cores / Filamento</th>
+                                <th class="num">Qtd / un</th>
+                                <th class="num">Estoque Bancada</th>
+                                <th class="num">Necessário</th>
+                                <th class="num" style="min-width:110px;">Falta Imprimir</th>
+                                <th style="text-align:center;">Situação</th>
+                                <th style="text-align:right;width:100px;">Ação</th>
+                            </tr>
+                        </thead>
+                        <tbody id="modalSituacaoTabelaCorpo"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="modal-rodape" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+            <div id="modalSituacaoRodapeTexto" style="font-size:12px;color:var(--text-3);"></div>
+            <div style="display:flex;gap:8px;">
+                <button type="button" class="secundario" data-fechar-modal>Fechar</button>
+                <button type="button" class="primario" id="modalSituacaoBtnIrFila" onclick="App.modal.fechar('modalDetalheSituacao'); mostrarAba('imprimir');">
+                    Ver na Fila de Impressão 🖨️
+                </button>
+            </div>
         </div>
     </div>
 </div>

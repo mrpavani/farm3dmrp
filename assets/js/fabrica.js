@@ -20,18 +20,21 @@ const destino = p => ehEstoque(p) ? '<span class="destino-estoque">Estoque</span
 function mostrarAba(aba) {
     if (aba === 'pecas') abaAtual = 'pecas';
     else if (aba === 'fabricar') abaAtual = 'fabricar';
-    else abaAtual = 'pedidos';
+    else if (aba === 'pedidos') abaAtual = 'pedidos';
+    else abaAtual = 'imprimir';
 
     document.querySelectorAll('.aba').forEach(b => b.setAttribute('aria-selected', String(b.dataset.aba === abaAtual)));
-    $('abaPedidos').hidden = abaAtual !== 'pedidos';
-    $('abaFabricar').hidden = abaAtual !== 'fabricar';
-    $('abaPecas').hidden = abaAtual !== 'pecas';
+    if ($('abaImprimir')) $('abaImprimir').hidden = abaAtual !== 'imprimir';
+    if ($('abaPedidos')) $('abaPedidos').hidden = abaAtual !== 'pedidos';
+    if ($('abaFabricar')) $('abaFabricar').hidden = abaAtual !== 'fabricar';
+    if ($('abaPecas')) $('abaPecas').hidden = abaAtual !== 'pecas';
     history.replaceState(null, '', '#' + abaAtual);
     recarregar();
 }
 
 function recarregar() {
     atualizarContador();
+    if (abaAtual === 'imprimir') return carregarFilaImpressao();
     if (abaAtual === 'pecas') return carregarPecasFabrica();
     return abaAtual === 'fabricar' ? carregarFabricar() : carregarPedidos();
 }
@@ -98,16 +101,17 @@ function disponibilidadeItem(i) {
 function etiquetaDisponibilidade(i) {
     const d = disponibilidadeItem(i);
     if (d.restante <= 0) return '';
+    const clickAttr = i.produto_id ? `onclick="abrirModalSituacaoProduto(${i.produto_id})" style="cursor:pointer;"` : '';
     if (d.doEstoque >= d.restante) {
-        return `<span class="tag-disp pronto" title="Há ${d.pronto} un. montadas no estoque">✓ ${fmtInt.format(d.doEstoque)} em estoque</span>`;
+        return `<span class="tag-disp pronto" ${clickAttr} title="Há ${d.pronto} un. montadas no estoque · Clique para ver situação e peças">✓ ${fmtInt.format(d.doEstoque)} em estoque 🔍</span>`;
     }
     if (d.cobreTudo) {
-        return `<span class="tag-disp montar" title="Peças suficientes para montar o que falta">⚒ dá para montar</span>`;
+        return `<span class="tag-disp montar" ${clickAttr} title="Peças suficientes para montar o que falta · Clique para ver situação e peças">⚒ dá para montar 🔍</span>`;
     }
     if (d.doEstoque > 0 || d.podeMontar > 0) {
-        return `<span class="tag-disp parcial">${fmtInt.format(d.doEstoque + d.podeMontar)} de ${fmtInt.format(d.restante)} disponíveis</span>`;
+        return `<span class="tag-disp parcial" ${clickAttr} title="Clique para ver a situação e quais peças faltam">${fmtInt.format(d.doEstoque + d.podeMontar)} de ${fmtInt.format(d.restante)} disp. 🔍</span>`;
     }
-    return `<span class="tag-disp falta">sem peças</span>`;
+    return `<span class="tag-disp falta" ${clickAttr} title="Clique para ver a situação e quais peças faltam">sem peças 🔍</span>`;
 }
 
 function renderizarPedidos(pedidos) {
@@ -228,6 +232,7 @@ async function atualizarHeroKpis() {
         const totalMontavel = prods.reduce((s, p) => s + (p.montavel && p.montavel !== Infinity ? p.montavel : 0), 0);
         const prodsMontaveis = prods.filter(p => p.montavel > 0).length;
         const totalAImprimir = dPecas.resumo ? dPecas.resumo.total_a_imprimir : 0;
+        const totalFilaItens = dPecas.fila_impressao ? dPecas.fila_impressao.reduce((s, x) => s + (Number(x.quantidade_a_imprimir) || 0), 0) : totalAImprimir;
         const totalPedidos = Array.isArray(pedidosAbertos) ? pedidosAbertos.length : 0;
         const todosItens = (dFab.produtos || []).flatMap(g => g.itens || []);
         const atrasadas = todosItens.filter(i => App.diasAte(i.data_entrega_prometida) < 0)
@@ -237,6 +242,14 @@ async function atualizarHeroKpis() {
         const hero = $('fabricaHeroKpis');
         if (hero) {
             hero.innerHTML = `
+                <div class="kpi kpi-hero ${totalFilaItens > 0 ? 'kpi-producao' : ''} card-kpi-clicavel" onclick="mostrarAba('imprimir');" role="button" tabindex="0" title="Clique para ver a fila prática de impressão 3D">
+                    <div class="kpi-topo">
+                        <span class="rotulo">O Que Imprimir</span>
+                        <span class="kpi-icone">🖨️</span>
+                    </div>
+                    <div class="valor">${fmtInt.format(totalFilaItens)}</div>
+                    <div class="sub">impressões pendentes na fila 3D</div>
+                </div>
                 <div class="kpi kpi-hero kpi-montavel card-kpi-clicavel" onclick="mostrarAba('pecas'); filtrarBancada('montavel');" role="button" tabindex="0" title="Clique para ver produtos que já podem ser montados">
                     <div class="kpi-topo">
                         <span class="rotulo">Montável Agora</span>
@@ -244,14 +257,6 @@ async function atualizarHeroKpis() {
                     </div>
                     <div class="valor">${fmtInt.format(totalMontavel)}</div>
                     <div class="sub">unidades prontas · em ${fmtInt.format(prodsMontaveis)} produto(s)</div>
-                </div>
-                <div class="kpi kpi-hero ${totalAImprimir > 0 ? 'kpi-producao' : ''} card-kpi-clicavel" onclick="mostrarAba('pecas'); filtrarBancada('imprimir');" role="button" tabindex="0" title="Clique para ver peças pendentes de impressão">
-                    <div class="kpi-topo">
-                        <span class="rotulo">Peças a Imprimir</span>
-                        <span class="kpi-icone">🖨️</span>
-                    </div>
-                    <div class="valor">${fmtInt.format(totalAImprimir)}</div>
-                    <div class="sub">peças na fila de impressão 3D</div>
                 </div>
                 <div class="kpi kpi-hero card-kpi-clicavel" onclick="mostrarAba('pedidos');" role="button" tabindex="0" title="Clique para ver a lista de pedidos">
                     <div class="kpi-topo">
@@ -272,6 +277,10 @@ async function atualizarHeroKpis() {
             `;
         }
 
+        if ($('contadorImprimir')) {
+            $('contadorImprimir').textContent = fmtInt.format(totalFilaItens);
+            $('contadorImprimir').hidden = !totalFilaItens;
+        }
         if ($('contadorPedidos')) {
             $('contadorPedidos').textContent = fmtInt.format(totalPedidos);
             $('contadorPedidos').hidden = !totalPedidos;
@@ -542,11 +551,19 @@ async function carregarPecasFabrica() {
 //   rende    = quantos produtos esta peça sozinha permite montar
 //   montavel = o menor rendimento entre as peças (o gargalo manda)
 function recalcularProduto(p) {
+    if (!p.pecas) p.pecas = [];
+    if (p.is_simples) {
+        p.montavel = 0;
+        p.gargalos = [];
+        p.demanda_liquida = Math.max(0, (Number(p.em_producao) || 0) - (Number(p.estoque) || 0));
+        p.total_a_imprimir = p.demanda_liquida;
+        return p;
+    }
     let montavel = Infinity;
     p.pecas.forEach(peca => {
         peca.estoque = Math.max(0, Number(peca.estoque) || 0);
         peca.rende = Math.floor(peca.estoque / Math.max(1, peca.por_unidade));
-        peca.necessario_pedidos = p.demanda_liquida * peca.por_unidade;
+        peca.necessario_pedidos = (Number(p.demanda_liquida) || 0) * peca.por_unidade;
         peca.a_imprimir = Math.max(0, peca.necessario_pedidos - peca.estoque);
         montavel = Math.min(montavel, peca.rende);
     });
@@ -573,15 +590,21 @@ function linhaTabelaBancada(p) {
     const todosGargalos = p.gargalos && p.gargalos.length ? p.gargalos.map(esc).join(', ') : '';
 
     let tagStatus = '';
-    if (p.demanda_liquida > 0 && p.montavel >= p.demanda_liquida) {
-        tagStatus = `<span class="badge-status-montagem pronto" title="Peças suficientes para montar toda a demanda aberta (${fmtInt.format(p.demanda_liquida)} un)">✓ Pronto</span>`;
+    if (p.is_simples) {
+        if (p.demanda_liquida <= 0) {
+            tagStatus = `<span class="badge-status-montagem pronto clicavel-situacao" onclick="abrirModalSituacaoProduto(${p.id})" title="Produto simples · Estoque pronto cobre toda a demanda · Clique para ver detalhes">✓ Pronto (Estoque)</span>`;
+        } else {
+            tagStatus = `<span class="badge-status-montagem gargalo clicavel-situacao" onclick="abrirModalSituacaoProduto(${p.id})" title="Produto simples · Faltam imprimir ${fmtInt.format(p.demanda_liquida)} un · Clique para ver detalhes">🖨️ Faltam ${fmtInt.format(p.demanda_liquida)} un</span>`;
+        }
+    } else if (p.demanda_liquida > 0 && p.montavel >= p.demanda_liquida) {
+        tagStatus = `<span class="badge-status-montagem pronto clicavel-situacao" onclick="abrirModalSituacaoProduto(${p.id})" title="Peças suficientes para montar toda a demanda aberta (${fmtInt.format(p.demanda_liquida)} un) · Clique para ver detalhes e peças">✓ Montável (${fmtInt.format(p.montavel)}) 🔍</span>`;
     } else if (p.gargalos && p.gargalos.length) {
         const extra = p.gargalos.length > 1 ? `<small>+${p.gargalos.length - 1}</small>` : '';
-        tagStatus = `<span class="badge-status-montagem gargalo" title="Peça(s) limitando a montagem: ${todosGargalos}">⚠️ Gargalo ${extra}</span>`;
+        tagStatus = `<span class="badge-status-montagem gargalo clicavel-situacao" onclick="abrirModalSituacaoProduto(${p.id})" title="Peça(s) limitando a montagem: ${todosGargalos} · Clique para ver detalhes e peças">⚠️ Gargalo ${extra} 🔍</span>`;
     } else if (!p.pecas || !p.pecas.length) {
-        tagStatus = `<span class="badge-status-montagem vazio" title="Sem ficha técnica cadastrada">—</span>`;
+        tagStatus = `<span class="badge-status-montagem vazio clicavel-situacao" onclick="abrirModalSituacaoProduto(${p.id})" title="Sem ficha técnica cadastrada · Clique para ver detalhes">— 🔍</span>`;
     } else {
-        tagStatus = `<span class="badge-status-montagem ok" title="Estoque de peças balanceado">✓ OK</span>`;
+        tagStatus = `<span class="badge-status-montagem ok clicavel-situacao" onclick="abrirModalSituacaoProduto(${p.id})" title="Estoque de peças balanceado · Clique para ver detalhes">✓ OK 🔍</span>`;
     }
 
     const prazo = p.proxima_entrega
@@ -596,17 +619,31 @@ function linhaTabelaBancada(p) {
         ? `<span class="tag-fila-detalhe" title="Fila de impressão pendente: ${p.tempo_fila_formatado} (${(App.num ? App.num(p.peso_fila_gramas || 0, 1) : Number(p.peso_fila_gramas || 0).toFixed(1))}g)">⏱️ ${p.tempo_fila_formatado}</span>`
         : '';
 
-    const badgeMontavel = p.montavel > 0
-        ? `<span class="badge-bancada-montavel pronto" title="${p.montavel} unidades que já podem ser montadas agora">🚀 ${fmtInt.format(p.montavel)}</span>`
-        : `<span class="badge-bancada-montavel zero" title="Saldo insuficiente de peças">0</span>`;
+    const badgeMontavel = p.is_simples
+        ? `<span class="badge-bancada-montavel zero" title="Produto simples não possui montagem de peças">—</span>`
+        : (p.montavel > 0
+            ? `<span class="badge-bancada-montavel pronto" title="${p.montavel} unidades que já podem ser montadas agora">🚀 ${fmtInt.format(p.montavel)}</span>`
+            : `<span class="badge-bancada-montavel zero" title="Saldo insuficiente de peças">0</span>`);
 
     const aFabricar = `<span class="bancada-num-normal" title="${p.em_producao} unidades em pedidos pendentes">${fmtInt.format(p.em_producao)}</span>`;
     const estoque = `<span class="bancada-num-normal" title="${p.estoque} unidades montadas em estoque">${fmtInt.format(p.estoque)}</span>`;
 
-    const btnPecas = App.botaoIcone('pecas', 'Peças: atualizar fabricação e saldo', `abrirModalGerenciarPecas(${p.id})`, 'primario');
-    const btnMontar = p.montavel > 0
-        ? App.botaoIcone('montagem', 'Montar unidades acabadas', `abrirModalMontarProduto(${p.id})`, 'sucesso')
-        : `<button type="button" class="btn-icone desativado" disabled data-tip="Sem peças suficientes para montagem" aria-label="Montar (indisponível)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></button>`;
+    let botoesAcao = '';
+    if (p.is_simples) {
+        const btnMaisUm = `<button type="button" class="btn-icone sucesso" onclick="produzirSimplesRapido(${p.id}, 1)" title="Registrar +1 impresso direto no estoque" aria-label="+1 Impresso"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></button>`;
+        const btnVerDet = `<button type="button" class="btn-icone primario" onclick="abrirModalSituacaoProduto(${p.id})" title="Ver situação e detalhes" aria-label="Situação"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button>`;
+        botoesAcao = `${btnMaisUm}${btnVerDet}`;
+    } else {
+        const btnPecas = App.botaoIcone('pecas', 'Peças: atualizar fabricação e saldo', `abrirModalGerenciarPecas(${p.id})`, 'primario');
+        const btnMontar = p.montavel > 0
+            ? App.botaoIcone('montagem', 'Montar unidades acabadas', `abrirModalMontarProduto(${p.id})`, 'sucesso')
+            : `<button type="button" class="btn-icone desativado" disabled data-tip="Sem peças suficientes para montagem" aria-label="Montar (indisponível)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></button>`;
+        botoesAcao = `${btnPecas}${btnMontar}`;
+    }
+
+    const subTexto = p.is_simples
+        ? `Produto simples (1 impressão direta)${p.tempo_un_formatado ? ` · ⏱️ ${p.tempo_un_formatado}/un` : ''}${p.peso_un_gramas > 0 ? ` · ⚖️ ${(App.num ? App.num(p.peso_un_gramas, 1) : Number(p.peso_un_gramas).toFixed(1))}g` : ''}`
+        : `${p.pecas.length} peças · ${fmtInt.format(p.total_pecas_por_unidade)} un por montagem${p.tempo_un_formatado ? ` · ⏱️ ${p.tempo_un_formatado}/un` : ''}${p.peso_un_gramas > 0 ? ` · ⚖️ ${(App.num ? App.num(p.peso_un_gramas, 1) : Number(p.peso_un_gramas).toFixed(1))}g` : ''}`;
 
     return `
         <tr class="linha-bancada-produto ${p.montavel > 0 ? 'produto-pode-montar' : ''}" data-produto-id="${p.id}">
@@ -615,7 +652,7 @@ function linhaTabelaBancada(p) {
                     <div class="bancada-thumb clicavel" onclick="abrirUploadFotoProduto(${p.id})" title="Clique para adicionar ou trocar a foto deste produto" style="cursor:pointer;">${fotoProd}</div>
                     <div class="bancada-prod-info">
                         <span class="bancada-prod-nome">${esc(p.nome)}</span>
-                        <span class="bancada-prod-sub">${p.pecas.length} peças · ${fmtInt.format(p.total_pecas_por_unidade)} un por montagem${p.tempo_un_formatado ? ` · ⏱️ ${p.tempo_un_formatado}/un` : ''}${p.peso_un_gramas > 0 ? ` · ⚖️ ${(App.num ? App.num(p.peso_un_gramas, 1) : Number(p.peso_un_gramas).toFixed(1))}g` : ''}</span>
+                        <span class="bancada-prod-sub">${subTexto}</span>
                     </div>
                 </div>
             </td>
@@ -631,14 +668,13 @@ function linhaTabelaBancada(p) {
                     ` : ''}
                 </div>
             </td>
-            <td style="text-align: center;">${tagStatus}</td>
+            <td style="text-align: center; cursor: pointer;" onclick="abrirModalSituacaoProduto(${p.id})" title="Clique para ver o detalhamento da situação">${tagStatus}</td>
             <td class="num">${badgeMontavel}</td>
             <td class="num">${aFabricar}</td>
             <td class="num">${estoque}</td>
             <td class="num">
                 <div class="acoes-icones" style="justify-content: flex-end;">
-                    ${btnPecas}
-                    ${btnMontar}
+                    ${botoesAcao}
                 </div>
             </td>
         </tr>
@@ -1400,6 +1436,419 @@ async function removerCorDaPeca(corId, pecaId, prodId) {
 }
 
 // ============================================================
+// Modal: Detalhe da Situação do Produto (o que e quanto falta)
+// ============================================================
+async function abrirModalSituacaoProduto(prodId) {
+    if (!dadosPecasCarregados || !dadosPecasCarregados.produtos) {
+        await carregarPecasFabrica();
+    }
+    const p = (dadosPecasCarregados.produtos || []).find(x => x.id === prodId);
+    if (!p) {
+        App.toast('Produto não encontrado na fábrica.', 'aviso');
+        return;
+    }
+    recalcularProduto(p);
+
+    const fotoProd = p.foto
+        ? `<img src="${esc(p.foto)}" alt="${esc(p.nome)}">`
+        : `<div class="bancada-thumb-placeholder">Sem foto</div>`;
+
+    if ($('modalSituacaoFoto')) $('modalSituacaoFoto').innerHTML = fotoProd;
+    if ($('modalSituacaoTitulo')) $('modalSituacaoTitulo').textContent = p.nome;
+    if ($('modalSituacaoSub')) {
+        $('modalSituacaoSub').textContent = p.is_simples
+            ? 'Produto simples (impresso diretamente sem montagem)'
+            : `${p.pecas.length} tipo(s) de peça na estrutura · ${p.total_pecas_por_unidade} un/montagem`;
+    }
+
+    const faltaTotal = Math.max(0, (p.em_producao || 0) - (p.estoque || 0));
+
+    // KPIs do modal
+    if ($('modalSituacaoKpis')) {
+        $('modalSituacaoKpis').innerHTML = `
+            <div class="modal-kpi-pill" title="Demanda total em pedidos e ordens abertas">
+                <span class="kpi-pill-rotulo">📋 Demanda Aberta:</span>
+                <span class="kpi-pill-valor">${fmtInt.format(p.em_producao)} un</span>
+            </div>
+            <div class="modal-kpi-pill" title="Unidades prontas no estoque">
+                <span class="kpi-pill-rotulo">📦 Estoque Pronto:</span>
+                <span class="kpi-pill-valor">${fmtInt.format(p.estoque)} un</span>
+            </div>
+            <div class="modal-kpi-pill ${faltaTotal > 0 ? 'pill-alerta' : 'pill-sucesso'}" title="Falta para atender os pedidos">
+                <span class="kpi-pill-rotulo">🎯 Falta Produzir:</span>
+                <span class="kpi-pill-valor">${fmtInt.format(faltaTotal)} un</span>
+            </div>
+            ${!p.is_simples ? `
+                <div class="modal-kpi-pill ${p.montavel > 0 ? 'pill-sucesso' : ''}" title="Unidades que já podem ser montadas agora com o saldo de peças atual">
+                    <span class="kpi-pill-rotulo">🚀 Dá p/ Montar:</span>
+                    <span class="kpi-pill-valor">${fmtInt.format(p.montavel)} un</span>
+                </div>
+            ` : ''}
+            ${p.tempo_fila_segundos > 0 ? `
+                <div class="modal-kpi-pill" title="Tempo total estimado para imprimir o que falta">
+                    <span class="kpi-pill-rotulo">⏱️ Tempo Fila:</span>
+                    <span class="kpi-pill-valor">${esc(p.tempo_fila_formatado)}</span>
+                </div>
+            ` : ''}
+        `;
+    }
+
+    // Diagnóstico
+    if ($('modalSituacaoDiagnosticoAlerta')) {
+        let diagHtml = '';
+        if (p.is_simples) {
+            if (faltaTotal <= 0) {
+                diagHtml = `<div class="alerta sucesso" style="margin:0;">✅ <b>Demanda Coberta:</b> O estoque atual (${fmtInt.format(p.estoque)} un) já cobre todos os pedidos abertos. Nenhuma impressão pendente.</div>`;
+            } else {
+                diagHtml = `<div class="alerta aviso" style="margin:0;">🖨️ <b>Impressão Pendente:</b> Faltam imprimir <b>${fmtInt.format(faltaTotal)} unidades</b> deste produto para atender as ordens em aberto.</div>`;
+            }
+        } else {
+            if (faltaTotal <= 0) {
+                diagHtml = `<div class="alerta sucesso" style="margin:0;">✅ <b>Estoque Suficiente:</b> Já existem produtos montados suficientes para atender todos os pedidos abertos.</div>`;
+            } else if (p.montavel >= p.demanda_liquida && p.demanda_liquida > 0) {
+                diagHtml = `<div class="alerta sucesso" style="margin:0;">🚀 <b>Pronto para Montagem:</b> Todas as peças necessárias já estão impressas no estoque! Você pode montar as <b>${fmtInt.format(p.demanda_liquida)} unidades</b> restantes imediatamente na bancada.</div>`;
+            } else if (p.gargalos && p.gargalos.length) {
+                diagHtml = `<div class="alerta perigo" style="margin:0;">⚠️ <b>Gargalo de Produção:</b> A montagem está travada por falta das seguintes peças: <b>${p.gargalos.map(esc).join(', ')}</b>. Imprima as peças em falta listadas abaixo para destravar a montagem.</div>`;
+            } else {
+                diagHtml = `<div class="alerta info" style="margin:0;">ℹ️ Faltam peças para completar a produção. Consulte os saldos e o que falta na tabela abaixo.</div>`;
+            }
+        }
+        $('modalSituacaoDiagnosticoAlerta').innerHTML = diagHtml;
+    }
+
+    // Tabela detalhada
+    if ($('modalSituacaoTabelaCorpo')) {
+        if (p.is_simples) {
+            const statusTag = faltaTotal <= 0
+                ? `<span class="tag-peca-situacao ok">✓ Coberto</span>`
+                : `<span class="tag-peca-situacao alerta"><b>Faltam ${fmtInt.format(faltaTotal)} un</b></span>`;
+
+            $('modalSituacaoTabelaCorpo').innerHTML = `
+                <tr>
+                    <td>
+                        <div style="font-weight:600;">${esc(p.nome)}</div>
+                        <small style="color:var(--text-3);">Produto completo (impressão única direta)</small>
+                    </td>
+                    <td class="num">1 un</td>
+                    <td class="num"><strong>${fmtInt.format(p.estoque)}</strong> un</td>
+                    <td class="num">${fmtInt.format(p.em_producao)} un</td>
+                    <td style="text-align:center;">${statusTag}</td>
+                    <td class="num">
+                        <button type="button" class="btn-step mais" style="width:auto;padding:3px 10px;font-size:12px;" onclick="produzirSimplesRapido(${p.id}, 1); setTimeout(() => abrirModalSituacaoProduto(${p.id}), 300);" title="Registrar +1 produto impresso no estoque">+1 Impresso</button>
+                    </td>
+                </tr>
+            `;
+        } else if (!p.pecas || !p.pecas.length) {
+            $('modalSituacaoTabelaCorpo').innerHTML = `
+                <tr>
+                    <td colspan="6" style="text-align:center;padding:24px;color:var(--text-3);">
+                        Este produto ainda não possui peças cadastradas na ficha técnica.
+                    </td>
+                </tr>
+            `;
+        } else {
+            $('modalSituacaoTabelaCorpo').innerHTML = p.pecas.map(peca => {
+                const faltaImprimir = peca.a_imprimir || 0;
+                const statusTag = faltaImprimir <= 0
+                    ? `<span class="tag-peca-situacao ok">✓ Suficiente (rende ${fmtInt.format(peca.rende)})</span>`
+                    : `<span class="tag-peca-situacao alerta"><b>Faltam ${fmtInt.format(faltaImprimir)} un</b></span>`;
+
+                const fotoThumb = peca.foto
+                    ? `<img src="${esc(peca.foto)}" alt="" style="width:28px;height:28px;border-radius:4px;object-fit:cover;vertical-align:middle;margin-right:6px;">`
+                    : '';
+
+                const cores = peca.cores && peca.cores.length
+                    ? `<div style="display:flex;gap:4px;margin-top:2px;">${peca.cores.map(c => `<span class="badge-cor-min" style="background:${corHex(c.cor)};" title="${esc(c.cor)}"></span>`).join('')}</div>`
+                    : '';
+
+                return `
+                    <tr class="${faltaImprimir > 0 ? 'linha-peca-em-falta' : ''}">
+                        <td>
+                            <div style="display:flex;align-items:center;">
+                                ${fotoThumb}
+                                <div>
+                                    <div style="font-weight:600;">${esc(peca.nome)}</div>
+                                    ${cores}
+                                </div>
+                            </div>
+                        </td>
+                        <td class="num">${fmtInt.format(peca.por_unidade)} un</td>
+                        <td class="num"><strong>${fmtInt.format(peca.estoque)}</strong> un <small style="color:var(--text-3);">(rende ${fmtInt.format(peca.rende)})</small></td>
+                        <td class="num">${fmtInt.format(peca.necessario_pedidos)} un</td>
+                        <td style="text-align:center;">${statusTag}</td>
+                        <td class="num">
+                            <div style="display:flex;gap:4px;justify-content:flex-end;">
+                                <button type="button" class="btn-step mais" style="width:auto;padding:3px 10px;font-size:12px;" onclick="produzirItemFilaRapido('peca', ${peca.peca_id}, 1); setTimeout(() => abrirModalSituacaoProduto(${p.id}), 300);" title="Registrar +1 peça impressa">+1 Feito</button>
+                                <button type="button" class="btn-peca-acao" style="padding:3px 8px;font-size:12px;" onclick="App.modal.fechar('modalDetalheSituacao'); abrirModalProduzirPeca(${peca.peca_id}, ${p.id});" title="Registrar lote maior">+ Lote</button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+    }
+
+    if ($('modalSituacaoBtnIrFila')) {
+        $('modalSituacaoBtnIrFila').onclick = () => {
+            App.modal.fechar('modalDetalheSituacao');
+            mostrarAba('imprimir');
+            if ($('imprimirBusca')) {
+                $('imprimirBusca').value = p.nome;
+                renderizarFilaImpressao();
+            }
+        };
+    }
+
+    App.modal.abrir('modalDetalheSituacao');
+}
+
+// ============================================================
+// Aba O QUE IMPRIMIR (Fila Prática da Impressora 3D)
+// ============================================================
+let filaImpressaoCarregada = [];
+let filtroImprimirUrgencia = '';
+
+async function carregarFilaImpressao() {
+    try {
+        dadosPecasCarregados = await App.api('api/fabrica_pecas.php');
+        filaImpressaoCarregada = dadosPecasCarregados.fila_impressao || [];
+        popularFiltroCoresImprimir();
+        renderizarFilaImpressao();
+        atualizarPillsFila();
+    } catch (e) {
+        App.toast(e.message, 'erro');
+    }
+}
+
+function popularFiltroCoresImprimir() {
+    const sel = $('imprimirFiltroCor');
+    if (!sel) return;
+    const corSelecionada = sel.value;
+    const coresSet = new Set();
+    filaImpressaoCarregada.forEach(item => {
+        if (item.cor) coresSet.add(item.cor);
+    });
+
+    const opcoes = ['<option value="">Todas as cores</option>'];
+    Array.from(coresSet).sort().forEach(cor => {
+        opcoes.push(`<option value="${esc(cor)}">${esc(cor)}</option>`);
+    });
+    sel.innerHTML = opcoes.join('');
+    if (coresSet.has(corSelecionada)) sel.value = corSelecionada;
+}
+
+function atualizarPillsFila() {
+    const todos = filaImpressaoCarregada.length;
+    const atrasados = filaImpressaoCarregada.filter(x => x.urgencia_tag === 'atrasado').length;
+    const hoje = filaImpressaoCarregada.filter(x => x.urgencia_tag === 'hoje').length;
+    const proximos = filaImpressaoCarregada.filter(x => x.urgencia_tag === 'proximo').length;
+
+    if ($('pillContadorTodos')) $('pillContadorTodos').textContent = fmtInt.format(todos);
+    if ($('pillContadorAtrasados')) $('pillContadorAtrasados').textContent = fmtInt.format(atrasados);
+    if ($('pillContadorHoje')) $('pillContadorHoje').textContent = fmtInt.format(hoje);
+    if ($('pillContadorProximos')) $('pillContadorProximos').textContent = fmtInt.format(proximos);
+}
+
+function filtrarFilaUrgencia(tag) {
+    filtroImprimirUrgencia = tag;
+    if ($('imprimirFiltroUrgencia')) $('imprimirFiltroUrgencia').value = tag;
+    document.querySelectorAll('#pillsFiltrosImprimir .pill-filtro').forEach(btn => {
+        btn.classList.toggle('ativo', (btn.dataset.urgencia || '') === tag);
+    });
+    renderizarFilaImpressao();
+}
+
+function renderizarFilaImpressao() {
+    const busca = App.normalizar(($('imprimirBusca')?.value || '').trim());
+    const corFiltro = ($('imprimirFiltroCor')?.value || '').trim().toLowerCase();
+    const urgFiltro = filtroImprimirUrgencia || ($('imprimirFiltroUrgencia')?.value || '').trim();
+    const tipoFiltro = ($('imprimirFiltroTipo')?.value || '').trim();
+
+    const itensFiltrados = filaImpressaoCarregada.filter(item => {
+        if (busca) {
+            const texto = App.normalizar(`${item.peca_nome} ${item.produto_nome} ${item.cor}`);
+            if (!texto.includes(busca)) return false;
+        }
+        if (corFiltro && String(item.cor || '').toLowerCase() !== corFiltro) return false;
+        if (urgFiltro && item.urgencia_tag !== urgFiltro) return false;
+        if (tipoFiltro && item.tipo !== tipoFiltro) return false;
+        return true;
+    });
+
+    const grid = $('gridFilaImpressao');
+    if (!grid) return;
+
+    // Resumo de produção
+    const totalItens = itensFiltrados.length;
+    const totalPecas = itensFiltrados.reduce((s, x) => s + (Number(x.quantidade_a_imprimir) || 0), 0);
+    const totalSegundos = itensFiltrados.reduce((s, x) => s + (Number(x.tempo_total_segundos) || 0), 0);
+    const totalPeso = itensFiltrados.reduce((s, x) => s + (Number(x.peso_total_gramas) || 0), 0);
+
+    let tempoFmt = '00:00:00';
+    if (totalSegundos > 0) {
+        const h = Math.floor(totalSegundos / 3600);
+        const m = Math.floor((totalSegundos % 3600) / 60);
+        tempoFmt = `${h}h ${m}m`;
+    }
+
+    if ($('imprimirResumo')) {
+        $('imprimirResumo').innerHTML = `
+            <span>📋 <b>${fmtInt.format(totalItens)}</b> modelos na fila</span>
+            <span class="ponto-sep">·</span>
+            <span>🖨️ <b>${fmtInt.format(totalPecas)}</b> impressões totais</span>
+            ${totalSegundos > 0 ? `<span class="ponto-sep">·</span><span>⏱️ <b>${tempoFmt}</b> de máquina</span>` : ''}
+            ${totalPeso > 0 ? `<span class="ponto-sep">·</span><span>⚖️ <b>${(App.num ? App.num(totalPeso, 1) : totalPeso.toFixed(1))}g</b> de filamento</span>` : ''}
+        `;
+    }
+
+    if (!itensFiltrados.length) {
+        grid.innerHTML = `<tr><td colspan="7">${App.estadoVazio('🎉', 'Fila de Impressão Vazia!', 'Não há peças ou produtos pendentes de impressão para os filtros selecionados.')}</td></tr>`;
+        return;
+    }
+
+    grid.innerHTML = itensFiltrados.map((item, idx) => {
+        let chipPrioridade = '';
+        if (item.urgencia_tag === 'atrasado') {
+            chipPrioridade = `<span class="chip-prioridade atrasado" title="Entrega vencida">🚨 Atrasado (${Math.abs(item.dias_para_entrega)}d)</span>`;
+        } else if (item.urgencia_tag === 'hoje') {
+            chipPrioridade = `<span class="chip-prioridade hoje" title="Entrega prometida para hoje">⚡ Hoje</span>`;
+        } else if (item.urgencia_tag === 'proximo') {
+            chipPrioridade = `<span class="chip-prioridade proximo" title="Entrega nos próximos 3 dias">📅 ${item.dias_para_entrega} dias</span>`;
+        } else {
+            chipPrioridade = `<span class="chip-prioridade normal" title="Planejamento de produção">📦 Estoque/Normal</span>`;
+        }
+
+        const fotoThumb = item.foto
+            ? `<img src="${esc(item.foto)}" alt="" class="bancada-thumb" style="width:42px;height:42px;border-radius:6px;object-fit:cover;cursor:pointer;" onclick="${item.tipo === 'simples' ? `abrirUploadFotoProduto(${item.produto_id})` : `abrirUploadFotoPecaDirect(${item.peca_id})`}">`
+            : `<div class="bancada-thumb-placeholder" style="width:42px;height:42px;border-radius:6px;font-size:16px;">${item.tipo === 'simples' ? '📦' : '🧩'}</div>`;
+
+        const chipCor = item.cor
+            ? `<div class="chip-cor-peca" style="margin:0;display:inline-flex;">
+                 <span class="badge-cor-min" style="background:${corHex(item.cor)};"></span>
+                 <span class="nome-cor-chip"><b>${esc(item.cor)}</b></span>
+                 ${item.peso_unitario_gramas > 0 ? `<span class="peso-cor-chip">${(App.num ? App.num(item.peso_unitario_gramas, 1) : Number(item.peso_unitario_gramas).toFixed(1))}g/un</span>` : ''}
+               </div>`
+            : `<span style="color:var(--text-3);font-size:12px;">Padrão</span>`;
+
+        const subItem = item.tipo === 'simples'
+            ? `<span style="color:var(--primary);font-weight:600;">Produto simples (1 impressão direta)</span>`
+            : `<span>Componente de: <b>${esc(item.produto_nome)}</b> (${item.unidades_por_produto} un/produto)</span>`;
+
+        const tempoTotal = item.tempo_total_formatado ? `<div style="font-size:12px;color:var(--text-2);">Total: ⏱️ <b>${item.tempo_total_formatado}</b></div>` : '';
+        const tempoUnit = item.tempo_unitario_formatado ? `<div style="font-size:11px;color:var(--text-3);">⏱️ ${item.tempo_unitario_formatado}/un</div>` : '';
+
+        const pesoTotal = item.peso_total_gramas > 0 ? `<div style="font-size:11px;color:var(--text-3);">⚖️ ${(App.num ? App.num(item.peso_total_gramas, 1) : Number(item.peso_total_gramas).toFixed(1))}g filamento</div>` : '';
+
+        return `
+            <tr class="linha-fila-item ${item.urgencia_tag === 'atrasado' ? 'linha-urgente' : ''}">
+                <td style="text-align: center;">
+                    <div style="font-size: 13px; font-weight:700; color:var(--text-3);">#${idx + 1}</div>
+                    ${chipPrioridade}
+                    <div style="font-size:11px;color:var(--text-3);margin-top:2px;">${item.proxima_entrega ? App.data(item.proxima_entrega) : '—'}</div>
+                </td>
+                <td>
+                    <div style="display:flex;gap:10px;align-items:center;">
+                        ${fotoThumb}
+                        <div>
+                            <div style="font-weight:700;font-size:14px;color:var(--text-1);cursor:pointer;" onclick="abrirModalSituacaoProduto(${item.produto_id})">
+                                ${esc(item.peca_nome)}
+                            </div>
+                            <div style="font-size:12px;color:var(--text-2);margin-top:2px;">
+                                ${subItem}
+                            </div>
+                        </div>
+                    </div>
+                </td>
+                <td>
+                    ${chipCor}
+                    ${pesoTotal}
+                </td>
+                <td class="num">
+                    <span class="badge-falta-imprimir-grande" title="Quantidade que precisa ser impressa">${fmtInt.format(item.quantidade_a_imprimir)}</span>
+                    <span style="font-size:11.5px;color:var(--text-3);display:block;margin-top:2px;">unidades</span>
+                </td>
+                <td class="num">
+                    <span style="font-weight:600;font-size:13px;">${fmtInt.format(item.estoque_atual)}</span> un
+                    <small style="display:block;color:var(--text-3);font-size:11px;">necessário: ${fmtInt.format(item.necessario_pedidos)}</small>
+                </td>
+                <td class="num">
+                    ${tempoTotal}
+                    ${tempoUnit}
+                </td>
+                <td class="num" style="white-space:nowrap;">
+                    <div style="display:flex;gap:6px;justify-content:flex-end;align-items:center;">
+                        <button type="button" class="btn-step mais" style="width:auto;padding:5px 12px;font-size:13px;font-weight:700;border-radius:6px;" onclick="produzirItemFilaRapido('${item.tipo}', ${item.id}, 1)" title="Marcar +1 peça impressa na máquina (+1 feito)">
+                            +1 Feito
+                        </button>
+                        <button type="button" class="secundario pequeno" style="padding:4px 8px;font-size:11.5px;min-height:30px;" onclick="produzirItemFilaLote('${item.tipo}', ${item.id}, ${item.produto_id}, ${item.quantidade_a_imprimir}, '${esc(item.peca_nome)}')" title="Registrar lote completo ou personalizado">
+                            + Lote
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+async function produzirItemFilaRapido(tipo, id, delta) {
+    try {
+        if (tipo === 'simples') {
+            const r = await App.api('api/fabrica_pecas.php?acao=registrar_producao_simples', 'POST', {
+                produto_id: id,
+                quantidade: delta
+            });
+            App.toast(r.mensagem || `+${delta} produto impresso!`);
+        } else {
+            const r = await App.api('api/fabrica_pecas.php?acao=registrar_producao_peca', 'POST', {
+                peca_id: id,
+                quantidade: delta
+            });
+            App.toast(r.mensagem || `+${delta} peça impressa! Filamento descontado.`);
+        }
+        await carregarPecasFabrica();
+        if (abaAtual === 'imprimir') {
+            filaImpressaoCarregada = dadosPecasCarregados.fila_impressao || [];
+            renderizarFilaImpressao();
+            atualizarPillsFila();
+        }
+        atualizarContador();
+    } catch (e) {
+        App.toast(e.message, 'erro');
+    }
+}
+
+async function produzirSimplesRapido(prodId, qtd) {
+    try {
+        const r = await App.api('api/fabrica_pecas.php?acao=registrar_producao_simples', 'POST', {
+            produto_id: prodId,
+            quantidade: qtd
+        });
+        App.toast(r.mensagem || `+${qtd} unidade(s) impressa(s)!`);
+        await carregarPecasFabrica();
+        if (abaAtual === 'imprimir') {
+            filaImpressaoCarregada = dadosPecasCarregados.fila_impressao || [];
+            renderizarFilaImpressao();
+            atualizarPillsFila();
+        }
+        atualizarContador();
+    } catch (e) {
+        App.toast(e.message, 'erro');
+    }
+}
+
+function produzirItemFilaLote(tipo, id, prodId, qtdFalta, nome) {
+    if (tipo === 'simples') {
+        const val = prompt(`Quantas unidades de "${nome}" foram impressas?`, String(qtdFalta || 1));
+        const num = parseInt(val, 10);
+        if (num && num > 0) {
+            produzirSimplesRapido(id, num);
+        }
+    } else {
+        abrirModalProduzirPeca(id, prodId);
+    }
+}
+
+// ============================================================
 // Eventos
 // ============================================================
 document.querySelectorAll('.aba').forEach(b => b.addEventListener('click', () => mostrarAba(b.dataset.aba)));
@@ -1424,6 +1873,26 @@ $('btnNovaOrdemEstoque').addEventListener('click', () => FormPedido.abrir({
     tipo: 'estoque',
     aoSalvar: () => mostrarAba('fabricar'),
 }));
+
+// Eventos da aba O Que Imprimir
+if ($('imprimirBusca')) $('imprimirBusca').addEventListener('input', renderizarFilaImpressao);
+if ($('imprimirFiltroCor')) $('imprimirFiltroCor').addEventListener('change', renderizarFilaImpressao);
+if ($('imprimirFiltroUrgencia')) $('imprimirFiltroUrgencia').addEventListener('change', e => filtrarFilaUrgencia(e.target.value));
+if ($('imprimirFiltroTipo')) $('imprimirFiltroTipo').addEventListener('change', renderizarFilaImpressao);
+if ($('btnImprimirLimparFiltros')) {
+    $('btnImprimirLimparFiltros').addEventListener('click', () => {
+        if ($('imprimirBusca')) $('imprimirBusca').value = '';
+        if ($('imprimirFiltroCor')) $('imprimirFiltroCor').value = '';
+        if ($('imprimirFiltroTipo')) $('imprimirFiltroTipo').value = '';
+        filtrarFilaUrgencia('');
+    });
+}
+if ($('btnImprimirAtualizar')) $('btnImprimirAtualizar').addEventListener('click', carregarFilaImpressao);
+if ($('btnImprimirGuiaFila')) $('btnImprimirGuiaFila').addEventListener('click', () => window.print());
+
+document.querySelectorAll('#pillsFiltrosImprimir .pill-filtro').forEach(btn => {
+    btn.addEventListener('click', () => filtrarFilaUrgencia(btn.dataset.urgencia || ''));
+});
 
 // Eventos da aba de Peças
 $('pecaBusca').addEventListener('input', renderizarPecasFabrica);
@@ -1496,8 +1965,19 @@ window.definirSaldoPeca = definirSaldoPeca;
 window.montarAgora = montarAgora;
 window.filtrarBancada = filtrarBancada;
 
+// Novas funções da fila e situação
+window.abrirModalSituacaoProduto = abrirModalSituacaoProduto;
+window.carregarFilaImpressao = carregarFilaImpressao;
+window.renderizarFilaImpressao = renderizarFilaImpressao;
+window.filtrarFilaUrgencia = filtrarFilaUrgencia;
+window.produzirItemFilaRapido = produzirItemFilaRapido;
+window.produzirSimplesRapido = produzirSimplesRapido;
+window.produzirItemFilaLote = produzirItemFilaLote;
+
 carregarProdutosFiltro();
-const abaInicial = location.hash === '#pecas' ? 'pecas' : (location.hash === '#fabricar' ? 'fabricar' : 'pedidos');
+const hash = (location.hash || '').replace('#', '');
+const abaInicial = ['imprimir', 'pecas', 'fabricar', 'pedidos'].includes(hash) ? hash : 'imprimir';
 mostrarAba(abaInicial);
 atualizarHeroKpis();
+
 

@@ -342,39 +342,163 @@ if ($method === 'POST') {
         }
     }
 
+    // 6. Registrar produção de produto simples (ou impressão direta de produto)
+    if ($acao === 'registrar_producao_simples') {
+        $b = readJsonBody();
+        $produtoId = (int) ($b['produto_id'] ?? 0);
+        $qtd = max(1, (int) ($b['quantidade'] ?? 1));
+
+        if (!$produtoId) jsonError('Informe o produto.');
+
+        $pdo->beginTransaction();
+        try {
+            $stmtP = $pdo->prepare("SELECT id, nome, tipo, estoque, peso_gramas, tempo_producao_segundos FROM produtos WHERE id = :id FOR UPDATE");
+            $stmtP->execute(['id' => $produtoId]);
+            $prod = $stmtP->fetch();
+            if (!$prod) throw new Exception('Produto não encontrado.');
+
+            // Busca pedidos em aberto demandando esse produto
+            $stmtItens = $pdo->prepare("
+                SELECT pi.id, pi.pedido_id, pi.quantidade, pi.quantidade_produzida, pi.cor_variacao, pi.variacoes_json, p.tipo AS pedido_tipo
+                FROM pedido_itens pi
+                JOIN pedidos p ON p.id = pi.pedido_id
+                WHERE pi.produto_id = :pid AND p.status IN ('aberto', 'em_producao') AND pi.quantidade > pi.quantidade_produzida
+                ORDER BY p.data_entrega_prometida ASC, p.id ASC
+                FOR UPDATE
+            ");
+            $stmtItens->execute(['pid' => $produtoId]);
+            $itensPendentes = $stmtItens->fetchAll();
+
+            $qtdRestante = $qtd;
+            $pedidosAfetados = [];
+
+            foreach ($itensPendentes as $item) {
+                if ($qtdRestante <= 0) break;
+                $falta = (int)$item['quantidade'] - (int)$item['quantidade_produzida'];
+                $aplicar = min($falta, $qtdRestante);
+
+                $contextoItem = [
+                    'cor_variacao' => $item['cor_variacao'] ?? null,
+                    'variacoes_json' => $item['variacoes_json'] ?? null,
+                    'pedido_item_id' => (int) $item['id'],
+                ];
+
+                // Produz e consome filamento
+                produzirProdutoPronto($pdo, $produtoId, $aplicar, $usuario['id'], "Produção via Fila de Impressão 3D (Pedido #{$item['pedido_id']})", $contextoItem);
+
+                // Registra em producoes
+                $pdo->prepare("
+                    INSERT INTO producoes (pedido_item_id, data_producao, quantidade, usuario_id, observacoes)
+                    VALUES (:pedido_item_id, :data_producao, :quantidade, :usuario_id, :observacoes)
+                ")->execute([
+                    'pedido_item_id' => $item['id'],
+                    'data_producao' => date('Y-m-d'),
+                    'quantidade' => $aplicar,
+                    'usuario_id' => $usuario['id'],
+                    'observacoes' => "Fila de impressão rápida da fábrica",
+                ]);
+
+                // Atualiza item do pedido
+                $pdo->prepare("UPDATE pedido_itens SET quantidade_produzida = quantidade_produzida + :q WHERE id = :id")
+                    ->execute(['q' => $aplicar, 'id' => $item['id']]);
+
+                recalcularStatusPedido($pdo, (int)$item['pedido_id']);
+                $pedidosAfetados[] = $item['pedido_id'];
+                $qtdRestante -= $aplicar;
+            }
+
+            // Se produziu mais do que a demanda aberta, incrementa o estoque pronto do produto
+            if ($qtdRestante > 0) {
+                produzirProdutoPronto($pdo, $produtoId, $qtdRestante, $usuario['id'], "Produção avulsa / para estoque via Fila de Impressão");
+            }
+
+            $stmtNovoEstoque = $pdo->prepare("SELECT estoque FROM produtos WHERE id = :id");
+            $stmtNovoEstoque->execute(['id' => $produtoId]);
+            $novoEstoque = (int)$stmtNovoEstoque->fetchColumn();
+
+            $pdo->commit();
+
+            jsonResponse([
+                'ok' => true,
+                'mensagem' => sprintf('%d un. de "%s" produzida(s) com sucesso!', $qtd, $prod['nome']),
+                'produto_id' => $produtoId,
+                'novo_estoque' => $novoEstoque,
+                'pedidos_afetados' => array_unique($pedidosAfetados),
+            ]);
+        } catch (Exception $e) {
+            $pdo->rollBack();
+            jsonError($e->getMessage());
+        }
+    }
+
     jsonError('Ação não suportada.', 405);
 }
 
 // ------------------------------------------------------------
 // GET /api/fabrica_pecas.php
 // A bancada inteira: por produto, as peças (com saldo da peça e cores/gramas)
-// e fila de impressão, quanto dá para montar agora e o que trava.
+// e a Fila de Impressão 3D consolidada (o que a fábrica deve imprimir).
 // ------------------------------------------------------------
 if ($method === 'GET') {
-    $sqlPedidos = "
+    // Pedidos detalhados abertos
+    $stmtItensAbertos = $pdo->query("
         SELECT
             pi.produto_id,
-            SUM(pi.quantidade - pi.quantidade_produzida) AS demanda_bruta,
-            MIN(p.data_entrega_prometida) AS proxima_entrega,
-            COUNT(DISTINCT pi.pedido_id) AS qtd_pedidos
+            pi.pedido_id,
+            p.data_entrega_prometida,
+            p.tipo AS pedido_tipo,
+            c.nome AS cliente_nome,
+            (pi.quantidade - pi.quantidade_produzida) AS item_restante,
+            pi.cor_variacao
         FROM pedido_itens pi
         INNER JOIN pedidos p ON p.id = pi.pedido_id
+        LEFT JOIN clientes c ON c.id = p.cliente_id
         WHERE p.status IN ('aberto', 'em_producao')
           AND pi.quantidade > pi.quantidade_produzida
-        GROUP BY pi.produto_id
-    ";
-    $demanda = [];
-    foreach ($pdo->query($sqlPedidos)->fetchAll() as $row) {
-        $demanda[(int) $row['produto_id']] = $row;
-    }
+        ORDER BY p.data_entrega_prometida ASC, pi.id ASC
+    ");
+    $itensAbertos = $stmtItensAbertos->fetchAll();
 
+    $demanda = [];
+    $pedidosPorProduto = [];
+    foreach ($itensAbertos as $row) {
+        $pid = (int) $row['produto_id'];
+        if (!isset($demanda[$pid])) {
+            $demanda[$pid] = [
+                'demanda_bruta' => 0,
+                'proxima_entrega' => $row['data_entrega_prometida'],
+                'pedidos_set' => [],
+            ];
+        }
+        $demanda[$pid]['demanda_bruta'] += (int) $row['item_restante'];
+        $demanda[$pid]['pedidos_set'][$row['pedido_id']] = true;
+        if ($row['data_entrega_prometida'] && (!$demanda[$pid]['proxima_entrega'] || $row['data_entrega_prometida'] < $demanda[$pid]['proxima_entrega'])) {
+            $demanda[$pid]['proxima_entrega'] = $row['data_entrega_prometida'];
+        }
+
+        $pedidosPorProduto[$pid][] = [
+            'pedido_id' => (int) $row['pedido_id'],
+            'cliente' => $row['pedido_tipo'] === 'estoque' ? 'Estoque' : ($row['cliente_nome'] ?: 'Cliente'),
+            'entrega' => $row['data_entrega_prometida'],
+            'quantidade' => (int) $row['item_restante'],
+            'cor' => $row['cor_variacao'] ?: null,
+        ];
+    }
+    foreach ($demanda as $pid => &$d) {
+        $d['qtd_pedidos'] = count($d['pedidos_set']);
+        unset($d['pedidos_set']);
+    }
+    unset($d);
+
+    // Peças cadastradas dos produtos compostos
     $pecasLinhas = $pdo->query("
         SELECT
             pp.id AS peca_id, pp.produto_id, pp.nome AS peca_nome,
             pp.quantidade AS por_unidade, pp.estoque AS peca_estoque, pp.foto AS peca_foto,
             pp.peso_gramas AS peca_peso, pp.tempo_producao_segundos AS peca_tempo,
-            prod.nome AS produto_nome, prod.estoque AS estoque_produto_pronto,
-            prod.ativo AS produto_ativo, prod.foto AS produto_foto
+            prod.nome AS produto_nome, prod.tipo AS produto_tipo, prod.estoque AS estoque_produto_pronto,
+            prod.ativo AS produto_ativo, prod.foto AS produto_foto,
+            prod.peso_gramas AS prod_peso_total, prod.tempo_producao_segundos AS prod_tempo_total
         FROM produto_pecas pp
         INNER JOIN produtos prod ON prod.id = pp.produto_id
         ORDER BY prod.nome ASC, pp.id ASC
@@ -398,7 +522,9 @@ if ($method === 'GET') {
     $totalAImprimir = 0;
     $totalEstoquePecas = 0;
     $pecasComFila = 0;
+    $filaImpressao = [];
 
+    // 1. Processa produtos compostos (que possuem peças em produto_pecas)
     foreach ($pecasLinhas as $l) {
         $pid = (int) $l['produto_id'];
 
@@ -410,6 +536,7 @@ if ($method === 'GET') {
             $produtos[$pid] = [
                 'id' => $pid,
                 'nome' => $l['produto_nome'],
+                'tipo' => $l['produto_tipo'] ?: 'composto',
                 'foto' => $l['produto_foto'],
                 'ativo' => (int) $l['produto_ativo'],
                 'estoque' => $estoquePronto,
@@ -417,9 +544,11 @@ if ($method === 'GET') {
                 'demanda_liquida' => max(0, $demandaBruta - $estoquePronto),
                 'qtd_pedidos' => $d ? (int) $d['qtd_pedidos'] : 0,
                 'proxima_entrega' => $d['proxima_entrega'] ?? null,
+                'pedidos_detalhe' => $pedidosPorProduto[$pid] ?? [],
                 'montavel' => PHP_INT_MAX,
                 'gargalos' => [],
                 'pecas' => [],
+                'is_simples' => false,
             ];
         }
 
@@ -439,8 +568,23 @@ if ($method === 'GET') {
 
         $proxima = $produtos[$pid]['proxima_entrega'];
         $status = 'ok';
+        $urgencia = 'normal';
         if ($aImprimir > 0) {
-            $status = ($proxima && $proxima <= date('Y-m-d')) ? 'urgente' : 'imprimir';
+            $hoje = date('Y-m-d');
+            $amanha = date('Y-m-d', strtotime('+1 day'));
+            if ($proxima && $proxima < $hoje) {
+                $status = 'urgente';
+                $urgencia = 'atrasado';
+            } elseif ($proxima && $proxima <= $amanha) {
+                $status = 'urgente';
+                $urgencia = 'hoje';
+            } elseif ($proxima) {
+                $status = 'imprimir';
+                $urgencia = 'proximo';
+            } else {
+                $status = 'imprimir';
+                $urgencia = 'estoque';
+            }
         }
 
         $tempoPeca1un = (int) ($l['peca_tempo'] ?? 0);
@@ -450,7 +594,17 @@ if ($method === 'GET') {
         $tempoFilaSegundos = (int) round($tempoUnitario * $aImprimir);
         $pesoFilaGramas = round($pesoUnitario * $aImprimir, 2);
 
-        $produtos[$pid]['pecas'][] = [
+        $coresFormatadas = array_map(fn($c) => [
+            'cor_id' => (int) $c['cor_id'],
+            'cor' => trim((string) $c['cor']) === '' ? null : $c['cor'],
+            'foto' => $c['foto'],
+            'estoque' => $estoquePeca,
+            'peso_gramas' => $c['peso_gramas'] !== null ? (float) $c['peso_gramas'] : null,
+            'tempo_producao_segundos' => $c['tempo_producao_segundos'] !== null ? (int) $c['tempo_producao_segundos'] : null,
+            'tempo_formatado' => $c['tempo_producao_segundos'] !== null ? formatarTempoHHMMSS((int)$c['tempo_producao_segundos']) : null,
+        ], $cores);
+
+        $pecaInfo = [
             'peca_id' => (int) $l['peca_id'],
             'nome' => $l['peca_nome'],
             'foto' => $l['peca_foto'],
@@ -467,33 +621,186 @@ if ($method === 'GET') {
             'a_imprimir' => $aImprimir,
             'sobra_estoque' => max(0, $estoquePeca - $necessario),
             'status' => $status,
-            'cores' => array_map(fn($c) => [
-                'cor_id' => (int) $c['cor_id'],
-                'cor' => trim((string) $c['cor']) === '' ? null : $c['cor'],
-                'foto' => $c['foto'],
-                'estoque' => $estoquePeca,
-                'peso_gramas' => $c['peso_gramas'] !== null ? (float) $c['peso_gramas'] : null,
-                'tempo_producao_segundos' => $c['tempo_producao_segundos'] !== null ? (int) $c['tempo_producao_segundos'] : null,
-                'tempo_formatado' => $c['tempo_producao_segundos'] !== null ? formatarTempoHHMMSS((int)$c['tempo_producao_segundos']) : null,
-            ], $cores),
+            'urgencia' => $urgencia,
+            'cores' => $coresFormatadas,
         ];
+
+        $produtos[$pid]['pecas'][] = $pecaInfo;
+
+        // Se falta imprimir essa peça, adiciona à Fila Prática de Impressão
+        if ($aImprimir > 0) {
+            $corPrincipal = !empty($coresFormatadas) ? ($coresFormatadas[0]['cor'] ?? null) : null;
+            $filaImpressao[] = [
+                'id' => 'peca_' . $l['peca_id'],
+                'tipo' => 'peca',
+                'peca_id' => (int) $l['peca_id'],
+                'produto_id' => $pid,
+                'produto_nome' => $l['produto_nome'],
+                'item_nome' => $l['peca_nome'],
+                'peca_nome' => $l['peca_nome'],
+                'foto' => $l['peca_foto'] ?: $l['produto_foto'],
+                'a_imprimir' => $aImprimir,
+                'quantidade_a_imprimir' => $aImprimir,
+                'estoque' => $estoquePeca,
+                'estoque_atual' => $estoquePeca,
+                'por_unidade' => $porUnidade,
+                'unidades_por_produto' => $porUnidade,
+                'necessario' => $necessario,
+                'necessario_pedidos' => $necessario,
+                'tempo_1un_segundos' => $tempoPeca1un,
+                'tempo_1un_formatado' => formatarTempoHHMMSS($tempoPeca1un),
+                'tempo_unitario_formatado' => formatarTempoHHMMSS($tempoPeca1un),
+                'tempo_total_segundos' => $tempoFilaSegundos,
+                'tempo_total_formatado' => formatarTempoHHMMSS($tempoFilaSegundos),
+                'peso_1un_gramas' => $pesoPeca1un,
+                'peso_unitario_gramas' => $pesoPeca1un,
+                'peso_total_gramas' => $pesoFilaGramas,
+                'cor' => $corPrincipal,
+                'cores' => $coresFormatadas,
+                'proxima_entrega' => $produtos[$pid]['proxima_entrega'],
+                'urgencia' => $urgencia,
+                'urgencia_tag' => $urgencia,
+                'pedidos' => $pedidosPorProduto[$pid] ?? [],
+            ];
+        }
+    }
+
+    // 2. Processa produtos simples (sem peças cadastradas) que possuem demanda aberta ou pedidos
+    $idsCompostos = array_keys($produtos);
+    $clausulaNot = $idsCompostos ? ('AND id NOT IN (' . implode(',', $idsCompostos) . ')') : '';
+    $stmtSimples = $pdo->query("
+        SELECT id, nome, tipo, foto, ativo, estoque, peso_gramas, tempo_producao_segundos
+        FROM produtos
+        WHERE (ativo = 1 OR id IN (SELECT DISTINCT produto_id FROM pedido_itens))
+        $clausulaNot
+        ORDER BY nome ASC
+    ");
+    $produtosSimples = $stmtSimples->fetchAll();
+
+    // Carrega cores de produtos simples (produto_cores)
+    $stmtCoresSimples = $pdo->query("SELECT id, produto_id, cor, peso_gramas, tempo_producao_segundos FROM produto_cores ORDER BY id ASC");
+    $coresPorProdSimples = [];
+    foreach ($stmtCoresSimples->fetchAll() as $cs) {
+        $coresPorProdSimples[(int)$cs['produto_id']][] = [
+            'cor_id' => (int)$cs['id'],
+            'cor' => $cs['cor'],
+            'peso_gramas' => (float)$cs['peso_gramas'],
+            'tempo_producao_segundos' => (int)$cs['tempo_producao_segundos'],
+            'tempo_formatado' => formatarTempoHHMMSS((int)$cs['tempo_producao_segundos']),
+        ];
+    }
+
+    foreach ($produtosSimples as $ps) {
+        $pid = (int) $ps['id'];
+        $d = $demanda[$pid] ?? null;
+        $demandaBruta = $d ? (int) $d['demanda_bruta'] : 0;
+        $estoquePronto = (int) $ps['estoque'];
+        $demandaLiquida = max(0, $demandaBruta - $estoquePronto);
+
+        // Se não tem demanda e estoque é 0 e não está ativo, ignora
+        if ($demandaBruta <= 0 && $estoquePronto <= 0 && !(int)$ps['ativo']) continue;
+
+        $proxima = $d['proxima_entrega'] ?? null;
+        $urgencia = 'normal';
+        if ($demandaLiquida > 0) {
+            $hoje = date('Y-m-d');
+            $amanha = date('Y-m-d', strtotime('+1 day'));
+            if ($proxima && $proxima < $hoje) $urgencia = 'atrasado';
+            elseif ($proxima && $proxima <= $amanha) $urgencia = 'hoje';
+            elseif ($proxima) $urgencia = 'proximo';
+            else $urgencia = 'estoque';
+        }
+
+        $tempo1un = (int) ($ps['tempo_producao_segundos'] ?? 0);
+        $peso1un = (float) ($ps['peso_gramas'] ?? 0);
+        $tempoFila = $tempo1un * $demandaLiquida;
+        $pesoFila = round($peso1un * $demandaLiquida, 2);
+
+        $coresProd = $coresPorProdSimples[$pid] ?? [];
+
+        $produtos[$pid] = [
+            'id' => $pid,
+            'nome' => $ps['nome'],
+            'tipo' => $ps['tipo'] ?: 'simples',
+            'foto' => $ps['foto'],
+            'ativo' => (int) $ps['ativo'],
+            'estoque' => $estoquePronto,
+            'em_producao' => $demandaBruta,
+            'demanda_liquida' => $demandaLiquida,
+            'qtd_pedidos' => $d ? (int) $d['qtd_pedidos'] : 0,
+            'proxima_entrega' => $proxima,
+            'pedidos_detalhe' => $pedidosPorProduto[$pid] ?? [],
+            'montavel' => $estoquePronto,
+            'gargalos' => $demandaLiquida > 0 ? [$ps['nome']] : [],
+            'pecas' => [],
+            'is_simples' => true,
+            'total_pecas_por_unidade' => 1,
+            'total_a_imprimir' => $demandaLiquida,
+            'tempo_fila_segundos' => $tempoFila,
+            'tempo_fila_formatado' => formatarTempoHHMMSS($tempoFila),
+            'peso_fila_gramas' => $pesoFila,
+            'tempo_un_formatado' => formatarTempoHHMMSS($tempo1un),
+            'peso_un_gramas' => $peso1un,
+            'cores' => $coresProd,
+        ];
+
+        if ($demandaLiquida > 0) {
+            $totalAImprimir += $demandaLiquida;
+            $pecasComFila++;
+
+            $corPrincipal = !empty($coresProd) ? ($coresProd[0]['cor'] ?? null) : null;
+            $filaImpressao[] = [
+                'id' => 'prod_' . $pid,
+                'tipo' => 'simples',
+                'peca_id' => 0,
+                'produto_id' => $pid,
+                'produto_nome' => $ps['nome'],
+                'item_nome' => $ps['nome'],
+                'peca_nome' => $ps['nome'],
+                'foto' => $ps['foto'],
+                'a_imprimir' => $demandaLiquida,
+                'quantidade_a_imprimir' => $demandaLiquida,
+                'estoque' => $estoquePronto,
+                'estoque_atual' => $estoquePronto,
+                'por_unidade' => 1,
+                'unidades_por_produto' => 1,
+                'necessario' => $demandaBruta,
+                'necessario_pedidos' => $demandaBruta,
+                'tempo_1un_segundos' => $tempo1un,
+                'tempo_1un_formatado' => formatarTempoHHMMSS($tempo1un),
+                'tempo_unitario_formatado' => formatarTempoHHMMSS($tempo1un),
+                'tempo_total_segundos' => $tempoFila,
+                'tempo_total_formatado' => formatarTempoHHMMSS($tempoFila),
+                'peso_1un_gramas' => $peso1un,
+                'peso_unitario_gramas' => $peso1un,
+                'peso_total_gramas' => $pesoFila,
+                'cor' => $corPrincipal,
+                'cores' => $coresProd,
+                'proxima_entrega' => $proxima,
+                'urgencia' => $urgencia,
+                'urgencia_tag' => $urgencia,
+                'pedidos' => $pedidosPorProduto[$pid] ?? [],
+            ];
+        }
     }
 
     $lista = [];
     $totalMontavel = 0;
     foreach ($produtos as $p) {
-        $p['montavel'] = $p['montavel'] === PHP_INT_MAX ? 0 : $p['montavel'];
-        foreach ($p['pecas'] as $peca) {
-            if ($peca['rende'] === $p['montavel']) {
-                $p['gargalos'][] = $peca['nome'];
+        if (!$p['is_simples']) {
+            $p['montavel'] = $p['montavel'] === PHP_INT_MAX ? 0 : $p['montavel'];
+            foreach ($p['pecas'] as $peca) {
+                if ($peca['rende'] === $p['montavel']) {
+                    $p['gargalos'][] = $peca['nome'];
+                }
             }
+            $p['total_pecas_por_unidade'] = array_sum(array_column($p['pecas'], 'por_unidade'));
+            $p['total_a_imprimir'] = array_sum(array_column($p['pecas'], 'a_imprimir'));
+            $tempoFilaProd = array_sum(array_column($p['pecas'], 'tempo_fila_segundos'));
+            $p['tempo_fila_segundos'] = $tempoFilaProd;
+            $p['tempo_fila_formatado'] = formatarTempoHHMMSS($tempoFilaProd);
+            $p['peso_fila_gramas'] = round(array_sum(array_column($p['pecas'], 'peso_fila_gramas')), 2);
         }
-        $p['total_pecas_por_unidade'] = array_sum(array_column($p['pecas'], 'por_unidade'));
-        $p['total_a_imprimir'] = array_sum(array_column($p['pecas'], 'a_imprimir'));
-        $tempoFilaProd = array_sum(array_column($p['pecas'], 'tempo_fila_segundos'));
-        $p['tempo_fila_segundos'] = $tempoFilaProd;
-        $p['tempo_fila_formatado'] = formatarTempoHHMMSS($tempoFilaProd);
-        $p['peso_fila_gramas'] = round(array_sum(array_column($p['pecas'], 'peso_fila_gramas')), 2);
 
         $totalMontavel += $p['montavel'];
         $lista[] = $p;
@@ -509,14 +816,28 @@ if ($method === 'GET') {
         return strcmp($a['nome'], $b['nome']);
     });
 
-    $totalTempoFilaGeral = array_sum(array_column($lista, 'tempo_fila_segundos'));
-    $totalPesoFilaGeral = round(array_sum(array_column($lista, 'peso_fila_gramas')), 2);
+    // Ordena a fila de impressão por urgência
+    $ordemUrgencia = ['atrasado' => 1, 'hoje' => 2, 'proximo' => 3, 'normal' => 4, 'estoque' => 5];
+    usort($filaImpressao, function ($a, $b) use ($ordemUrgencia) {
+        $uA = $ordemUrgencia[$a['urgencia']] ?? 9;
+        $uB = $ordemUrgencia[$b['urgencia']] ?? 9;
+        if ($uA !== $uB) return $uA <=> $uB;
+        if ($a['proxima_entrega'] && $b['proxima_entrega']) {
+            $cmp = strcmp($a['proxima_entrega'], $b['proxima_entrega']);
+            if ($cmp !== 0) return $cmp;
+        }
+        return strcmp($a['item_nome'], $b['item_nome']);
+    });
+
+    $totalTempoFilaGeral = array_sum(array_column($filaImpressao, 'tempo_total_segundos'));
+    $totalPesoFilaGeral = round(array_sum(array_column($filaImpressao, 'peso_total_gramas')), 2);
+    $totalItensFila = array_sum(array_column($filaImpressao, 'a_imprimir'));
 
     jsonResponse([
         'resumo' => [
             'total_produtos' => count($lista),
-            'pecas_com_fila' => $pecasComFila,
-            'total_a_imprimir' => $totalAImprimir,
+            'pecas_com_fila' => count($filaImpressao),
+            'total_a_imprimir' => $totalItensFila,
             'total_estoque' => $totalEstoquePecas,
             'total_montavel' => $totalMontavel,
             'total_tempo_fila_segundos' => $totalTempoFilaGeral,
@@ -524,5 +845,7 @@ if ($method === 'GET') {
             'total_peso_fila_gramas' => $totalPesoFilaGeral,
         ],
         'produtos' => $lista,
+        'fila_impressao' => $filaImpressao,
     ]);
 }
+

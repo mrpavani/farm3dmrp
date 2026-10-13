@@ -5,7 +5,7 @@
 // ============================================================
 
 $host = $_SERVER['HTTP_HOST'] ?? '';
-$isLocal = ($host === 'localhost' || $host === '127.0.0.1' || strpos($host, 'localhost:') === 0 || php_sapi_name() === 'cli');
+$isLocal = ($host === 'localhost' || $host === '127.0.0.1' || strpos($host, 'localhost') !== false || strpos($host, '127.0.0.1') !== false || php_sapi_name() === 'cli');
 
 if ($isLocal) {
     // Credenciais para desenvolvimento local

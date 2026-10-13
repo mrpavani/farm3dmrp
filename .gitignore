@@ -40,6 +40,9 @@ ehthumbs.db
 Thumbs.db
 Desktop.ini
 
+# arquivos em construção
+/comercial
+
 # Logs de erros
 *.log
 error_log

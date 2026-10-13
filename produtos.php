@@ -439,8 +439,11 @@ require __DIR__ . '/includes/header.php';
         </div>
 
         <div class="modal-corpo">
+            <!-- Aviso quando o produto for Simples (sem peças/BOM) -->
+            <div id="bomAvisoProdutoSimples" style="display:none;margin-bottom:12px;"></div>
+
             <!-- Ações Rápidas: Montagem e Simulação em Linha Única -->
-            <div class="bom-acoes-linha">
+            <div class="bom-acoes-linha" id="bomSecaoMontarLinha">
                 <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                     <strong>Montar agora:</strong>
                     <input type="number" id="qtdMontagemExecutar" min="1" value="1" style="width: 70px; height: 30px; text-align: center; margin: 0;">
@@ -460,7 +463,7 @@ require __DIR__ . '/includes/header.php';
             <div id="painelPrevisaoMeta" style="background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 12px; margin-bottom: 10px; font-size: 12.5px; display: flex; flex-direction: column; gap: 4px;"></div>
 
             <!-- Tabela de Diagnóstico / Peças -->
-            <div class="tabela-rolagem" style="margin-bottom: 14px; max-height: 200px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius-sm);">
+            <div id="bomContainerTabelaPecas" class="tabela-rolagem" style="margin-bottom: 14px; max-height: 200px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius-sm);">
                 <table>
                     <thead style="position: sticky; top: 0; z-index: 2;">
                         <tr>
@@ -480,8 +483,8 @@ require __DIR__ . '/includes/header.php';
             </div>
 
             <!-- Editor da Ficha Técnica -->
-            <details style="border-top: 1px solid var(--border); padding-top: 10px; margin-top: 6px;" open>
-                <summary style="font-weight: 700; cursor: pointer; color: var(--primary); padding: 4px 0; font-size: 13px;">
+            <details id="detalhesConfigurarBOM" style="border-top: 1px solid var(--border); padding-top: 10px; margin-top: 6px;" open>
+                <summary id="sumarioConfigurarBOM" style="font-weight: 700; cursor: pointer; color: var(--primary); padding: 4px 0; font-size: 13px;">
                     ⚙️ Configurar Peças e Ficha Técnica
                 </summary>
                 <div style="margin-top: 8px;">

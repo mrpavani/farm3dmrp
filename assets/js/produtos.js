@@ -75,9 +75,13 @@ function renderizar() {
             <td class="num">${App.fmtInt.format(p.qtd_pedidos)}</td>
             <td class="col-acoes">
                 <div class="acoes-icones">
-                    ${App.botaoIcone('ficha', 'Ficha Técnica & Montagem (Peças)', `abrirFicha(${p.id})`, 'primario')}
+                    ${p.tipo === 'composto'
+                        ? App.botaoIcone('ficha', 'Ficha Técnica & Montagem (Peças)', `abrirFicha(${p.id})`, 'primario')
+                        : App.botaoIcone('editar', 'Editar Produto', `editar(${p.id})`, 'primario')}
                     ${App.botaoIcone('custos', 'Custos & Formação de Preço de Venda', `abrirCustosProduto(${p.id})`, 'sucesso')}
-                    ${App.botaoIcone('editar', 'Editar', `editar(${p.id})`)}
+                    ${p.tipo === 'composto'
+                        ? App.botaoIcone('editar', 'Editar', `editar(${p.id})`)
+                        : App.botaoIcone('ficha', 'Ver Estrutura / Ficha Técnica', `abrirFicha(${p.id})`)}
                     ${ativo
                         ? App.botaoIcone('desativar', 'Desativar', `alternarAtivo(${p.id}, false)`, 'alerta')
                         : App.botaoIcone('ativar', 'Ativar', `alternarAtivo(${p.id}, true)`, 'sucesso')}
@@ -1223,7 +1227,8 @@ async function abrirFicha(id) {
                 })),
         }));
 
-        if (!bomLinhasEditor.length) {
+        const ehSimples = (bomData.produto.tipo === 'simples' || bomData.is_simples);
+        if (!ehSimples && !bomLinhasEditor.length) {
             bomLinhasEditor.push(novaLinhaPeca());
         }
         renderizarEditorBOM();
@@ -1244,8 +1249,59 @@ const novaLinhaCor = () => ({ cor_id: 0, cor: '', peso_gramas: null, tempo_produ
 function renderizarDiagnosticoBOM(data) {
     const kpiBox = $('kpiCapacidadeBox');
     const cap = data.capacidade_maxima || 0;
-    $('kpiCapacidadeQtd').textContent = cap;
+    const ehSimples = Boolean(data.produto.tipo === 'simples' || data.is_simples);
+
+    $('kpiCapacidadeQtd').textContent = ehSimples ? (data.produto.estoque || 0) : cap;
     $('kpiEstoquePronto').textContent = data.produto.estoque || 0;
+
+    const avisoSimples = $('bomAvisoProdutoSimples');
+    const containerTabela = $('bomContainerTabelaPecas');
+    const secaoMontar = $('bomSecaoMontarLinha');
+    const detalhesConfig = $('detalhesConfigurarBOM');
+    const sumarioConfig = $('sumarioConfigurarBOM');
+
+    if (ehSimples) {
+        if (avisoSimples) {
+            avisoSimples.style.display = 'block';
+            avisoSimples.innerHTML = `
+                <div style="background:var(--surface-2);border:1px solid var(--border);border-left:4px solid var(--primary);border-radius:var(--radius-sm);padding:14px 18px;">
+                    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+                        <div>
+                            <div style="display:flex;align-items:center;gap:8px;">
+                                <span class="badge-tipo simples" style="font-size:12px;">🔹 Produto Simples (Peça Única)</span>
+                                <strong style="font-size:15px;color:var(--text);">${esc(data.produto.nome)}</strong>
+                            </div>
+                            <p style="margin:6px 0 0 0;font-size:12.5px;color:var(--text-2);line-height:1.5;">
+                                Este produto é fabricado em <b>peça única diretamente na impressora 3D</b> (sem necessidade de montagem de sub-peças).<br>
+                                O estoque e as ordens são atualizados diretamente quando impresso na fábrica.
+                            </p>
+                            <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;font-size:12.5px;color:var(--text);">
+                                <span>⏱️ <b>Tempo de Impressão:</b> ${data.produto.tempo_producao_formatado || '—'}</span>
+                                <span>⚖️ <b>Filamento:</b> ${data.produto.peso_gramas > 0 ? (data.produto.peso_gramas + ' g') : '—'}</span>
+                                <span>📦 <b>Estoque Atual:</b> ${App.fmtInt.format(data.produto.estoque || 0)} un</span>
+                                <span>💰 <b>Preço:</b> ${App.moeda(data.produto.preco || 0)}</span>
+                            </div>
+                        </div>
+                        <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">
+                            <button type="button" class="primario pequeno" onclick="App.modal.fechar('modalComposicao'); editar(${data.produto.id});" style="font-weight:600;">
+                                ✏️ Editar Cadastro do Produto
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        if (containerTabela) containerTabela.style.display = 'none';
+        if (secaoMontar) secaoMontar.style.display = 'none';
+        if (detalhesConfig) detalhesConfig.open = false;
+        if (sumarioConfig) sumarioConfig.innerHTML = '⚙️ Deseja converter em Produto Composto (Montagem de Peças)? Clique aqui';
+    } else {
+        if (avisoSimples) avisoSimples.style.display = 'none';
+        if (containerTabela) containerTabela.style.display = 'block';
+        if (secaoMontar) secaoMontar.style.display = 'flex';
+        if (detalhesConfig) detalhesConfig.open = true;
+        if (sumarioConfig) sumarioConfig.innerHTML = '⚙️ Configurar Peças e Ficha Técnica';
+    }
 
     // Atualiza KPIs de Estoque Pronto com detalhe de filamento
     if ($('kpiEstoqueProntoSub')) {
@@ -1266,16 +1322,21 @@ function renderizarDiagnosticoBOM(data) {
         const coresArr = data.resumo_1un?.cores || [];
         $('kpiCores1un').innerHTML = coresArr.length
             ? coresArr.map(c => `<span style="display:inline-block;margin:1px 4px 1px 0;"><b>${esc(c.cor)}</b>: ${c.peso_gramas}g</span>`).join('· ')
-            : 'Soma das peças';
+            : (ehSimples ? 'Filamento do produto' : 'Soma das peças');
     }
     if ($('kpiTempo1un')) {
         $('kpiTempo1un').textContent = data.resumo_1un?.tempo_formatado || '00:00:00';
     }
 
     // Atualiza valor padrão do campo "Montar agora"
-    $('qtdMontagemExecutar').value = cap > 0 ? cap : 1;
+    if ($('qtdMontagemExecutar')) {
+        $('qtdMontagemExecutar').value = cap > 0 ? cap : 1;
+    }
 
-    if (cap > 0) {
+    if (ehSimples) {
+        kpiBox.className = 'card-kpi-bom destaque-verde';
+        $('kpiCapacidadeGargalo').textContent = 'Produto simples (impresso direto sem montagem)';
+    } else if (cap > 0) {
         kpiBox.className = 'card-kpi-bom destaque-verde';
         $('kpiCapacidadeGargalo').textContent = `Disponível para montagem imediata de ${cap} unidade(s).`;
     } else {
@@ -1289,7 +1350,8 @@ function renderizarDiagnosticoBOM(data) {
     // Atualiza Painel de Previsão da Meta
     const painel = $('painelPrevisaoMeta');
     const rm = data.resumo_meta;
-    if (painel && rm) {
+    if (painel && rm && !ehSimples) {
+        painel.style.display = 'flex';
         const coresFaltantes = (rm.cores_faltante || []).filter(c => c.peso_gramas > 0);
         const chipsCoresFaltantes = coresFaltantes.length
             ? coresFaltantes.map(c => `<span class="chip-cor-diag">${esc(c.cor)}: <strong>${c.peso_gramas}g</strong></span>`).join(' ')
@@ -1311,12 +1373,14 @@ function renderizarDiagnosticoBOM(data) {
                 ${chipsCoresFaltantes}
             </div>
         `;
+    } else if (painel) {
+        painel.style.display = 'none';
     }
 
     const tbody = $('tabelaDiagnosticoBOM');
     if (!data.pecas || !data.pecas.length) {
         tbody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: var(--text-3); padding: 18px;">
-            Nenhuma peça cadastrada. Cadastre as peças do produto na seção abaixo "Configurar Peças do Produto".
+            ${ehSimples ? 'Este é um produto simples e não possui peças de montagem.' : 'Nenhuma peça cadastrada. Cadastre as peças do produto na seção abaixo "Configurar Peças do Produto".'}
         </td></tr>`;
         return;
     }
