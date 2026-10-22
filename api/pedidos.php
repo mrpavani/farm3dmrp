@@ -467,20 +467,25 @@ if ($method === 'PUT') {
 
 // ------------------------------------------------------------
 // PATCH /api/pedidos.php?id=123
-// Body: { acao: "entregar" | "cancelar" | "reabrir" }
+// Body: { acao: "entregar" | "cancelar" | "reabrir" | "alocar_estoque_item" | "desalocar_estoque_item" | "alocar_estoque_pedido" }
 //   entregar -> só pedidos "pronto" (tudo produzido)
 //   cancelar -> qualquer pedido que não esteja entregue
 //   reabrir  -> pedidos entregues/cancelados voltam ao status de produção
+//   alocar_estoque_item -> vincula saldo de produtos.estoque a um pedido_item específico
+//   desalocar_estoque_item -> desvincula unidades alocadas e devolve a produtos.estoque
+//   alocar_estoque_pedido -> vincula todo o saldo de estoque disponível para os itens pendentes do pedido
 // ------------------------------------------------------------
 if ($method === 'PATCH') {
     $id = (int) ($_GET['id'] ?? 0);
     if (!$id) jsonError('Informe o id do pedido.');
-    $acao = readJsonBody()['acao'] ?? '';
+    $b = readJsonBody();
+    $acao = $b['acao'] ?? '';
 
     $pdo->beginTransaction();
     try {
         $pedido = buscarPedidoParaAlterar($pdo, $id);
         $atual = $pedido['status'];
+        $msgRetorno = null;
 
         switch ($acao) {
             case 'entregar':
@@ -518,12 +523,191 @@ if ($method === 'PATCH') {
                 if (!in_array($atual, STATUS_FINAIS, true)) throw new Exception('Só pedidos entregues ou cancelados podem ser reabertos.');
                 $novo = recalcularStatusPedido($pdo, $id, true);
                 break;
+            case 'alocar_estoque_item':
+                if (in_array($atual, STATUS_FINAIS, true)) {
+                    throw new Exception("Pedido {$atual} não pode receber estoque. Reabra-o primeiro.");
+                }
+                $itemId = (int) ($b['pedido_item_id'] ?? 0);
+                if (!$itemId) throw new Exception('Informe o item do pedido.');
+
+                $stmtItem = $pdo->prepare("
+                    SELECT pi.*, pr.nome AS produto_nome, pr.estoque AS produto_estoque
+                    FROM pedido_itens pi
+                    JOIN produtos pr ON pr.id = pi.produto_id
+                    WHERE pi.id = :item_id AND pi.pedido_id = :pedido_id
+                    FOR UPDATE
+                ");
+                $stmtItem->execute(['item_id' => $itemId, 'pedido_id' => $id]);
+                $item = $stmtItem->fetch();
+                if (!$item) throw new Exception('Item não encontrado neste pedido.');
+
+                $restante = (int) $item['quantidade'] - (int) $item['quantidade_produzida'];
+                if ($restante <= 0) {
+                    throw new Exception("O item \"{$item['produto_nome']}\" já está com a quantidade totalmente atendida.");
+                }
+
+                $disp = max(0, (int) $item['produto_estoque']);
+                if ($disp <= 0) {
+                    throw new Exception("Não há saldo disponível em estoque de \"{$item['produto_nome']}\" para vincular.");
+                }
+
+                $desejada = isset($b['quantidade']) && (int) $b['quantidade'] > 0 ? (int) $b['quantidade'] : $restante;
+                $qtdAlocar = min($desejada, $restante, $disp);
+
+                if ($qtdAlocar <= 0) {
+                    throw new Exception('Quantidade a vincular deve ser no mínimo 1.');
+                }
+
+                // 1. Baixa do estoque físico de produtos acabados
+                $pdo->prepare("UPDATE produtos SET estoque = estoque - :qtd WHERE id = :id")
+                    ->execute(['qtd' => $qtdAlocar, 'id' => $item['produto_id']]);
+
+                // 2. Incrementa quantidade_estoque e quantidade_produzida no item do pedido
+                $pdo->prepare("
+                    UPDATE pedido_itens
+                    SET quantidade_estoque = quantidade_estoque + :qtd,
+                        quantidade_produzida = quantidade_produzida + :qtd
+                    WHERE id = :id
+                ")->execute(['qtd' => $qtdAlocar, 'id' => $itemId]);
+
+                $novoEstoque = $disp - $qtdAlocar;
+
+                // 3. Registra movimentação no livro razão de estoque
+                registrarMovimento($pdo, 'pedido_atendido', [
+                    'produto_id'     => (int) $item['produto_id'],
+                    'pedido_item_id' => $itemId,
+                    'quantidade'     => -$qtdAlocar,
+                    'saldo_depois'   => $novoEstoque,
+                    'usuario_id'     => $usuario['id'],
+                    'observacoes'    => "Estoque vinculado ao pedido #$id ({$qtdAlocar} un. de \"{$item['produto_nome']}\")",
+                ]);
+
+                $novo = recalcularStatusPedido($pdo, $id);
+                $msgRetorno = "{$qtdAlocar} un. de \"{$item['produto_nome']}\" vinculada(s) do estoque com sucesso!";
+                break;
+            case 'desalocar_estoque_item':
+                if (in_array($atual, STATUS_FINAIS, true)) {
+                    throw new Exception("Pedido {$atual} não pode ter estoque alterado.");
+                }
+                $itemId = (int) ($b['pedido_item_id'] ?? 0);
+                if (!$itemId) throw new Exception('Informe o item do pedido.');
+
+                $stmtItem = $pdo->prepare("
+                    SELECT pi.*, pr.nome AS produto_nome, pr.estoque AS produto_estoque
+                    FROM pedido_itens pi
+                    JOIN produtos pr ON pr.id = pi.produto_id
+                    WHERE pi.id = :item_id AND pi.pedido_id = :pedido_id
+                    FOR UPDATE
+                ");
+                $stmtItem->execute(['item_id' => $itemId, 'pedido_id' => $id]);
+                $item = $stmtItem->fetch();
+                if (!$item) throw new Exception('Item não encontrado neste pedido.');
+
+                $qtdEstoqueItem = (int) $item['quantidade_estoque'];
+                if ($qtdEstoqueItem <= 0) {
+                    throw new Exception("Este item não possui unidades alocadas do estoque para devolver.");
+                }
+
+                $desejada = isset($b['quantidade']) && (int) $b['quantidade'] > 0 ? (int) $b['quantidade'] : $qtdEstoqueItem;
+                $qtdDesalocar = min($desejada, $qtdEstoqueItem);
+
+                // 1. Devolve ao estoque físico
+                $pdo->prepare("UPDATE produtos SET estoque = estoque + :qtd WHERE id = :id")
+                    ->execute(['qtd' => $qtdDesalocar, 'id' => $item['produto_id']]);
+
+                // 2. Reduz quantidade_estoque e quantidade_produzida
+                $pdo->prepare("
+                    UPDATE pedido_itens
+                    SET quantidade_estoque = quantidade_estoque - :qtd,
+                        quantidade_produzida = GREATEST(0, quantidade_produzida - :qtd)
+                    WHERE id = :id
+                ")->execute(['qtd' => $qtdDesalocar, 'id' => $itemId]);
+
+                $novoEstoque = (int)$item['produto_estoque'] + $qtdDesalocar;
+
+                // 3. Registra estorno no livro de movimentos
+                registrarMovimento($pdo, 'pedido_estorno', [
+                    'produto_id'     => (int) $item['produto_id'],
+                    'pedido_item_id' => $itemId,
+                    'quantidade'     => $qtdDesalocar,
+                    'saldo_depois'   => $novoEstoque,
+                    'usuario_id'     => $usuario['id'],
+                    'observacoes'    => "Desvinculação de estoque do pedido #$id ({$qtdDesalocar} un. devolvida(s) ao estoque)",
+                ]);
+
+                $novo = recalcularStatusPedido($pdo, $id);
+                $msgRetorno = "{$qtdDesalocar} un. de \"{$item['produto_nome']}\" devolvida(s) ao estoque!";
+                break;
+            case 'alocar_estoque_pedido':
+                if (in_array($atual, STATUS_FINAIS, true)) {
+                    throw new Exception("Pedido {$atual} não pode receber estoque. Reabra-o primeiro.");
+                }
+
+                $stmtItens = $pdo->prepare("
+                    SELECT pi.*, pr.nome AS produto_nome, pr.estoque AS produto_estoque
+                    FROM pedido_itens pi
+                    JOIN produtos pr ON pr.id = pi.produto_id
+                    WHERE pi.pedido_id = :pedido_id
+                    ORDER BY pi.id ASC
+                    FOR UPDATE
+                ");
+                $stmtItens->execute(['pedido_id' => $id]);
+                $itens = $stmtItens->fetchAll();
+
+                $totalAlocado = 0;
+                $detalhes = [];
+
+                foreach ($itens as $item) {
+                    $restante = (int) $item['quantidade'] - (int) $item['quantidade_produzida'];
+                    if ($restante <= 0) continue;
+
+                    // Re-consulta saldo atualizado do produto
+                    $stmtEst = $pdo->prepare("SELECT estoque FROM produtos WHERE id = :id FOR UPDATE");
+                    $stmtEst->execute(['id' => $item['produto_id']]);
+                    $disp = max(0, (int) $stmtEst->fetchColumn());
+                    if ($disp <= 0) continue;
+
+                    $qtdAlocar = min($restante, $disp);
+                    if ($qtdAlocar <= 0) continue;
+
+                    $pdo->prepare("UPDATE produtos SET estoque = estoque - :qtd WHERE id = :id")
+                        ->execute(['qtd' => $qtdAlocar, 'id' => $item['produto_id']]);
+
+                    $pdo->prepare("
+                        UPDATE pedido_itens
+                        SET quantidade_estoque = quantidade_estoque + :qtd,
+                            quantidade_produzida = quantidade_produzida + :qtd
+                        WHERE id = :id
+                    ")->execute(['qtd' => $qtdAlocar, 'id' => $item['id']]);
+
+                    $novoEst = $disp - $qtdAlocar;
+
+                    registrarMovimento($pdo, 'pedido_atendido', [
+                        'produto_id'     => (int) $item['produto_id'],
+                        'pedido_item_id' => (int) $item['id'],
+                        'quantidade'     => -$qtdAlocar,
+                        'saldo_depois'   => $novoEst,
+                        'usuario_id'     => $usuario['id'],
+                        'observacoes'    => "Alocação de estoque no pedido #$id ({$qtdAlocar} un. de \"{$item['produto_nome']}\")",
+                    ]);
+
+                    $totalAlocado += $qtdAlocar;
+                    $detalhes[] = "{$qtdAlocar} un. de {$item['produto_nome']}";
+                }
+
+                if ($totalAlocado <= 0) {
+                    throw new Exception("Não há saldo em estoque disponível para atender os itens pendentes deste pedido.");
+                }
+
+                $novo = recalcularStatusPedido($pdo, $id);
+                $msgRetorno = "Total de {$totalAlocado} un. vinculada(s) do estoque ao pedido #" . $id . " (" . implode(', ', $detalhes) . ").";
+                break;
             default:
-                throw new Exception('Ação inválida. Use entregar, cancelar ou reabrir.');
+                throw new Exception('Ação inválida. Use entregar, cancelar, reabrir, alocar_estoque_item, desalocar_estoque_item ou alocar_estoque_pedido.');
         }
 
         $pdo->commit();
-        jsonResponse(['id' => $id, 'status' => $novo]);
+        jsonResponse(['id' => $id, 'status' => $novo, 'mensagem' => $msgRetorno]);
     } catch (Exception $e) {
         $pdo->rollBack();
         jsonError($e->getMessage(), 400);

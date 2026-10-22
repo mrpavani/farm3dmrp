@@ -67,6 +67,14 @@ function acoesPedido(p) {
     if (finalizado) {
         b.push(App.botaoIcone('reabrir', 'Reabrir', `mudarStatus(${p.id}, 'reabrir')`));
     } else {
+        const temEstoqueParaAlocar = p.itens.some(i => {
+            const falta = Number(i.quantidade) - Number(i.quantidade_produzida || 0);
+            const est = Number(i.produto_estoque || 0);
+            return falta > 0 && est > 0;
+        });
+        if (temEstoqueParaAlocar) {
+            b.push(App.botaoIcone('estoque', 'Vincular produtos disponíveis no estoque a este pedido', `alocarEstoquePedidoRapidoFabrica(${p.id})`, 'primario'));
+        }
         b.push(App.botaoIcone('editar', 'Editar', `editarPedido(${p.id})`, 'primario'));
         b.push(App.botaoIcone('cancelar', 'Cancelar', `mudarStatus(${p.id}, 'cancelar')`, 'alerta'));
     }
@@ -78,8 +86,58 @@ function botaoProducao(item, restante, pedidoId, itemId) {
     const pronto = Number(item.produto_estoque) || 0;
     const montavel = (item.produto_montavel === null || item.produto_montavel === undefined)
         ? 'null' : Number(item.produto_montavel);
-    return `<button class="pequeno suave" onclick="abrirModalProducao(${itemId}, ${esc(JSON.stringify(item.produto_nome))}, ${restante}, ${pedidoId}, ${pronto}, ${montavel})">Registrar produção</button>`;
+    let btns = `<button class="pequeno suave" onclick="abrirModalProducao(${itemId}, ${esc(JSON.stringify(item.produto_nome))}, ${restante}, ${pedidoId}, ${pronto}, ${montavel})">Registrar produção</button>`;
+    if (pronto > 0 && restante > 0) {
+        const maxV = Math.min(restante, pronto);
+        btns = `<button class="pequeno sucesso" style="margin-right:6px;" onclick="alocarEstoqueItemFabrica(${pedidoId}, ${itemId}, ${restante}, ${pronto}, ${esc(JSON.stringify(item.produto_nome))})" title="Vincular ${maxV} un. disponíveis no estoque a este pedido">📦 Vincular (${maxV})</button>` + btns;
+    }
+    return btns;
 }
+
+async function alocarEstoqueItemFabrica(pedidoId, itemId, restante, disponivel, produtoNome) {
+    const maxPossivel = Math.min(restante, disponivel);
+    const resp = prompt(`Quantas unidades de "${produtoNome}" deseja vincular do estoque ao pedido #${pedidoId}?\n\n• Disponível em estoque: ${disponivel} un.\n• Faltam no pedido: ${restante} un.\n• Máximo que pode vincular agora: ${maxPossivel} un.`, maxPossivel);
+    if (resp === null) return;
+    const qtd = parseInt(resp, 10);
+    if (isNaN(qtd) || qtd <= 0) {
+        return App.toast('Informe uma quantidade válida maior que zero.', 'alerta');
+    }
+    if (qtd > maxPossivel) {
+        return App.toast(`A quantidade não pode exceder o limite disponível (${maxPossivel} un.).`, 'alerta');
+    }
+
+    try {
+        const r = await App.api(`api/pedidos.php?id=${pedidoId}`, 'PATCH', {
+            acao: 'alocar_estoque_item',
+            pedido_item_id: itemId,
+            quantidade: qtd
+        });
+        App.toast(r.mensagem || `Estoque vinculado ao pedido #${pedidoId}.`);
+        recarregar();
+    } catch(e) {
+        App.toast(e.message, 'erro');
+    }
+}
+window.alocarEstoqueItemFabrica = alocarEstoqueItemFabrica;
+
+async function alocarEstoquePedidoRapidoFabrica(pedidoId) {
+    if (!await App.confirmar(`Deseja vincular automaticamente todo o estoque de produtos prontos disponível aos itens pendentes do pedido #${pedidoId}?\n\nAs unidades serão baixadas do estoque e a quantidade a produzir do pedido diminuirá imediatamente.`, {
+        titulo: 'Vincular Estoque',
+        botao: 'Vincular Estoque',
+        perigo: false
+    })) return;
+
+    try {
+        const r = await App.api(`api/pedidos.php?id=${pedidoId}`, 'PATCH', {
+            acao: 'alocar_estoque_pedido'
+        });
+        App.toast(r.mensagem || `Estoque vinculado ao pedido #${pedidoId} com sucesso!`);
+        recarregar();
+    } catch(e) {
+        App.toast(e.message, 'erro');
+    }
+}
+window.alocarEstoquePedidoRapidoFabrica = alocarEstoquePedidoRapidoFabrica;
 
 // Diz, por item de pedido, de onde as unidades que faltam podem sair:
 // do estoque de produto pronto, de uma montagem, ou de nenhum dos dois.

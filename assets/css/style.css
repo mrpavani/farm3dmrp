@@ -3197,6 +3197,61 @@ td.contato a:hover { color: var(--primary); }
     color: #0f172a;
     border-color: #94a3b8;
 }
+.btn-acao.estoque {
+    background: #f0f9ff;
+    border-color: #bae6fd;
+    color: #0284c7;
+}
+.btn-acao.estoque:hover {
+    background: #0284c7;
+    color: #ffffff;
+    border-color: #0284c7;
+}
+.badge-estoque-disp {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #0369a1;
+    background: #e0f2fe;
+    border: 1px solid #7dd3fc;
+    padding: 1px 6px;
+    border-radius: 999px;
+    margin-left: 4px;
+    vertical-align: middle;
+}
+.btn-acao-vincular {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    background: #0284c7;
+    color: #ffffff;
+    border: none;
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 11.5px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all .15s ease;
+}
+.btn-acao-vincular:hover {
+    background: #0369a1;
+    transform: translateY(-1px);
+}
+.btn-acao-desvincular {
+    background: transparent;
+    border: none;
+    color: #64748b;
+    font-size: 11px;
+    cursor: pointer;
+    text-decoration: underline;
+    padding: 2px 4px;
+}
+.btn-acao-desvincular:hover {
+    color: #dc2626;
+}
 
 /* Estilos do Modal de Detalhes do Pedido */
 .modal-detalhes-estilo {

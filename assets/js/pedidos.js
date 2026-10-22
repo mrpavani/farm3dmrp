@@ -40,6 +40,20 @@ function acoes(p) {
         </button>
     `);
 
+    // 2.5 Botão Vincular Estoque Rápido (se houver estoque pronto para atender este pedido)
+    const temEstoqueParaAlocar = !finalizado && p.itens.some(i => {
+        const falta = Number(i.quantidade) - Number(i.quantidade_produzida || 0);
+        const est = Number(i.produto_estoque || 0);
+        return falta > 0 && est > 0;
+    });
+    if (temEstoqueParaAlocar) {
+        b.push(`
+            <button type="button" class="btn-acao estoque" data-tip="Vincular produtos disponíveis no estoque a este pedido" aria-label="Vincular estoque" onclick="alocarEstoquePedidoRapido(${p.id})">
+                ${App.icone('estoque')}
+            </button>
+        `);
+    }
+
     // 3. Ações de Mudança de Status Rápido
     if (p.status === 'pronto') {
         const dica = estoque ? 'Concluir (enviar ao estoque)' : 'Marcar como entregue';
@@ -127,6 +141,8 @@ function formatarItemLinhaTabela(i, pedidoId) {
     const qtd = i.quantidade;
     const nome = i.produto_nome || 'Produto';
     const corVar = (i.cor_variacao || '').trim();
+    const restante = Number(i.quantidade) - Number(i.quantidade_produzida || 0);
+    const est = Number(i.produto_estoque || 0);
 
     let tagCor = '';
     if (corVar) {
@@ -140,11 +156,17 @@ function formatarItemLinhaTabela(i, pedidoId) {
         }
     }
 
+    let badgeEstoque = '';
+    if (restante > 0 && est > 0) {
+        badgeEstoque = `<span class="badge-estoque-disp" title="Há ${est} un. prontas em estoque para vincular">📦 ${Math.min(restante, est)} em estoque</span>`;
+    }
+
     return `
         <div class="linha-item-celula" onclick="verDetalhes(${pedidoId})" role="button" tabindex="0" title="${App.esc(nome)}${corVar ? ' (' + App.esc(corVar) + ')' : ''} · Clique para ver detalhes">
             <span class="badge-item-qtd">${qtd}×</span>
             <span class="badge-item-nome">${App.esc(nome)}</span>
             ${tagCor}
+            ${badgeEstoque}
         </div>
     `;
 }
@@ -354,11 +376,27 @@ async function verDetalhes(id) {
     let valorTotal = 0;
     $('detTotalItensBadge').textContent = `${p.itens.length} produto${p.itens.length === 1 ? '' : 's'} no pedido`;
 
+    // Botão de Vincular Todo o Estoque Disponível
+    const podeAlocarAlgo = !finalizado && p.itens.some(it => {
+        const falta = Number(it.quantidade) - Number(it.quantidade_produzida || 0);
+        const est = Number(it.produto_estoque || 0);
+        return falta > 0 && est > 0;
+    });
+
+    const btnAlocarTudo = $('detBtnAlocarTudoEstoque');
+    if (btnAlocarTudo) {
+        btnAlocarTudo.hidden = !podeAlocarAlgo;
+        btnAlocarTudo.onclick = () => alocarEstoquePedidoRapido(p.id, true);
+    }
+
     $('detTabelaItens').innerHTML = p.itens.map(it => {
         const subtotal = Number(it.quantidade) * Number(it.preco_unitario || 0);
         valorTotal += subtotal;
         const qProd = Number(it.quantidade_produzida || 0);
         const qTotal = Number(it.quantidade);
+        const qEstoque = Number(it.quantidade_estoque || 0);
+        const qRestante = Math.max(0, qTotal - qProd);
+        const qEstDisponivel = Number(it.produto_estoque || 0);
         const itemPct = qTotal ? Math.round(qProd / qTotal * 100) : 0;
 
         let variacoesHtml = '';
@@ -385,6 +423,37 @@ async function verDetalhes(id) {
             </div>`;
         }
 
+        let celulaAcao = '';
+        if (qRestante > 0 && qEstDisponivel > 0 && !finalizado) {
+            const maxAlocar = Math.min(qRestante, qEstDisponivel);
+            celulaAcao = `
+                <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+                    <span style="font-size:11px;color:#0284c7;font-weight:600;">Estoque: <b>${qEstDisponivel} un.</b></span>
+                    <button type="button" class="btn-acao-vincular" onclick="alocarEstoqueItem(${p.id}, ${it.id}, ${qRestante}, ${qEstDisponivel}, '${App.esc(it.produto_nome)}')">
+                        📦 Vincular (${maxAlocar})
+                    </button>
+                    ${qEstoque > 0 ? `<span style="font-size:10.5px;color:var(--text-3);">${qEstoque} já do estoque</span>` : ''}
+                </div>
+            `;
+        } else if (qEstoque > 0) {
+            celulaAcao = `
+                <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+                    <span class="badge-item-estoque" style="font-size:11px;color:#0369a1;background:#e0f2fe;padding:2px 7px;border-radius:4px;font-weight:600;">
+                        📦 ${qEstoque} do estoque
+                    </span>
+                    ${!finalizado ? `
+                        <button type="button" class="btn-acao-desvincular" onclick="desalocarEstoqueItem(${p.id}, ${it.id}, ${qEstoque}, '${App.esc(it.produto_nome)}')">
+                            ↺ Devolver
+                        </button>
+                    ` : ''}
+                </div>
+            `;
+        } else if (qRestante === 0) {
+            celulaAcao = `<span style="font-size:12px;font-weight:600;color:var(--success, #16a34a);">✓ 100% pronto</span>`;
+        } else {
+            celulaAcao = `<span style="font-size:11.5px;color:var(--text-3);">Sem estoque (${qRestante} a fabricar)</span>`;
+        }
+
         return `
             <tr style="border-bottom:1px solid var(--border);">
                 <td style="padding:10px 14px;vertical-align:middle;">
@@ -407,6 +476,9 @@ async function verDetalhes(id) {
                 </td>
                 <td style="text-align:right;padding:10px 14px;vertical-align:middle;font-size:14px;font-weight:700;color:var(--text);">
                     ${App.fmtMoeda.format(subtotal)}
+                </td>
+                <td style="text-align:center;padding:10px 14px;vertical-align:middle;">
+                    ${celulaAcao}
                 </td>
             </tr>
         `;
@@ -504,6 +576,88 @@ $('btnNovo').addEventListener('click', () => novo());
 $('busca').addEventListener('input', renderizar);
 $('filtroTipo').addEventListener('change', carregar);
 $('filtroStatus').addEventListener('change', carregar);
+
+// ============================================================
+// Funções de Alocação e Vinculação de Estoque ao Pedido
+// ============================================================
+async function alocarEstoqueItem(pedidoId, itemId, restante, disponivel, produtoNome) {
+    const maxPossivel = Math.min(restante, disponivel);
+    const resp = prompt(`Quantas unidades de "${produtoNome}" deseja vincular do estoque ao pedido #${pedidoId}?\n\n• Disponível em estoque: ${disponivel} un.\n• Faltam no pedido: ${restante} un.\n• Máximo que pode vincular agora: ${maxPossivel} un.`, maxPossivel);
+    if (resp === null) return;
+    const qtd = parseInt(resp, 10);
+    if (isNaN(qtd) || qtd <= 0) {
+        return App.toast('Informe uma quantidade válida maior que zero.', 'alerta');
+    }
+    if (qtd > maxPossivel) {
+        return App.toast(`A quantidade não pode exceder o limite disponível (${maxPossivel} un.).`, 'alerta');
+    }
+
+    try {
+        const r = await App.api(`api/pedidos.php?id=${pedidoId}`, 'PATCH', {
+            acao: 'alocar_estoque_item',
+            pedido_item_id: itemId,
+            quantidade: qtd
+        });
+        App.toast(r.mensagem || `Estoque vinculado ao pedido #${pedidoId}.`);
+        await carregar();
+        if ($('modalDetalhesPedido') && !$('modalDetalhesPedido').hidden) {
+            verDetalhes(pedidoId);
+        }
+    } catch(e) {
+        App.toast(e.message, 'erro');
+    }
+}
+window.alocarEstoqueItem = alocarEstoqueItem;
+
+async function desalocarEstoqueItem(pedidoId, itemId, alocado, produtoNome) {
+    const resp = prompt(`Quantas unidades de "${produtoNome}" deseja desvincular do pedido #${pedidoId} e devolver ao estoque?\n\n• Alocadas atualmente do estoque: ${alocado} un.`, alocado);
+    if (resp === null) return;
+    const qtd = parseInt(resp, 10);
+    if (isNaN(qtd) || qtd <= 0) {
+        return App.toast('Informe uma quantidade válida maior que zero.', 'alerta');
+    }
+    if (qtd > alocado) {
+        return App.toast(`A quantidade não pode exceder as unidades alocadas (${alocado} un.).`, 'alerta');
+    }
+
+    try {
+        const r = await App.api(`api/pedidos.php?id=${pedidoId}`, 'PATCH', {
+            acao: 'desalocar_estoque_item',
+            pedido_item_id: itemId,
+            quantidade: qtd
+        });
+        App.toast(r.mensagem || `Estoque devolvido do pedido #${pedidoId}.`);
+        await carregar();
+        if ($('modalDetalhesPedido') && !$('modalDetalhesPedido').hidden) {
+            verDetalhes(pedidoId);
+        }
+    } catch(e) {
+        App.toast(e.message, 'erro');
+    }
+}
+window.desalocarEstoqueItem = desalocarEstoqueItem;
+
+async function alocarEstoquePedidoRapido(pedidoId, dentroModal = false) {
+    if (!await App.confirmar(`Deseja vincular automaticamente todo o estoque de produtos prontos disponível aos itens pendentes do pedido #${pedidoId}?\n\nAs unidades serão baixadas do estoque e a quantidade a produzir do pedido diminuirá imediatamente.`, {
+        titulo: 'Vincular Estoque',
+        botao: 'Vincular Estoque',
+        perigo: false
+    })) return;
+
+    try {
+        const r = await App.api(`api/pedidos.php?id=${pedidoId}`, 'PATCH', {
+            acao: 'alocar_estoque_pedido'
+        });
+        App.toast(r.mensagem || `Estoque vinculado ao pedido #${pedidoId} com sucesso!`);
+        await carregar();
+        if (dentroModal && $('modalDetalhesPedido') && !$('modalDetalhesPedido').hidden) {
+            verDetalhes(pedidoId);
+        }
+    } catch(e) {
+        App.toast(e.message, 'erro');
+    }
+}
+window.alocarEstoquePedidoRapido = alocarEstoquePedidoRapido;
 
 (async function init() {
     await carregar();

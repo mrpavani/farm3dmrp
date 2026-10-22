@@ -60,11 +60,16 @@
 
             <!-- Tabela de Itens Solicitados com Peças e Cores -->
             <div class="secao-form" style="margin-top:4px;padding-top:12px;">
-                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-                    <h3 style="margin:0;font-size:14px;color:var(--text);font-weight:700;">
-                        📦 Itens Solicitados & Cores das Peças
-                    </h3>
-                    <span id="detTotalItensBadge" style="font-size:12px;color:var(--text-3);"></span>
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <h3 style="margin:0;font-size:14px;color:var(--text);font-weight:700;">
+                            📦 Itens Solicitados & Cores das Peças
+                        </h3>
+                        <span id="detTotalItensBadge" style="font-size:12px;color:var(--text-3);"></span>
+                    </div>
+                    <button type="button" class="pequeno sucesso" id="detBtnAlocarTudoEstoque" hidden style="font-weight:700;display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:6px;cursor:pointer;" title="Vincular todo o saldo pronto do estoque para este pedido">
+                        📦 Vincular Estoque Disponível
+                    </button>
                 </div>
 
                 <div class="tabela-rolagem" style="border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;">
@@ -72,10 +77,11 @@
                         <thead>
                             <tr style="background:var(--surface-2);font-size:12px;">
                                 <th style="text-align:left;padding:10px 14px;">Produto & Cores / Peças</th>
-                                <th style="text-align:center;width:100px;padding:10px;">Qtd</th>
-                                <th style="text-align:center;width:110px;padding:10px;">Produzido</th>
-                                <th style="text-align:right;width:110px;padding:10px;">Preço Unit.</th>
-                                <th style="text-align:right;width:120px;padding:10px 14px;">Subtotal</th>
+                                <th style="text-align:center;width:90px;padding:10px;">Qtd</th>
+                                <th style="text-align:center;width:100px;padding:10px;">Produzido</th>
+                                <th style="text-align:right;width:105px;padding:10px;">Preço Unit.</th>
+                                <th style="text-align:right;width:110px;padding:10px 14px;">Subtotal</th>
+                                <th style="text-align:center;width:160px;padding:10px 14px;">Estoque / Vinculação</th>
                             </tr>
                         </thead>
                         <tbody id="detTabelaItens"></tbody>
