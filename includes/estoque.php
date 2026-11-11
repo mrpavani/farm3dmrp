@@ -933,7 +933,7 @@ function darBaixaFilamentoConsumo(PDO $pdo, string $cor, float $gramas, array $o
         INSERT INTO filamento_movimentacoes
             (filamento_id, lote_id, tipo, gramas, saldo_anterior_gramas, saldo_posterior_gramas, preco_por_grama, custo_total, peca_id, produto_id, pedido_item_id, usuario_id, observacoes)
         VALUES
-            (:filamento_id, :lote_id, 'consumo_producao', :gramas, :saldo_ant, :saldo_post, :preco_por_grama, :custo_total, :peca_id, :produto_id, :pedido_item_id, :usuario_id, :observacoes)
+            (:filamento_id, :lote_id, :tipo, :gramas, :saldo_ant, :saldo_post, :preco_por_grama, :custo_total, :peca_id, :produto_id, :pedido_item_id, :usuario_id, :observacoes)
     ");
 
     $saldoLoteCorrente = $saldoEstoqueAtual;
@@ -955,6 +955,7 @@ function darBaixaFilamentoConsumo(PDO $pdo, string $cor, float $gramas, array $o
         $stmtInsMov->execute([
             'filamento_id' => $filId,
             'lote_id' => $lote['id'],
+            'tipo' => 'consumo_producao',
             'gramas' => -$consumir,
             'saldo_ant' => $saldoLoteCorrente,
             'saldo_post' => $saldoPost,

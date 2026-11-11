@@ -415,9 +415,10 @@ if ($method === 'POST') {
 if ($method === 'PUT') {
     $id = (int) ($_GET['id'] ?? 0);
     if (!$id) jsonError('Informe o id do produto.');
-    $existe = $pdo->prepare("SELECT COUNT(*) FROM produtos WHERE id = :id");
-    $existe->execute(['id' => $id]);
-    if (!(int) $existe->fetchColumn()) jsonError('Produto não encontrado.', 404);
+    $stmtAtual = $pdo->prepare("SELECT * FROM produtos WHERE id = :id");
+    $stmtAtual->execute(['id' => $id]);
+    $atual = $stmtAtual->fetch();
+    if (!$atual) jsonError('Produto não encontrado.', 404);
 
     $raw = readJsonBody();
 

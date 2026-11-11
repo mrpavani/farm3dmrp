@@ -578,84 +578,29 @@ $('filtroTipo').addEventListener('change', carregar);
 $('filtroStatus').addEventListener('change', carregar);
 
 // ============================================================
-// Funções de Alocação e Vinculação de Estoque ao Pedido
+// Funções de Alocação e Vinculação de Estoque ao Pedido (Usa App centralizado)
 // ============================================================
 async function alocarEstoqueItem(pedidoId, itemId, restante, disponivel, produtoNome) {
-    const maxPossivel = Math.min(restante, disponivel);
-    const resp = prompt(`Quantas unidades de "${produtoNome}" deseja vincular do estoque ao pedido #${pedidoId}?\n\n• Disponível em estoque: ${disponivel} un.\n• Faltam no pedido: ${restante} un.\n• Máximo que pode vincular agora: ${maxPossivel} un.`, maxPossivel);
-    if (resp === null) return;
-    const qtd = parseInt(resp, 10);
-    if (isNaN(qtd) || qtd <= 0) {
-        return App.toast('Informe uma quantidade válida maior que zero.', 'alerta');
-    }
-    if (qtd > maxPossivel) {
-        return App.toast(`A quantidade não pode exceder o limite disponível (${maxPossivel} un.).`, 'alerta');
-    }
-
-    try {
-        const r = await App.api(`api/pedidos.php?id=${pedidoId}`, 'PATCH', {
-            acao: 'alocar_estoque_item',
-            pedido_item_id: itemId,
-            quantidade: qtd
-        });
-        App.toast(r.mensagem || `Estoque vinculado ao pedido #${pedidoId}.`);
+    await App.alocarEstoqueItem(pedidoId, itemId, restante, disponivel, produtoNome, async () => {
         await carregar();
-        if ($('modalDetalhesPedido') && !$('modalDetalhesPedido').hidden) {
-            verDetalhes(pedidoId);
-        }
-    } catch(e) {
-        App.toast(e.message, 'erro');
-    }
+        if ($('modalDetalhesPedido') && !$('modalDetalhesPedido').hidden) verDetalhes(pedidoId);
+    });
 }
 window.alocarEstoqueItem = alocarEstoqueItem;
 
 async function desalocarEstoqueItem(pedidoId, itemId, alocado, produtoNome) {
-    const resp = prompt(`Quantas unidades de "${produtoNome}" deseja desvincular do pedido #${pedidoId} e devolver ao estoque?\n\n• Alocadas atualmente do estoque: ${alocado} un.`, alocado);
-    if (resp === null) return;
-    const qtd = parseInt(resp, 10);
-    if (isNaN(qtd) || qtd <= 0) {
-        return App.toast('Informe uma quantidade válida maior que zero.', 'alerta');
-    }
-    if (qtd > alocado) {
-        return App.toast(`A quantidade não pode exceder as unidades alocadas (${alocado} un.).`, 'alerta');
-    }
-
-    try {
-        const r = await App.api(`api/pedidos.php?id=${pedidoId}`, 'PATCH', {
-            acao: 'desalocar_estoque_item',
-            pedido_item_id: itemId,
-            quantidade: qtd
-        });
-        App.toast(r.mensagem || `Estoque devolvido do pedido #${pedidoId}.`);
+    await App.desalocarEstoqueItem(pedidoId, itemId, alocado, produtoNome, async () => {
         await carregar();
-        if ($('modalDetalhesPedido') && !$('modalDetalhesPedido').hidden) {
-            verDetalhes(pedidoId);
-        }
-    } catch(e) {
-        App.toast(e.message, 'erro');
-    }
+        if ($('modalDetalhesPedido') && !$('modalDetalhesPedido').hidden) verDetalhes(pedidoId);
+    });
 }
 window.desalocarEstoqueItem = desalocarEstoqueItem;
 
 async function alocarEstoquePedidoRapido(pedidoId, dentroModal = false) {
-    if (!await App.confirmar(`Deseja vincular automaticamente todo o estoque de produtos prontos disponível aos itens pendentes do pedido #${pedidoId}?\n\nAs unidades serão baixadas do estoque e a quantidade a produzir do pedido diminuirá imediatamente.`, {
-        titulo: 'Vincular Estoque',
-        botao: 'Vincular Estoque',
-        perigo: false
-    })) return;
-
-    try {
-        const r = await App.api(`api/pedidos.php?id=${pedidoId}`, 'PATCH', {
-            acao: 'alocar_estoque_pedido'
-        });
-        App.toast(r.mensagem || `Estoque vinculado ao pedido #${pedidoId} com sucesso!`);
+    await App.alocarEstoquePedidoRapido(pedidoId, async () => {
         await carregar();
-        if (dentroModal && $('modalDetalhesPedido') && !$('modalDetalhesPedido').hidden) {
-            verDetalhes(pedidoId);
-        }
-    } catch(e) {
-        App.toast(e.message, 'erro');
-    }
+        if (dentroModal && $('modalDetalhesPedido') && !$('modalDetalhesPedido').hidden) verDetalhes(pedidoId);
+    });
 }
 window.alocarEstoquePedidoRapido = alocarEstoquePedidoRapido;
 

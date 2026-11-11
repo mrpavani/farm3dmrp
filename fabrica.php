@@ -298,15 +298,19 @@ require __DIR__ . '/includes/header.php';
             </button>
         </div>
         <div class="modal-corpo">
+            <div id="modalPecaInfoCard" style="background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 14px; margin-bottom: 12px; font-size: 13px;"></div>
+
             <div>
-                <label for="modalPecaQtd" style="text-align: center; margin-top: 4px;">Quantidade de peças impressas</label>
-                <input type="number" id="modalPecaQtd" min="1" value="1" style="font-size: 22px; font-weight: 700; text-align: center; height: 48px;">
-                <div class="atalhos" id="atalhosQtdPeca" style="margin-top: 10px; justify-content: center;"></div>
+                <label for="modalPecaQtd" style="text-align: center; margin-top: 4px; font-weight: 600;">Quantidade de peças impressas</label>
+                <input type="number" id="modalPecaQtd" min="1" value="1" style="font-size: 24px; font-weight: 800; text-align: center; height: 50px;">
+                <div class="atalhos" id="atalhosQtdPeca" style="margin-top: 10px; justify-content: center; gap: 6px;"></div>
             </div>
+
+            <div id="modalPecaPrevisaoConsumo" style="margin-top: 12px; padding: 10px 14px; border-radius: var(--radius-sm); background: var(--primary-soft, #eeedff); color: var(--primary, #5b4bf0); font-size: 12.5px; display: flex; justify-content: space-between; align-items: center; font-weight: 600;"></div>
         </div>
         <div class="modal-rodape">
             <button type="button" class="secundario" data-fechar-modal>Cancelar</button>
-            <button type="button" id="btnConfirmarProducaoPeca">Adicionar ao Estoque</button>
+            <button type="button" id="btnConfirmarProducaoPeca" class="primario">Adicionar ao Estoque</button>
         </div>
     </div>
 </div>

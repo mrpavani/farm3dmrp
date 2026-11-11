@@ -333,11 +333,84 @@ window.App = (() => {
         return html;
     }
 
+    // ---------- Ações Compartilhadas de Alocação de Estoque ----------
+    async function alocarEstoqueItem(pedidoId, itemId, restante, disponivel, produtoNome, aoConcluir = null) {
+        const maxPossivel = Math.min(restante, disponivel);
+        const resp = prompt(`Quantas unidades de "${produtoNome}" deseja vincular do estoque ao pedido #${pedidoId}?\n\n• Disponível em estoque: ${disponivel} un.\n• Faltam no pedido: ${restante} un.\n• Máximo que pode vincular agora: ${maxPossivel} un.`, maxPossivel);
+        if (resp === null) return;
+        const qtd = parseInt(resp, 10);
+        if (isNaN(qtd) || qtd <= 0) {
+            return toast('Informe uma quantidade válida maior que zero.', 'alerta');
+        }
+        if (qtd > maxPossivel) {
+            return toast(`A quantidade não pode exceder o limite disponível (${maxPossivel} un.).`, 'alerta');
+        }
+
+        try {
+            const r = await api(`api/pedidos.php?id=${pedidoId}`, 'PATCH', {
+                acao: 'alocar_estoque_item',
+                pedido_item_id: itemId,
+                quantidade: qtd
+            });
+            toast(r.mensagem || `Estoque vinculado ao pedido #${pedidoId}.`);
+            if (typeof aoConcluir === 'function') await aoConcluir();
+        } catch(e) {
+            toast(e.message, 'erro');
+        }
+    }
+
+    async function desalocarEstoqueItem(pedidoId, itemId, alocado, produtoNome, aoConcluir = null) {
+        const resp = prompt(`Quantas unidades de "${produtoNome}" deseja desvincular do pedido #${pedidoId} e devolver ao estoque?\n\n• Alocadas atualmente do estoque: ${alocado} un.`, alocado);
+        if (resp === null) return;
+        const qtd = parseInt(resp, 10);
+        if (isNaN(qtd) || qtd <= 0) {
+            return toast('Informe uma quantidade válida maior que zero.', 'alerta');
+        }
+        if (qtd > alocado) {
+            return toast(`A quantidade não pode exceder as unidades alocadas (${alocado} un.).`, 'alerta');
+        }
+
+        try {
+            const r = await api(`api/pedidos.php?id=${pedidoId}`, 'PATCH', {
+                acao: 'desalocar_estoque_item',
+                pedido_item_id: itemId,
+                quantidade: qtd
+            });
+            toast(r.mensagem || `Estoque devolvido do pedido #${pedidoId}.`);
+            if (typeof aoConcluir === 'function') await aoConcluir();
+        } catch(e) {
+            toast(e.message, 'erro');
+        }
+    }
+
+    async function alocarEstoquePedidoRapido(pedidoId, aoConcluir = null) {
+        if (!await confirmar(`Deseja vincular automaticamente todo o estoque de produtos prontos disponível aos itens pendentes do pedido #${pedidoId}?\n\nAs unidades serão baixadas do estoque e a quantidade a produzir do pedido diminuirá imediatamente.`, {
+            titulo: 'Vincular Estoque',
+            botao: 'Vincular Estoque',
+            perigo: false
+        })) return;
+
+        try {
+            const r = await api(`api/pedidos.php?id=${pedidoId}`, 'PATCH', {
+                acao: 'alocar_estoque_pedido'
+            });
+            toast(r.mensagem || `Estoque vinculado ao pedido #${pedidoId} com sucesso!`);
+            if (typeof aoConcluir === 'function') await aoConcluir();
+        } catch(e) {
+            toast(e.message, 'erro');
+        }
+    }
+
+    const STATUS = { aberto: 'Aberto', em_producao: 'Em produção', pronto: 'Pronto', entregue: 'Entregue', cancelado: 'Cancelado' };
+    const STATUS_ESTOQUE = { ...STATUS, aberto: 'Aberta', pronto: 'Pronta', entregue: 'Concluída', cancelado: 'Cancelada' };
+
     return {
         fmtInt, fmtMoeda, moeda: v => fmtMoeda.format(Number(v) || 0), num, esc, isoEmDias, hoje: () => isoEmDias(0), data, dataHora, diasAte, etiquetaPrazo,
         api, icone, botaoIcone, modal, confirmar, toast, estadoVazio, normalizar,
         formatarTelefone, mascaraTelefone,
         obterCoresCadastradas, gerarOpcoesCoresHtml,
+        alocarEstoqueItem, desalocarEstoqueItem, alocarEstoquePedidoRapido,
+        STATUS, STATUS_ESTOQUE,
     };
 })();
 

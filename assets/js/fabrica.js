@@ -95,47 +95,12 @@ function botaoProducao(item, restante, pedidoId, itemId) {
 }
 
 async function alocarEstoqueItemFabrica(pedidoId, itemId, restante, disponivel, produtoNome) {
-    const maxPossivel = Math.min(restante, disponivel);
-    const resp = prompt(`Quantas unidades de "${produtoNome}" deseja vincular do estoque ao pedido #${pedidoId}?\n\n• Disponível em estoque: ${disponivel} un.\n• Faltam no pedido: ${restante} un.\n• Máximo que pode vincular agora: ${maxPossivel} un.`, maxPossivel);
-    if (resp === null) return;
-    const qtd = parseInt(resp, 10);
-    if (isNaN(qtd) || qtd <= 0) {
-        return App.toast('Informe uma quantidade válida maior que zero.', 'alerta');
-    }
-    if (qtd > maxPossivel) {
-        return App.toast(`A quantidade não pode exceder o limite disponível (${maxPossivel} un.).`, 'alerta');
-    }
-
-    try {
-        const r = await App.api(`api/pedidos.php?id=${pedidoId}`, 'PATCH', {
-            acao: 'alocar_estoque_item',
-            pedido_item_id: itemId,
-            quantidade: qtd
-        });
-        App.toast(r.mensagem || `Estoque vinculado ao pedido #${pedidoId}.`);
-        recarregar();
-    } catch(e) {
-        App.toast(e.message, 'erro');
-    }
+    await App.alocarEstoqueItem(pedidoId, itemId, restante, disponivel, produtoNome, recarregar);
 }
 window.alocarEstoqueItemFabrica = alocarEstoqueItemFabrica;
 
 async function alocarEstoquePedidoRapidoFabrica(pedidoId) {
-    if (!await App.confirmar(`Deseja vincular automaticamente todo o estoque de produtos prontos disponível aos itens pendentes do pedido #${pedidoId}?\n\nAs unidades serão baixadas do estoque e a quantidade a produzir do pedido diminuirá imediatamente.`, {
-        titulo: 'Vincular Estoque',
-        botao: 'Vincular Estoque',
-        perigo: false
-    })) return;
-
-    try {
-        const r = await App.api(`api/pedidos.php?id=${pedidoId}`, 'PATCH', {
-            acao: 'alocar_estoque_pedido'
-        });
-        App.toast(r.mensagem || `Estoque vinculado ao pedido #${pedidoId} com sucesso!`);
-        recarregar();
-    } catch(e) {
-        App.toast(e.message, 'erro');
-    }
+    await App.alocarEstoquePedidoRapido(pedidoId, recarregar);
 }
 window.alocarEstoquePedidoRapidoFabrica = alocarEstoquePedidoRapidoFabrica;
 
@@ -1364,6 +1329,8 @@ $('formAjusteInventarioPeca')?.addEventListener('submit', async function(e) {
 
 // Modal de Produção Rápida de Peças (lote maior da peça física)
 let pecaProduzirAtualId = null;
+let pecaProduzirObj = null;
+let pecaProduzirProdObj = null;
 
 function abrirModalProduzirPeca(pecaId, prodId) {
     pecaProduzirAtualId = pecaId;
@@ -1372,11 +1339,35 @@ function abrirModalProduzirPeca(pecaId, prodId) {
     const peca = p.pecas.find(x => x.peca_id === pecaId);
     if (!peca) return;
 
+    pecaProduzirObj = peca;
+    pecaProduzirProdObj = p;
+
     $('modalPecaTitulo').textContent = `Registrar Produção: ${peca.nome}`;
     const descCores = peca.cores && peca.cores.length
         ? `Cores: ${peca.cores.map(c => esc(c.cor) + (c.peso_gramas > 0 ? ' (' + (App.num ? App.num(c.peso_gramas, 1) : Number(c.peso_gramas).toFixed(1)) + 'g)' : '')).join(', ')}`
         : 'Sem cores cadastradas';
     $('modalPecaSub').textContent = `${descCores} · Produto: ${p.nome} · Faltam imprimir: ${peca.a_imprimir} un`;
+
+    const infoCard = $('modalPecaInfoCard');
+    if (infoCard) {
+        const chipsCoresHtml = peca.cores && peca.cores.length
+            ? peca.cores.map(c => `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;background:var(--surface-3);border:1px solid var(--border);border-radius:6px;font-size:12px;font-weight:600;">🎨 ${esc(c.cor || 'Padrão')} ${c.peso_gramas > 0 ? `<b>(${(Number(c.peso_gramas)).toFixed(1)}g)</b>` : ''}</span>`).join(' ')
+            : `<span style="color:var(--text-3);font-size:12px;">Padrão / Única</span>`;
+
+        infoCard.innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                <span style="font-weight:700;color:var(--text);font-size:14px;">🧩 ${esc(peca.nome)}</span>
+                <span style="font-size:12px;color:var(--text-3);">Produto: <b>${esc(p.nome)}</b></span>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;">
+                ${chipsCoresHtml}
+                <span style="font-size:11.5px;color:var(--text-2);margin-left:auto;">
+                    Saldo bancada: <b>${fmtInt.format(peca.estoque)} un.</b> · Falta imprimir: <b style="color:${peca.a_imprimir > 0 ? 'var(--warning-solid, #d97706)' : 'var(--success-solid, #059669)'};">${fmtInt.format(peca.a_imprimir)} un.</b>
+                </span>
+            </div>
+        `;
+    }
+
     $('modalPecaQtd').value = peca.a_imprimir > 0 ? peca.a_imprimir : 1;
 
     // Atalhos rápidos (+1, +2, +4, +8, e o total que falta)
@@ -1387,13 +1378,52 @@ function abrirModalProduzirPeca(pecaId, prodId) {
     atalhos.sort((a,b) => a - b);
 
     $('atalhosQtdPeca').innerHTML = atalhos.map(qtd => `
-        <button type="button" class="secundario" style="padding: 2px 10px; font-size: 12px; min-height: 28px;" onclick="$('modalPecaQtd').value = ${qtd}">
+        <button type="button" class="secundario" style="padding: 3px 12px; font-size: 12px; min-height: 30px; font-weight: 600;" onclick="definirQtdModalProduzirPeca(${qtd})">
             +${qtd}
         </button>
     `).join('');
 
+    atualizarPreviewProducaoPeca();
     App.modal.abrir('modalProduzirPeca', '#modalPecaQtd');
 }
+
+function definirQtdModalProduzirPeca(qtd) {
+    const input = $('modalPecaQtd');
+    if (input) {
+        input.value = qtd;
+        atualizarPreviewProducaoPeca();
+    }
+}
+window.definirQtdModalProduzirPeca = definirQtdModalProduzirPeca;
+
+function atualizarPreviewProducaoPeca() {
+    if (!pecaProduzirObj) return;
+    const qtd = Math.max(0, parseInt($('modalPecaQtd')?.value, 10) || 0);
+    const peca = pecaProduzirObj;
+
+    let pesoUnitario = parseFloat(peca.peca_peso || peca.peso_gramas || 0);
+    if ((!pesoUnitario || pesoUnitario <= 0) && peca.cores && peca.cores.length) {
+        pesoUnitario = peca.cores.reduce((sum, c) => sum + (Number(c.peso_gramas) || 0), 0);
+    }
+
+    const totalGramas = (pesoUnitario * qtd).toFixed(1);
+    const saldoAtual = Number(peca.estoque || 0);
+    const novoSaldo = saldoAtual + qtd;
+
+    const previewEl = $('modalPecaPrevisaoConsumo');
+    if (previewEl) {
+        previewEl.innerHTML = `
+            <span>⚖️ Filamento estimado: <b>${totalGramas > 0 ? totalGramas + 'g' : '—'}</b></span>
+            <span>📦 Novo saldo na bancada: <b>${saldoAtual}</b> ➔ <b style="color:var(--success, #059669);">${novoSaldo} un.</b></span>
+        `;
+    }
+
+    const btn = $('btnConfirmarProducaoPeca');
+    if (btn) {
+        btn.textContent = qtd > 0 ? `Adicionar ao Estoque (+${qtd} un)` : 'Adicionar ao Estoque';
+    }
+}
+window.atualizarPreviewProducaoPeca = atualizarPreviewProducaoPeca;
 
 async function confirmarProducaoPeca() {
     if (!pecaProduzirAtualId) return;
@@ -1973,6 +2003,7 @@ $('btnPecasLimpar').addEventListener('click', () => {
 });
 $('btnConfirmarProducaoPeca').addEventListener('click', confirmarProducaoPeca);
 $('modalPecaQtd').addEventListener('keydown', e => { if (e.key === 'Enter') confirmarProducaoPeca(); });
+$('modalPecaQtd')?.addEventListener('input', atualizarPreviewProducaoPeca);
 $('btnConfirmarNovaCor').addEventListener('click', confirmarNovaCor);
 $('modalNovaCorNome')?.addEventListener('change', e => {
     const inp = $('modalNovaCorCustom');
